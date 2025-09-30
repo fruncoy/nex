@@ -111,7 +111,7 @@ export function Layout() {
           {/* Logo */}
           <div className="flex items-center justify-between h-16 px-4 bg-nestalk-primary">
             <span className={`text-xl font-bold text-white transition-opacity duration-300 ${isCollapsed && window.innerWidth >= 1024 ? 'opacity-0' : 'opacity-100'}`}>
-              {isCollapsed && window.innerWidth >= 1024 ? 'N' : 'Nestalk'}
+              {isCollapsed && window.innerWidth >= 1024 ? 'N' : 'NEX'}
             </span>
           </div>
 

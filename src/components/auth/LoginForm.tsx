@@ -66,7 +66,7 @@ export function LoginForm() {
       <div className="max-w-md w-full space-y-8">
         <div className="text-center">
           <div className="flex justify-center">
-            <h1 className="text-4xl font-bold text-nestalk-primary">Nestalk</h1>
+            <h1 className="text-4xl font-bold text-nestalk-primary">NEX</h1>
           </div>
           <p className="mt-2 text-sm text-gray-600">
             {isSignUp ? 'Create your account' : 'Sign in to your account'}
