@@ -1,0 +1,16 @@
+# Logs
+logs/
+*.log
+
+# Dependency directories
+node_modules/
+
+# Build directories
+dist/
+
+# Environment variables
+.env
+
+# IDE settings
+.vscode/
+.idea/
