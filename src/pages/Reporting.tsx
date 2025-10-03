@@ -8,7 +8,6 @@ export function Reporting() {
   const tabs = [
     { name: 'Data Entry', href: '/reporting/data-entry', icon: Edit },
     { name: 'Reports', href: '/reporting/reports', icon: FileText },
-    { name: 'Dashboards', href: '/reporting/dashboards', icon: PieChart },
   ]
 
   return (

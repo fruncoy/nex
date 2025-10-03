@@ -15,6 +15,7 @@ import { Reporting } from './pages/Reporting'
 import { DataEntry } from './pages/reporting/DataEntry'
 import { Reports } from './pages/reporting/Reports'
 import { Dashboards } from './pages/reporting/Dashboards'
+import { Insights } from './pages/Insights'
 
 function ProtectedLayout() {
   const { user, loading } = useAuth()
@@ -51,6 +52,7 @@ function AppRoutes() {
         <Route path="clients" element={<Clients />} />
         <Route path="training" element={<TrainingLeads />} />
         <Route path="interviews" element={<Interviews />} />
+        <Route path="insights" element={<Insights />} />
         <Route path="updates" element={<Updates />} />
         <Route path="meeting-notes" element={<MeetingNotes />} />
         <Route path="reporting" element={<Reporting />}>

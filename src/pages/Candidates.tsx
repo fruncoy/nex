@@ -51,8 +51,8 @@ export function Candidates() {
   const { showToast } = useToast()
 
   const statusOptions = ['PENDING', 'INTERVIEW_SCHEDULED', 'WON', 'LOST']
-  const roleOptions = ['Nanny', 'House Manager', 'Chef', 'Driver', 'Night Nurse', 'Caregiver']
-  const sourceOptions = ['TikTok', 'Facebook', 'Instagram', 'Google Search', 'Website', 'Referral', 'LinkedIn', 'Walk-in poster']
+  const roleOptions = ['Nanny', 'House Manager', 'Chef', 'Driver', 'Night Nurse', 'Caregiver', 'Housekeeper']
+  const sourceOptions = ['TikTok', 'Facebook', 'Instagram', 'Google Search', 'Website', 'Referral', 'LinkedIn', 'Walk-in poster', 'Youtube']
 
   useEffect(() => {
     loadCandidates()
@@ -431,7 +431,7 @@ export function Candidates() {
   }
 
   const downloadTemplate = () => {
-    const csvContent = `Name,Phone,Source,Role,Status,Scheduled Date (YYYY-MM-DD)\nJohn Doe,555-1234,Referral,Nanny,PENDING,\nJane Smith,555-5678,TikTok,Chef,INTERVIEW_SCHEDULED,2025-09-15`
+    const csvContent = `Name,Phone,Source,Role,Status,Scheduled Date (YYYY-MM-DD)\nJohn Doe,555-1234,Referral,Nanny,PENDING,\nJane Smith,555-5678,TikTok,Chef,INTERVIEW_SCHEDULED,2025-09-15\nMary Johnson,555-9999,Youtube,Housekeeper,PENDING,`
     const blob = new Blob([csvContent], { type: 'text/csv' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -552,6 +552,18 @@ export function Candidates() {
           // Default to PENDING if date is missing
           if (!sched && status === 'INTERVIEW_SCHEDULED') status = 'PENDING'
           if (!status) status = 'PENDING'
+
+          // Validate role
+          if (!roleOptions.includes(role)) {
+            errors.push(`Row ${i + 2}: Invalid role "${role}". Must be one of: ${roleOptions.join(', ')}`)
+            continue
+          }
+
+          // Validate source
+          if (!sourceOptions.includes(source)) {
+            errors.push(`Row ${i + 2}: Invalid source "${source}". Must be one of: ${sourceOptions.join(', ')}`)
+            continue
+          }
 
           // Validate status
           if (!['PENDING', 'INTERVIEW_SCHEDULED', 'WON', 'LOST'].includes(status)) {

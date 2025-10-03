@@ -96,10 +96,10 @@ export function Clients() {
   const mainStatusOptions = ['Pending', 'Active', 'Lost/Cold', 'Won']
   
   // Source options (same as candidates table)
-  const sourceOptions = ['TikTok', 'Facebook', 'Instagram', 'Google Search', 'Website', 'Referral', 'LinkedIn', 'Walk-in poster']
+  const sourceOptions = ['TikTok', 'Facebook', 'Instagram', 'Google Search', 'Website', 'Referral', 'LinkedIn', 'Walk-in poster', 'Youtube']
   
   // Role options (updated as requested)  
-  const roleOptions = ['Nanny', 'House Manager', 'Chef', 'Driver', 'Night Nurse', 'Caregiver']
+  const roleOptions = ['Nanny', 'House Manager', 'Chef', 'Driver', 'Night Nurse', 'Caregiver', 'Housekeeper', 'Uniforms']
 
   // Time options for business hours (8am-5pm) - Currently used for display reference
   // Note: Reminders are set via date picker only, default time is 9:00 AM
@@ -170,7 +170,7 @@ export function Clients() {
 
   // Bulk upload functionality
   const downloadTemplate = () => {
-    const csvContent = `Name,Phone,Gmail,Source,Want to Hire,Status,Custom Reminder Date (YYYY-MM-DD)\nJohn Doe,555-1234,john@example.com,Referral,Nanny,Pending,\nJane Smith,555-5678,jane@example.com,TikTok,Chef,Active,2025-09-30`
+    const csvContent = `Name,Phone,Gmail,Source,Want to Hire,Status,Custom Reminder Date (YYYY-MM-DD)\nJohn Doe,555-1234,john@example.com,Referral,Nanny,Pending,\nJane Smith,555-5678,jane@example.com,TikTok,Chef,Active,2025-09-30\nMary Johnson,555-9999,mary@example.com,Youtube,Housekeeper,Pending,\nBob Wilson,555-7777,bob@example.com,Facebook,Uniforms,Active,`
     const blob = new Blob([csvContent], { type: 'text/csv' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')

@@ -465,64 +465,7 @@ export function Dashboards() {
         </div>
       </div>
 
-      {/* Summary Stats */}
-      <div className="mt-6 grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-green-50 rounded-lg p-4">
-          <div className="flex items-center">
-            <div className="p-2 bg-green-100 rounded-lg">
-              <TrendingUp className="w-5 h-5 text-green-600" />
-            </div>
-            <div className="ml-3">
-              <p className="text-sm font-medium text-green-900">Green KPIs</p>
-              <p className="text-2xl font-bold text-green-600">
-                {getFilteredRecords().filter(r => r.rag_status === 'Green').length}
-              </p>
-            </div>
-          </div>
-        </div>
 
-        <div className="bg-yellow-50 rounded-lg p-4">
-          <div className="flex items-center">
-            <div className="p-2 bg-yellow-100 rounded-lg">
-              <TrendingUp className="w-5 h-5 text-yellow-600" />
-            </div>
-            <div className="ml-3">
-              <p className="text-sm font-medium text-yellow-900">Amber KPIs</p>
-              <p className="text-2xl font-bold text-yellow-600">
-                {getFilteredRecords().filter(r => r.rag_status === 'Amber').length}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-red-50 rounded-lg p-4">
-          <div className="flex items-center">
-            <div className="p-2 bg-red-100 rounded-lg">
-              <TrendingUp className="w-5 h-5 text-red-600" />
-            </div>
-            <div className="ml-3">
-              <p className="text-sm font-medium text-red-900">Red KPIs</p>
-              <p className="text-2xl font-bold text-red-600">
-                {getFilteredRecords().filter(r => r.rag_status === 'Red').length}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-blue-50 rounded-lg p-4">
-          <div className="flex items-center">
-            <div className="p-2 bg-blue-100 rounded-lg">
-              <BarChart3 className="w-5 h-5 text-blue-600" />
-            </div>
-            <div className="ml-3">
-              <p className="text-sm font-medium text-blue-900">Total Records</p>
-              <p className="text-2xl font-bold text-blue-600">
-                {getFilteredRecords().length}
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
   )
 }

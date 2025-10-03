@@ -13,7 +13,8 @@ import {
   ChevronLeft,
   BarChart3,
   ChevronDown,
-  ChevronRight
+  ChevronRight,
+  FileText
 } from 'lucide-react'
 
 export function Layout() {
@@ -66,7 +67,8 @@ export function Layout() {
         { name: 'Meeting Notes', href: '/meeting-notes', icon: MessageCircle }
       ]
     },
-    { name: 'Reporting', href: '/reporting', icon: BarChart3 },
+    { name: 'Reporting', href: '/reporting', icon: FileText },
+    { name: 'Insights', href: '/insights', icon: BarChart3 },
   ]
 
   const getPageTitle = () => {

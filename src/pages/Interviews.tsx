@@ -44,6 +44,8 @@ export function Interviews() {
     attended: false,
     outcome: '',
   })
+  const [candidateSearch, setCandidateSearch] = useState('')
+  const [showCandidateDropdown, setShowCandidateDropdown] = useState(false)
 
   // reschedule state
   const [reschedule, setReschedule] = useState<{ open: boolean; interview: Interview | null; dateTime: string }>(
@@ -160,14 +162,14 @@ export function Interviews() {
       const { data, error } = await supabase
         .from('candidates')
         .select('id, name')
-        .eq('status', 'INTERVIEW_SCHEDULED') // Only include INTERVIEW_SCHEDULED candidates
+        .eq('status', 'PENDING') // Only include PENDING candidates for scheduling
         .order('name')
 
       if (error) throw error
       setCandidates(data || [])
       showToast('Candidates loaded successfully', 'success')
     } catch (error) {
-      console.error('Error loading scheduled candidates:', error)
+      console.error('Error loading pending candidates:', error)
       showToast('Failed to load candidates', 'error')
     }
   }
@@ -206,6 +208,13 @@ export function Interviews() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    
+    // Validate candidate selection for new interviews
+    if (!selectedInterview && !formData.candidate_id) {
+      showToast('Please select a candidate', 'error')
+      return
+    }
+    
     try {
       showToast(selectedInterview ? 'Updating interview...' : 'Scheduling interview...', 'loading')
       
@@ -329,6 +338,8 @@ export function Interviews() {
       attended: false,
       outcome: '',
     })
+    setCandidateSearch('')
+    setShowCandidateDropdown(false)
     setSelectedInterview(null)
   }
 
@@ -666,20 +677,73 @@ export function Interviews() {
               </h2>
 
               <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
+                <div className="relative">
                   <label className="block text-sm font-medium text-gray-700 mb-1">Candidate</label>
-                  <select
-                    required
-                    value={formData.candidate_id}
-                    onChange={(e) => setFormData({ ...formData, candidate_id: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
-                    disabled={!!selectedInterview}
-                  >
-                    <option value="">Select candidate</option>
-                    {candidates.map(candidate => (
-                      <option key={candidate.id} value={candidate.id}>{candidate.name}</option>
-                    ))}
-                  </select>
+                  {selectedInterview ? (
+                    <input
+                      type="text"
+                      value={candidates.find(c => c.id === formData.candidate_id)?.name || ''}
+                      disabled
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-500"
+                    />
+                  ) : (
+                    <>
+                      <input
+                        type="text"
+                        required
+                        value={candidateSearch}
+                        onChange={(e) => {
+                          setCandidateSearch(e.target.value)
+                          setShowCandidateDropdown(true)
+                          // Clear selected candidate if search changes
+                          if (formData.candidate_id) {
+                            setFormData({ ...formData, candidate_id: '' })
+                          }
+                        }}
+                        onFocus={() => setShowCandidateDropdown(true)}
+                        onBlur={() => {
+                          // Delay hiding dropdown to allow for clicks
+                          setTimeout(() => setShowCandidateDropdown(false), 150)
+                        }}
+                        placeholder="Search pending candidates..."
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
+                      />
+                      {showCandidateDropdown && (
+                        <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                          {candidates.length === 0 ? (
+                            <div className="px-3 py-2 text-gray-500 text-sm">
+                              No pending candidates available
+                            </div>
+                          ) : (
+                            candidates
+                              .filter(candidate => 
+                                candidate.name.toLowerCase().includes(candidateSearch.toLowerCase())
+                              )
+                              .map(candidate => (
+                                <div
+                                  key={candidate.id}
+                                  onClick={() => {
+                                    setFormData({ ...formData, candidate_id: candidate.id })
+                                    setCandidateSearch(candidate.name)
+                                    setShowCandidateDropdown(false)
+                                  }}
+                                  className="px-3 py-2 hover:bg-gray-100 cursor-pointer border-b border-gray-100 last:border-b-0 text-sm"
+                                >
+                                  {candidate.name}
+                                </div>
+                              ))
+                          )}
+                          {candidates.length > 0 && candidates.filter(candidate => 
+                            candidate.name.toLowerCase().includes(candidateSearch.toLowerCase())
+                          ).length === 0 && (
+                            <div className="px-3 py-2 text-gray-500 text-sm">
+                              No candidates match your search
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
 
                 <div>
