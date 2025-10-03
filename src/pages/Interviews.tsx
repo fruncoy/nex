@@ -46,6 +46,8 @@ export function Interviews() {
   })
   const [candidateSearch, setCandidateSearch] = useState('')
   const [showCandidateDropdown, setShowCandidateDropdown] = useState(false)
+  const [selectedInterviews, setSelectedInterviews] = useState<string[]>([])
+  const [bulkStatus, setBulkStatus] = useState('')
 
   // reschedule state
   const [reschedule, setReschedule] = useState<{ open: boolean; interview: Interview | null; dateTime: string }>(
@@ -526,6 +528,53 @@ export function Interviews() {
     return `${hours}h ${minutes}m`
   }
 
+  const handleBulkStatusChange = async () => {
+    if (!bulkStatus || selectedInterviews.length === 0) return
+    
+    try {
+      const outcome = bulkStatus === 'WON' ? 'Won' : bulkStatus === 'LOST' ? 'Lost' : null
+      
+      const { error } = await supabase
+        .from('interviews')
+        .update({ 
+          attended: true, 
+          outcome: outcome
+        })
+        .in('id', selectedInterviews)
+      
+      if (error) throw error
+      
+      // Update candidate statuses
+      const candidateIds = filteredInterviews
+        .filter(i => selectedInterviews.includes(i.id))
+        .map(i => i.candidate_id)
+      
+      if (candidateIds.length > 0) {
+        const candidateStatus = bulkStatus === 'WON' ? 'WON' : 'LOST'
+        await supabase
+          .from('candidates')
+          .update({ status: candidateStatus })
+          .in('id', candidateIds)
+      }
+      
+      await loadInterviews()
+      setSelectedInterviews([])
+      setBulkStatus('')
+      showToast(`Updated ${selectedInterviews.length} interviews to ${outcome}`, 'success')
+    } catch (error) {
+      console.error('Error updating bulk status:', error)
+      showToast('Failed to update interviews', 'error')
+    }
+  }
+
+  const toggleSelectAll = () => {
+    if (selectedInterviews.length === filteredInterviews.length) {
+      setSelectedInterviews([])
+    } else {
+      setSelectedInterviews(filteredInterviews.map(i => i.id))
+    }
+  }
+
   if (loading) {
     return (
       <div className="p-6">
@@ -582,12 +631,53 @@ export function Interviews() {
         </div>
       </div>
 
+      {/* Bulk Actions */}
+      {selectedInterviews.length > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-4">
+          <div className="flex items-center gap-4">
+            <span className="text-sm font-medium text-blue-900">
+              {selectedInterviews.length} selected
+            </span>
+            <select
+              value={bulkStatus}
+              onChange={(e) => setBulkStatus(e.target.value)}
+              className="px-3 py-1 border border-blue-300 rounded text-sm"
+            >
+              <option value="">Set outcome to...</option>
+              <option value="WON">Won</option>
+              <option value="LOST">Lost</option>
+            </select>
+            <button
+              onClick={handleBulkStatusChange}
+              disabled={!bulkStatus}
+              className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 disabled:opacity-50"
+            >
+              Update
+            </button>
+            <button
+              onClick={() => setSelectedInterviews([])}
+              className="px-3 py-1 bg-gray-500 text-white rounded text-sm hover:bg-gray-600"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Interviews Grid */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <input
+                    type="checkbox"
+                    checked={selectedInterviews.length === filteredInterviews.length && filteredInterviews.length > 0}
+                    onChange={toggleSelectAll}
+                    className="rounded border-gray-300"
+                  />
+                </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Candidate</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date & Time</th>
@@ -599,6 +689,20 @@ export function Interviews() {
             <tbody className="bg-white divide-y divide-gray-200">
               {filteredInterviews.map((interview, index) => (
                 <tr key={interview.id} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <input
+                      type="checkbox"
+                      checked={selectedInterviews.includes(interview.id)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedInterviews(prev => [...prev, interview.id])
+                        } else {
+                          setSelectedInterviews(prev => prev.filter(id => id !== interview.id))
+                        }
+                      }}
+                      className="rounded border-gray-300"
+                    />
+                  </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{index + 1}</td>
                   <td className={`px-6 py-4 whitespace-nowrap ${
                     getInterviewStatus(interview) === 'won' ? 'bg-green-50' :

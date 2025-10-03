@@ -16,6 +16,9 @@ import { DataEntry } from './pages/reporting/DataEntry'
 import { Reports } from './pages/reporting/Reports'
 import { Dashboards } from './pages/reporting/Dashboards'
 import { Insights } from './pages/Insights'
+import { Vetting } from './pages/Vetting'
+import { Staff } from './pages/Staff'
+import { LeadTracker } from './pages/LeadTracker'
 
 function ProtectedLayout() {
   const { user, loading } = useAuth()
@@ -46,11 +49,12 @@ function AppRoutes() {
     <Routes>
       <Route path="/" element={<ProtectedLayout />}>
         <Route index element={<Dashboard />} />
-        <Route path="candidates" element={<Candidates />}>
-          <Route path="interviews" element={<Interviews />} />
-        </Route>
+        <Route path="candidates" element={<Candidates />} />
+        <Route path="vetting" element={<Vetting />} />
         <Route path="clients" element={<Clients />} />
+        <Route path="staff" element={<Staff />} />
         <Route path="training" element={<TrainingLeads />} />
+        <Route path="lead-tracker" element={<LeadTracker />} />
         <Route path="interviews" element={<Interviews />} />
         <Route path="insights" element={<Insights />} />
         <Route path="updates" element={<Updates />} />

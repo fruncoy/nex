@@ -560,13 +560,13 @@ export function Insights() {
           {/* Charts */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Source Performance Chart */}
-            <div className="bg-white rounded-lg p-6 border border-gray-200">
+            <div className="bg-white rounded-lg p-4 md:p-6 border border-gray-200">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Source Performance</h3>
               <div className="space-y-3">
                 {sourcePerformance.map(({ source, clientsWon, candidatesHired }) => (
-                  <div key={source} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                  <div key={source} className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-3 bg-gray-50 rounded-lg gap-2">
                     <span className="text-sm font-medium text-gray-700">{source}</span>
-                    <div className="flex gap-4 text-sm">
+                    <div className="flex gap-2 sm:gap-4 text-xs sm:text-sm">
                       <span className="text-green-600">Clients: {clientsWon}</span>
                       <span className="text-blue-600">Candidates: {candidatesHired}</span>
                     </div>
@@ -576,44 +576,78 @@ export function Insights() {
             </div>
 
             {/* Role Requests */}
-            <div className="bg-white rounded-lg p-6 border border-gray-200">
+            <div className="bg-white rounded-lg p-4 md:p-6 border border-gray-200">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Role Requests</h3>
               <div className="space-y-3">
                 {roleGapData.map(({ role, requests }) => (
                   <div key={role} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                     <span className="text-sm font-medium text-gray-700">{role}</span>
-                    <span className="text-lg font-bold text-nestalk-primary">{requests}</span>
+                    <span className="text-base md:text-lg font-bold text-nestalk-primary">{requests}</span>
                   </div>
                 ))}
               </div>
             </div>
           </div>
 
-          {/* Funnel */}
-          <div className="bg-white rounded-lg p-6 border border-gray-200">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Candidate Funnel</h3>
-            <div className="grid grid-cols-3 gap-4 mb-4">
+          {/* Client Funnel */}
+          <div className="bg-white rounded-lg p-4 md:p-6 border border-gray-200">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Client Funnel</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
               <div className="text-center">
-                <div className="bg-blue-100 rounded-lg p-4">
-                  <p className="text-2xl font-bold text-blue-600">{formatNumber(funnelData.applied)}</p>
-                  <p className="text-xs text-gray-600">Applied</p>
+                <div className="bg-blue-100 rounded-lg p-3 md:p-4">
+                  <p className="text-xl md:text-2xl font-bold text-blue-600">{formatNumber(clients.length)}</p>
+                  <p className="text-xs text-gray-600">Total Inquiries</p>
                 </div>
               </div>
               <div className="text-center">
-                <div className="bg-yellow-100 rounded-lg p-4">
-                  <p className="text-2xl font-bold text-yellow-600">{formatNumber(funnelData.interviewed)}</p>
-                  <p className="text-xs text-gray-600">Interviewed</p>
+                <div className="bg-yellow-100 rounded-lg p-3 md:p-4">
+                  <p className="text-xl md:text-2xl font-bold text-yellow-600">{formatNumber(clients.filter(c => c.status.includes('Active')).length)}</p>
+                  <p className="text-xs text-gray-600">Active</p>
                 </div>
               </div>
               <div className="text-center">
-                <div className="bg-green-100 rounded-lg p-4">
-                  <p className="text-2xl font-bold text-green-600">{formatNumber(funnelData.won)}</p>
+                <div className="bg-green-100 rounded-lg p-3 md:p-4">
+                  <p className="text-xl md:text-2xl font-bold text-green-600">{formatNumber(clients.filter(c => c.status === 'Won').length)}</p>
                   <p className="text-xs text-gray-600">Won</p>
                 </div>
               </div>
             </div>
             <div className="text-center p-3 bg-gray-50 rounded-lg">
-              <p className="text-sm text-gray-600">Interview → Won Conversion: <span className="font-bold text-nestalk-primary">{funnelData.conversionRate}%</span></p>
+              <p className="text-xs md:text-sm text-gray-600">Active → Won Conversion: <span className="font-bold text-nestalk-primary">{(() => {
+                const active = clients.filter(c => c.status.includes('Active')).length
+                const won = clients.filter(c => c.status === 'Won').length
+                const total = active + won
+                return total > 0 ? Math.round((won / total) * 100) : 0
+              })()}%</span></p>
+              <p className="text-xs text-gray-500">Formula: Won / (Active + Won)</p>
+            </div>
+          </div>
+
+          {/* Candidate Funnel */}
+          <div className="bg-white rounded-lg p-4 md:p-6 border border-gray-200">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Candidate Funnel</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+              <div className="text-center">
+                <div className="bg-blue-100 rounded-lg p-3 md:p-4">
+                  <p className="text-xl md:text-2xl font-bold text-blue-600">{formatNumber(funnelData.applied)}</p>
+                  <p className="text-xs text-gray-600">Applied</p>
+                </div>
+              </div>
+              <div className="text-center">
+                <div className="bg-yellow-100 rounded-lg p-3 md:p-4">
+                  <p className="text-xl md:text-2xl font-bold text-yellow-600">{formatNumber(funnelData.interviewed)}</p>
+                  <p className="text-xs text-gray-600">Interviewed</p>
+                </div>
+              </div>
+              <div className="text-center">
+                <div className="bg-green-100 rounded-lg p-3 md:p-4">
+                  <p className="text-xl md:text-2xl font-bold text-green-600">{formatNumber(funnelData.won)}</p>
+                  <p className="text-xs text-gray-600">Won</p>
+                </div>
+              </div>
+            </div>
+            <div className="text-center p-3 bg-gray-50 rounded-lg">
+              <p className="text-xs md:text-sm text-gray-600">Interview → Won Conversion: <span className="font-bold text-nestalk-primary">{funnelData.conversionRate}%</span></p>
               <p className="text-xs text-gray-500">Formula: Won / Interviewed</p>
             </div>
           </div>
@@ -705,34 +739,34 @@ export function Insights() {
           </div>
 
           {/* Client Acquisition Trend */}
-          <div className="bg-white rounded-lg p-6 border border-gray-200 mb-6">
+          <div className="bg-white rounded-lg p-4 md:p-6 border border-gray-200 mb-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Client Acquisition Trend</h3>
-            <div className="flex gap-4 mb-4">
+            <div className="flex gap-2 md:gap-4 mb-4">
               <button 
                 onClick={() => setTrendView('monthly')} 
-                className={`px-3 py-1 text-sm rounded ${trendView === 'monthly' ? 'bg-nestalk-primary text-white' : 'bg-gray-100'}`}
+                className={`px-2 md:px-3 py-1 text-xs md:text-sm rounded ${trendView === 'monthly' ? 'bg-nestalk-primary text-white' : 'bg-gray-100'}`}
               >
                 Monthly
               </button>
               <button 
                 onClick={() => setTrendView('daily')} 
-                className={`px-3 py-1 text-sm rounded ${trendView === 'daily' ? 'bg-nestalk-primary text-white' : 'bg-gray-100'}`}
+                className={`px-2 md:px-3 py-1 text-xs md:text-sm rounded ${trendView === 'daily' ? 'bg-nestalk-primary text-white' : 'bg-gray-100'}`}
               >
                 Daily (Last 30)
               </button>
             </div>
-            <div className="h-64 flex items-end justify-between px-4 border-b border-l border-gray-200">
+            <div className="h-64 flex items-end justify-between px-2 md:px-4 border-b border-l border-gray-200 overflow-x-auto">
               {(trendView === 'monthly' ? getMonthlyTrend() : getDailyTrend()).map(({ period, count }, index) => {
                 const maxCount = Math.max(...(trendView === 'monthly' ? getMonthlyTrend() : getDailyTrend()).map(m => m.count))
                 const height = maxCount > 0 ? (count / maxCount) * 200 : 0
                 return (
-                  <div key={period} className="flex flex-col items-center">
+                  <div key={period} className="flex flex-col items-center min-w-0 flex-shrink-0">
                     <div className="mb-2 text-xs text-gray-600">{count}</div>
                     <div 
-                      className="w-8 bg-nestalk-primary rounded-t" 
+                      className="w-4 md:w-8 bg-nestalk-primary rounded-t" 
                       style={{ height: `${height}px` }}
                     ></div>
-                    <div className="mt-2 text-xs text-gray-500 transform -rotate-45 origin-left">{period}</div>
+                    <div className="mt-2 text-xs text-gray-500 transform -rotate-45 origin-left whitespace-nowrap">{period}</div>
                   </div>
                 )
               })}
@@ -799,9 +833,9 @@ export function Insights() {
           </div>
 
           {/* Source Outcomes */}
-          <div className="bg-white rounded-lg p-6 border border-gray-200 mb-6">
+          <div className="bg-white rounded-lg p-4 md:p-6 border border-gray-200 mb-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-6">Source Outcomes</h3>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-8">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-8">
               {sources.map(source => {
                 const sourceClients = getFilteredClients().filter(c => (c.source || 'Other') === source)
                 const pending = sourceClients.filter(c => c.status === 'Pending').length
@@ -821,11 +855,11 @@ export function Insights() {
                 
                 return (
                   <div key={source} className="text-center">
-                    <h4 className="font-medium text-gray-900 mb-3">{source}</h4>
+                    <h4 className="font-medium text-gray-900 mb-3 text-sm md:text-base">{source}</h4>
                     <div className="mb-4">
-                      <svg width="200" height="200" className="mx-auto">
+                      <svg width="150" height="150" className="mx-auto md:w-[200px] md:h-[200px]">
                         {statusData.length === 1 ? (
-                          <circle cx="100" cy="100" r="80" fill={statusData[0].color} stroke="white" strokeWidth="2" />
+                          <circle cx="75" cy="75" r="60" fill={statusData[0].color} stroke="white" strokeWidth="2" className="md:cx-[100] md:cy-[100] md:r-[80]" />
                         ) : (
                           (() => {
                             let currentAngle = 0
@@ -833,12 +867,15 @@ export function Insights() {
                               const angle = (data.count / total) * 360
                               const endAngle = currentAngle + angle
                               const largeArcFlag = angle > 180 ? 1 : 0
-                              const x1 = 100 + 80 * Math.cos((currentAngle * Math.PI) / 180)
-                              const y1 = 100 + 80 * Math.sin((currentAngle * Math.PI) / 180)
-                              const x2 = 100 + 80 * Math.cos((endAngle * Math.PI) / 180)
-                              const y2 = 100 + 80 * Math.sin((endAngle * Math.PI) / 180)
+                              const centerX = 75
+                              const centerY = 75
+                              const radius = 60
+                              const x1 = centerX + radius * Math.cos((currentAngle * Math.PI) / 180)
+                              const y1 = centerY + radius * Math.sin((currentAngle * Math.PI) / 180)
+                              const x2 = centerX + radius * Math.cos((endAngle * Math.PI) / 180)
+                              const y2 = centerY + radius * Math.sin((endAngle * Math.PI) / 180)
                               
-                              const path = `M 100 100 L ${x1} ${y1} A 80 80 0 ${largeArcFlag} 1 ${x2} ${y2} Z`
+                              const path = `M ${centerX} ${centerY} L ${x1} ${y1} A ${radius} ${radius} 0 ${largeArcFlag} 1 ${x2} ${y2} Z`
                               currentAngle = endAngle
                               
                               return (
@@ -849,7 +886,7 @@ export function Insights() {
                         )}
                       </svg>
                     </div>
-                    <div className="grid grid-cols-1 gap-1 text-xs">
+                    <div className="grid grid-cols-1 gap-1 text-xs px-2">
                       {statusData.map(({ status, count, color }) => (
                         <div key={status} className="flex items-center justify-center gap-2">
                           <div className="w-3 h-3 rounded-full" style={{ backgroundColor: color }}></div>
@@ -864,12 +901,12 @@ export function Insights() {
           </div>
 
           {/* Lead Distribution by Source */}
-          <div className="bg-white rounded-lg p-6 border border-gray-200 mb-6">
+          <div className="bg-white rounded-lg p-4 md:p-6 border border-gray-200 mb-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-6">Lead Distribution by Source</h3>
             <div className="flex justify-center">
               <div className="text-center">
                 <div className="mb-4">
-                  <svg width="300" height="300" className="mx-auto">
+                  <svg width="250" height="250" className="mx-auto md:w-[300px] md:h-[300px]">
                     {(() => {
                       const sourceData = sources.map((source, index) => {
                         const count = getFilteredClients().filter(c => (c.source || 'Other') === source).length
@@ -879,17 +916,26 @@ export function Insights() {
                       
                       const totalLeads = sourceData.reduce((sum, d) => sum + d.count, 0)
                       
+                      if (sourceData.length === 1) {
+                        return (
+                          <circle cx="125" cy="125" r="100" fill={sourceData[0].color} stroke="white" strokeWidth="2" className="md:cx-[150] md:cy-[150] md:r-[120]" />
+                        )
+                      }
+                      
                       let currentAngle = 0
                       return sourceData.map((data, index) => {
                         const angle = (data.count / totalLeads) * 360
                         const endAngle = currentAngle + angle
                         const largeArcFlag = angle > 180 ? 1 : 0
-                        const x1 = 150 + 120 * Math.cos((currentAngle * Math.PI) / 180)
-                        const y1 = 150 + 120 * Math.sin((currentAngle * Math.PI) / 180)
-                        const x2 = 150 + 120 * Math.cos((endAngle * Math.PI) / 180)
-                        const y2 = 150 + 120 * Math.sin((endAngle * Math.PI) / 180)
+                        const centerX = 125
+                        const centerY = 125
+                        const radius = 100
+                        const x1 = centerX + radius * Math.cos((currentAngle * Math.PI) / 180)
+                        const y1 = centerY + radius * Math.sin((currentAngle * Math.PI) / 180)
+                        const x2 = centerX + radius * Math.cos((endAngle * Math.PI) / 180)
+                        const y2 = centerY + radius * Math.sin((endAngle * Math.PI) / 180)
                         
-                        const path = `M 150 150 L ${x1} ${y1} A 120 120 0 ${largeArcFlag} 1 ${x2} ${y2} Z`
+                        const path = `M ${centerX} ${centerY} L ${x1} ${y1} A ${radius} ${radius} 0 ${largeArcFlag} 1 ${x2} ${y2} Z`
                         currentAngle = endAngle
                         
                         return (
@@ -899,7 +945,7 @@ export function Insights() {
                     })()}
                   </svg>
                 </div>
-                <div className="grid grid-cols-2 gap-2 text-sm max-w-md mx-auto">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs md:text-sm max-w-md mx-auto px-4">
                   {(() => {
                     const sourceData = sources.map((source, index) => {
                       const count = getFilteredClients().filter(c => (c.source || 'Other') === source).length
@@ -922,26 +968,26 @@ export function Insights() {
           </div>
 
           {/* Source Win Contribution */}
-          <div className="bg-white rounded-lg p-6 border border-gray-200 mb-6">
+          <div className="bg-white rounded-lg p-4 md:p-6 border border-gray-200 mb-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-6">Source Win Contribution</h3>
-            <div className="h-80 flex items-end justify-between px-4 border-b border-l border-gray-200">
+            <div className="h-80 flex items-end justify-between px-2 md:px-4 border-b border-l border-gray-200 overflow-x-auto">
               {(() => {
                 const totalWins = clients.filter(c => c.status === 'Won').length
                 
                 return sources.map(source => {
                   const sourceWins = clients.filter(c => (c.source || 'Other') === source && c.status === 'Won').length
                   const contributionRate = totalWins > 0 ? Math.round((sourceWins / totalWins) * 100) : 0
-                  const height = contributionRate * 2.5 // Scale for visual height
+                  const height = contributionRate * 2.5
                   
                   return (
-                    <div key={source} className="flex flex-col items-center">
+                    <div key={source} className="flex flex-col items-center min-w-0 flex-shrink-0">
                       <div className="mb-2 text-xs text-gray-600">{contributionRate}%</div>
                       <div 
-                        className="w-12 bg-nestalk-primary rounded-t" 
+                        className="w-8 md:w-12 bg-nestalk-primary rounded-t" 
                         style={{ height: `${height}px`, minHeight: '2px' }}
                       ></div>
-                      <div className="mt-2 text-xs text-gray-700 text-center w-16">
-                        <div className="transform -rotate-45 origin-center">{source}</div>
+                      <div className="mt-2 text-xs text-gray-700 text-center w-12 md:w-16">
+                        <div className="transform -rotate-45 origin-center whitespace-nowrap">{source}</div>
                         <div className="text-gray-500 mt-1">{sourceWins}</div>
                       </div>
                     </div>
@@ -949,8 +995,8 @@ export function Insights() {
                 })
               })()}
             </div>
-            <div className="mt-4 text-sm text-gray-500 text-center">
-              Shows each source's percentage contribution to total wins (Y-axis: %, X-axis: Sources)
+            <div className="mt-4 text-xs md:text-sm text-gray-500 text-center px-2">
+              Shows each source's percentage contribution to total wins
             </div>
           </div>
 
@@ -1127,23 +1173,23 @@ export function Insights() {
           </div>
 
           {/* Candidate Acquisition Trend */}
-          <div className="bg-white rounded-lg p-6 border border-gray-200 mb-6">
+          <div className="bg-white rounded-lg p-4 md:p-6 border border-gray-200 mb-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Candidate Acquisition Trend</h3>
-            <div className="flex gap-4 mb-4">
+            <div className="flex gap-2 md:gap-4 mb-4">
               <button 
                 onClick={() => setTrendView('monthly')} 
-                className={`px-3 py-1 text-sm rounded ${trendView === 'monthly' ? 'bg-nestalk-primary text-white' : 'bg-gray-100'}`}
+                className={`px-2 md:px-3 py-1 text-xs md:text-sm rounded ${trendView === 'monthly' ? 'bg-nestalk-primary text-white' : 'bg-gray-100'}`}
               >
                 Monthly
               </button>
               <button 
                 onClick={() => setTrendView('daily')} 
-                className={`px-3 py-1 text-sm rounded ${trendView === 'daily' ? 'bg-nestalk-primary text-white' : 'bg-gray-100'}`}
+                className={`px-2 md:px-3 py-1 text-xs md:text-sm rounded ${trendView === 'daily' ? 'bg-nestalk-primary text-white' : 'bg-gray-100'}`}
               >
                 Daily (Last 30)
               </button>
             </div>
-            <div className="h-64 flex items-end justify-between px-4 border-b border-l border-gray-200">
+            <div className="h-64 flex items-end justify-between px-2 md:px-4 border-b border-l border-gray-200 overflow-x-auto">
               {(() => {
                 const trendData = trendView === 'monthly' ? 
                   (() => {
@@ -1181,13 +1227,13 @@ export function Insights() {
                 return trendData.map(({ period, count }) => {
                   const height = maxCount > 0 ? (count / maxCount) * 200 : 0
                   return (
-                    <div key={period} className="flex flex-col items-center">
+                    <div key={period} className="flex flex-col items-center min-w-0 flex-shrink-0">
                       <div className="mb-2 text-xs text-gray-600">{count}</div>
                       <div 
-                        className="w-8 bg-nestalk-primary rounded-t" 
+                        className="w-4 md:w-8 bg-nestalk-primary rounded-t" 
                         style={{ height: `${height}px` }}
                       ></div>
-                      <div className="mt-2 text-xs text-gray-500 transform -rotate-45 origin-left">{period}</div>
+                      <div className="mt-2 text-xs text-gray-500 transform -rotate-45 origin-left whitespace-nowrap">{period}</div>
                     </div>
                   )
                 })
@@ -1225,12 +1271,12 @@ export function Insights() {
           </div>
 
           {/* Lead Distribution by Source */}
-          <div className="bg-white rounded-lg p-6 border border-gray-200 mb-6">
+          <div className="bg-white rounded-lg p-4 md:p-6 border border-gray-200 mb-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-6">Lead Distribution by Source</h3>
             <div className="flex justify-center">
               <div className="text-center">
                 <div className="mb-4">
-                  <svg width="300" height="300" className="mx-auto">
+                  <svg width="250" height="250" className="mx-auto md:w-[300px] md:h-[300px]">
                     {(() => {
                       const sourceData = sources.map((source, index) => {
                         const count = getFilteredCandidates().filter(c => (c.source || 'Other') === source).length
@@ -1242,7 +1288,7 @@ export function Insights() {
                       
                       if (sourceData.length === 1) {
                         return (
-                          <circle cx="150" cy="150" r="120" fill={sourceData[0].color} stroke="white" strokeWidth="2" />
+                          <circle cx="125" cy="125" r="100" fill={sourceData[0].color} stroke="white" strokeWidth="2" className="md:cx-[150] md:cy-[150] md:r-[120]" />
                         )
                       }
                       
@@ -1251,12 +1297,15 @@ export function Insights() {
                         const angle = (data.count / totalLeads) * 360
                         const endAngle = currentAngle + angle
                         const largeArcFlag = angle > 180 ? 1 : 0
-                        const x1 = 150 + 120 * Math.cos((currentAngle * Math.PI) / 180)
-                        const y1 = 150 + 120 * Math.sin((currentAngle * Math.PI) / 180)
-                        const x2 = 150 + 120 * Math.cos((endAngle * Math.PI) / 180)
-                        const y2 = 150 + 120 * Math.sin((endAngle * Math.PI) / 180)
+                        const centerX = 125
+                        const centerY = 125
+                        const radius = 100
+                        const x1 = centerX + radius * Math.cos((currentAngle * Math.PI) / 180)
+                        const y1 = centerY + radius * Math.sin((currentAngle * Math.PI) / 180)
+                        const x2 = centerX + radius * Math.cos((endAngle * Math.PI) / 180)
+                        const y2 = centerY + radius * Math.sin((endAngle * Math.PI) / 180)
                         
-                        const path = `M 150 150 L ${x1} ${y1} A 120 120 0 ${largeArcFlag} 1 ${x2} ${y2} Z`
+                        const path = `M ${centerX} ${centerY} L ${x1} ${y1} A ${radius} ${radius} 0 ${largeArcFlag} 1 ${x2} ${y2} Z`
                         currentAngle = endAngle
                         
                         return (
@@ -1266,7 +1315,7 @@ export function Insights() {
                     })()}
                   </svg>
                 </div>
-                <div className="grid grid-cols-2 gap-2 text-sm max-w-md mx-auto">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs md:text-sm max-w-md mx-auto px-4">
                   {(() => {
                     const sourceData = sources.map((source, index) => {
                       const count = getFilteredCandidates().filter(c => (c.source || 'Other') === source).length
@@ -1291,9 +1340,9 @@ export function Insights() {
 
 
           {/* Source Outcomes */}
-          <div className="bg-white rounded-lg p-6 border border-gray-200 mb-6">
+          <div className="bg-white rounded-lg p-4 md:p-6 border border-gray-200 mb-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-6">Source Outcomes</h3>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-8">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-8">
               {sources.map(source => {
                 const sourceCandidates = getFilteredCandidates().filter(c => (c.source || 'Other') === source)
                 const pending = sourceCandidates.filter(c => c.status === 'PENDING').length
@@ -1315,11 +1364,11 @@ export function Insights() {
                 
                 return (
                   <div key={source} className="text-center">
-                    <h4 className="font-medium text-gray-900 mb-3">{source}</h4>
+                    <h4 className="font-medium text-gray-900 mb-3 text-sm md:text-base">{source}</h4>
                     <div className="mb-4">
-                      <svg width="200" height="200" className="mx-auto">
+                      <svg width="150" height="150" className="mx-auto md:w-[200px] md:h-[200px]">
                         {statusData.length === 1 ? (
-                          <circle cx="100" cy="100" r="80" fill={statusData[0].color} stroke="white" strokeWidth="2" />
+                          <circle cx="75" cy="75" r="60" fill={statusData[0].color} stroke="white" strokeWidth="2" className="md:cx-[100] md:cy-[100] md:r-[80]" />
                         ) : (
                           (() => {
                             let currentAngle = 0
@@ -1327,12 +1376,15 @@ export function Insights() {
                               const angle = (data.count / total) * 360
                               const endAngle = currentAngle + angle
                               const largeArcFlag = angle > 180 ? 1 : 0
-                              const x1 = 100 + 80 * Math.cos((currentAngle * Math.PI) / 180)
-                              const y1 = 100 + 80 * Math.sin((currentAngle * Math.PI) / 180)
-                              const x2 = 100 + 80 * Math.cos((endAngle * Math.PI) / 180)
-                              const y2 = 100 + 80 * Math.sin((endAngle * Math.PI) / 180)
+                              const centerX = 75
+                              const centerY = 75
+                              const radius = 60
+                              const x1 = centerX + radius * Math.cos((currentAngle * Math.PI) / 180)
+                              const y1 = centerY + radius * Math.sin((currentAngle * Math.PI) / 180)
+                              const x2 = centerX + radius * Math.cos((endAngle * Math.PI) / 180)
+                              const y2 = centerY + radius * Math.sin((endAngle * Math.PI) / 180)
                               
-                              const path = `M 100 100 L ${x1} ${y1} A 80 80 0 ${largeArcFlag} 1 ${x2} ${y2} Z`
+                              const path = `M ${centerX} ${centerY} L ${x1} ${y1} A ${radius} ${radius} 0 ${largeArcFlag} 1 ${x2} ${y2} Z`
                               currentAngle = endAngle
                               
                               return (
@@ -1343,7 +1395,7 @@ export function Insights() {
                         )}
                       </svg>
                     </div>
-                    <div className="grid grid-cols-1 gap-1 text-xs">
+                    <div className="grid grid-cols-1 gap-1 text-xs px-2">
                       {statusData.map(({ status, count, color }) => (
                         <div key={status} className="flex items-center justify-center gap-2">
                           <div className="w-3 h-3 rounded-full" style={{ backgroundColor: color }}></div>
@@ -1358,9 +1410,9 @@ export function Insights() {
           </div>
 
           {/* Source Win Contribution */}
-          <div className="bg-white rounded-lg p-6 border border-gray-200 mb-6">
+          <div className="bg-white rounded-lg p-4 md:p-6 border border-gray-200 mb-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-6">Source Win Contribution</h3>
-            <div className="h-80 flex items-end justify-between px-4 border-b border-l border-gray-200">
+            <div className="h-80 flex items-end justify-between px-2 md:px-4 border-b border-l border-gray-200 overflow-x-auto">
               {(() => {
                 const totalWins = candidates.filter(c => c.status === 'WON').length
                 
@@ -1370,14 +1422,14 @@ export function Insights() {
                   const height = contributionRate * 2.5
                   
                   return (
-                    <div key={source} className="flex flex-col items-center">
+                    <div key={source} className="flex flex-col items-center min-w-0 flex-shrink-0">
                       <div className="mb-2 text-xs text-gray-600">{contributionRate}%</div>
                       <div 
-                        className="w-12 bg-nestalk-primary rounded-t" 
+                        className="w-8 md:w-12 bg-nestalk-primary rounded-t" 
                         style={{ height: `${height}px`, minHeight: '2px' }}
                       ></div>
-                      <div className="mt-2 text-xs text-gray-700 text-center w-16">
-                        <div className="transform -rotate-45 origin-center">{source}</div>
+                      <div className="mt-2 text-xs text-gray-700 text-center w-12 md:w-16">
+                        <div className="transform -rotate-45 origin-center whitespace-nowrap">{source}</div>
                         <div className="text-gray-500 mt-1">{sourceWins}</div>
                       </div>
                     </div>
@@ -1385,7 +1437,7 @@ export function Insights() {
                 })
               })()}
             </div>
-            <div className="mt-4 text-sm text-gray-500 text-center">
+            <div className="mt-4 text-xs md:text-sm text-gray-500 text-center px-2">
               Shows each source's percentage contribution to total candidate wins
             </div>
           </div>

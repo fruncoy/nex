@@ -14,7 +14,10 @@ import {
   BarChart3,
   ChevronDown,
   ChevronRight,
-  FileText
+  FileText,
+  Shield,
+  UserCheck,
+  Target
 } from 'lucide-react'
 
 export function Layout() {
@@ -54,11 +57,20 @@ export function Layout() {
       href: '/candidates', 
       icon: Users,
       subItems: [
-        { name: 'Interviews', href: '/interviews', icon: Calendar }
+        { name: 'Vetting', href: '/vetting', icon: Shield },
+        { name: 'Interviews', href: '/interviews', icon: Calendar },
+        { name: 'Staff', href: '/staff', icon: UserCheck }
       ]
     },
     { name: 'Clients', href: '/clients', icon: Building2 },
-    { name: 'Training Leads', href: '/training', icon: GraduationCap },
+    { 
+      name: 'Training Leads', 
+      href: '/training', 
+      icon: GraduationCap,
+      subItems: [
+        { name: 'Lead Tracker', href: '/lead-tracker', icon: Target }
+      ]
+    },
     { 
       name: 'Updates', 
       href: '/updates', 

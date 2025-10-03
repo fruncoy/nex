@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import { SearchFilter } from '../components/ui/SearchFilter'
 import { StatusBadge } from '../components/ui/StatusBadge'
 import { CommunicationsModal } from '../components/ui/CommunicationsModal'
-import { Plus, Building2, Calendar, User, MessageSquare, Eye, Edit, AlertTriangle, ChevronDown, Clock, X, Pencil } from 'lucide-react'
+import { Plus, Building2, Calendar, User, MessageSquare, Eye, Edit, AlertTriangle, ChevronDown, Clock, X, Pencil, Upload } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
 import { ActivityLogger } from '../lib/activityLogger'
@@ -47,6 +47,8 @@ export function Clients() {
   const [uploadFile, setUploadFile] = useState<File | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [selectedClient, setSelectedClient] = useState<Client | null>(null)
+  const [selectedClients, setSelectedClients] = useState<string[]>([])
+  const [bulkStatus, setBulkStatus] = useState('')
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
@@ -815,6 +817,35 @@ export function Clients() {
     setStatusForm({ mainStatus: '', subStatus: '' })
   }
 
+  const handleBulkStatusChange = async () => {
+    if (!bulkStatus || selectedClients.length === 0) return
+    
+    try {
+      const { error } = await supabase
+        .from('clients')
+        .update({ status: bulkStatus })
+        .in('id', selectedClients)
+      
+      if (error) throw error
+      
+      await loadClients()
+      setSelectedClients([])
+      setBulkStatus('')
+      showToast(`Updated ${selectedClients.length} clients to ${bulkStatus}`, 'success')
+    } catch (error) {
+      console.error('Error updating bulk status:', error)
+      showToast('Failed to update clients', 'error')
+    }
+  }
+
+  const toggleSelectAll = () => {
+    if (selectedClients.length === filteredClients.length) {
+      setSelectedClients([])
+    } else {
+      setSelectedClients(filteredClients.map(c => c.id))
+    }
+  }
+
   if (loading) {
     return (
       <div className="p-6">
@@ -844,7 +875,7 @@ export function Clients() {
             className="flex items-center px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
             title="Bulk Upload"
           >
-            <Plus className="w-4 h-4" />
+            <Upload className="w-4 h-4" />
           </button>
           <button
             onClick={() => setShowModal(true)}
@@ -866,12 +897,55 @@ export function Clients() {
         placeholder="Search by name, phone, gmail, source, or role..."
       />
 
+      {/* Bulk Actions */}
+      {selectedClients.length > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+          <div className="flex items-center gap-4">
+            <span className="text-sm font-medium text-blue-900">
+              {selectedClients.length} selected
+            </span>
+            <select
+              value={bulkStatus}
+              onChange={(e) => setBulkStatus(e.target.value)}
+              className="px-3 py-1 border border-blue-300 rounded text-sm"
+            >
+              <option value="">Change status to...</option>
+              <option value="Pending">Pending</option>
+              <option value="Active">Active</option>
+              <option value="Lost/Cold">Lost/Cold</option>
+              <option value="Won">Won</option>
+            </select>
+            <button
+              onClick={handleBulkStatusChange}
+              disabled={!bulkStatus}
+              className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 disabled:opacity-50"
+            >
+              Update
+            </button>
+            <button
+              onClick={() => setSelectedClients([])}
+              className="px-3 py-1 bg-gray-500 text-white rounded text-sm hover:bg-gray-600"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Clients Table */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <input
+                    type="checkbox"
+                    checked={selectedClients.length === filteredClients.length && filteredClients.length > 0}
+                    onChange={toggleSelectAll}
+                    className="rounded border-gray-300"
+                  />
+                </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Source</th>
@@ -887,6 +961,20 @@ export function Clients() {
                 const hasAttention = needsAttention(client)
                 return (
                   <tr key={client.id} className={`hover:bg-gray-50 ${hasAttention ? 'bg-yellow-50 border-l-4 border-l-yellow-400' : ''}`}>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <input
+                        type="checkbox"
+                        checked={selectedClients.includes(client.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedClients(prev => [...prev, client.id])
+                          } else {
+                            setSelectedClients(prev => prev.filter(id => id !== client.id))
+                          }
+                        }}
+                        className="rounded border-gray-300"
+                      />
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{index + 1}</td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">

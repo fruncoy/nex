@@ -2,7 +2,7 @@
 import { supabase } from '../lib/supabase'
 import { SearchFilter } from '../components/ui/SearchFilter'
 import { StatusBadge } from '../components/ui/StatusBadge'
-import { Plus, Users, Phone, Calendar, Edit, CheckCircle, Clock } from 'lucide-react'
+import { Plus, Users, Phone, Calendar, Edit, CheckCircle, Clock, Upload } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
 import { ActivityLogger } from '../lib/activityLogger'
@@ -40,6 +40,8 @@ export function Candidates() {
   const [showBulkUpload, setShowBulkUpload] = useState(false)
   const [uploadFile, setUploadFile] = useState<File | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [selectedCandidates, setSelectedCandidates] = useState<string[]>([])
+  const [bulkStatus, setBulkStatus] = useState('')
 
   // row action state
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
@@ -660,6 +662,35 @@ export function Candidates() {
     setSelectedCandidate(null)
   }
 
+  const handleBulkStatusChange = async () => {
+    if (!bulkStatus || selectedCandidates.length === 0) return
+    
+    try {
+      const { error } = await supabase
+        .from('candidates')
+        .update({ status: bulkStatus })
+        .in('id', selectedCandidates)
+      
+      if (error) throw error
+      
+      await loadCandidates()
+      setSelectedCandidates([])
+      setBulkStatus('')
+      showToast(`Updated ${selectedCandidates.length} candidates to ${bulkStatus}`, 'success')
+    } catch (error) {
+      console.error('Error updating bulk status:', error)
+      showToast('Failed to update candidates', 'error')
+    }
+  }
+
+  const toggleSelectAll = () => {
+    if (selectedCandidates.length === filteredCandidates.length) {
+      setSelectedCandidates([])
+    } else {
+      setSelectedCandidates(filteredCandidates.map(c => c.id))
+    }
+  }
+
   if (loading) {
     return (
       <div className="p-6">
@@ -689,7 +720,7 @@ export function Candidates() {
             className="flex items-center px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
             title="Bulk Upload"
           >
-            <Plus className="w-4 h-4" />
+            <Upload className="w-4 h-4" />
           </button>
           <button
             onClick={() => setShowModal(true)}
@@ -728,11 +759,53 @@ export function Candidates() {
         </div>
       </div>
 
+      {/* Bulk Actions */}
+      {selectedCandidates.length > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-4">
+          <div className="flex items-center gap-4">
+            <span className="text-sm font-medium text-blue-900">
+              {selectedCandidates.length} selected
+            </span>
+            <select
+              value={bulkStatus}
+              onChange={(e) => setBulkStatus(e.target.value)}
+              className="px-3 py-1 border border-blue-300 rounded text-sm"
+            >
+              <option value="">Change status to...</option>
+              <option value="PENDING">PENDING</option>
+              <option value="WON">WON</option>
+              <option value="LOST">LOST</option>
+            </select>
+            <button
+              onClick={handleBulkStatusChange}
+              disabled={!bulkStatus}
+              className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 disabled:opacity-50"
+            >
+              Update
+            </button>
+            <button
+              onClick={() => setSelectedCandidates([])}
+              className="px-3 py-1 bg-gray-500 text-white rounded text-sm hover:bg-gray-600"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden mt-3">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <input
+                    type="checkbox"
+                    checked={selectedCandidates.length === filteredCandidates.length && filteredCandidates.length > 0}
+                    onChange={toggleSelectAll}
+                    className="rounded border-gray-300"
+                  />
+                </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Phone</th>
@@ -746,6 +819,20 @@ export function Candidates() {
             <tbody className="bg-white divide-y divide-gray-200">
               {filteredCandidates.map((candidate, index) => (
                 <tr key={candidate.id} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <input
+                      type="checkbox"
+                      checked={selectedCandidates.includes(candidate.id)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedCandidates(prev => [...prev, candidate.id])
+                        } else {
+                          setSelectedCandidates(prev => prev.filter(id => id !== candidate.id))
+                        }
+                      }}
+                      className="rounded border-gray-300"
+                    />
+                  </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{index + 1}</td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm font-medium text-gray-900">{candidate.name}</div>

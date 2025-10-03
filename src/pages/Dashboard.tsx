@@ -209,23 +209,23 @@ export function Dashboard() {
 
       {/* Stats Cards */}
       {/* Date Range Selector */}
-      <div className="mb-6 flex gap-4 items-center">
+      <div className="mb-6 flex flex-col sm:flex-row gap-3 sm:gap-4 sm:items-center">
         <div className="flex items-center gap-2">
-          <label className="text-sm text-gray-600">From:</label>
+          <label className="text-sm text-gray-600 min-w-0 flex-shrink-0">From:</label>
           <input
             type="date"
             value={dateRange.startDate}
             onChange={(e) => handleDateRangeChange('start', e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm w-full sm:w-auto"
           />
         </div>
         <div className="flex items-center gap-2">
-          <label className="text-sm text-gray-600">To:</label>
+          <label className="text-sm text-gray-600 min-w-0 flex-shrink-0">To:</label>
           <input
             type="date"
             value={dateRange.endDate}
             onChange={(e) => handleDateRangeChange('end', e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm w-full sm:w-auto"
           />
         </div>
       </div>
