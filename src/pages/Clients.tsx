@@ -49,6 +49,10 @@ export function Clients() {
   const [selectedClient, setSelectedClient] = useState<Client | null>(null)
   const [selectedClients, setSelectedClients] = useState<string[]>([])
   const [bulkStatus, setBulkStatus] = useState('')
+  const [showNotesModal, setShowNotesModal] = useState(false)
+  const [selectedClientForNotes, setSelectedClientForNotes] = useState<Client | null>(null)
+  const [clientNotes, setClientNotes] = useState<any[]>([])
+  const [newNote, setNewNote] = useState('')
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
@@ -85,11 +89,13 @@ export function Clients() {
     'Lost/Cold': { label: 'Lost/Cold', color: 'bg-red-100 text-red-800', subcategories: [
       'Ghosted',
       'Budget constraints', 
-      'Disappointed with profiles'
+      'Disappointed with profiles',
+      'Lost to Competition'
     ]},
     'Ghosted': { label: 'Ghosted', color: 'bg-red-100 text-red-800', parent: 'Lost/Cold' },
     'Budget constraints': { label: 'Budget constraints', color: 'bg-red-100 text-red-800', parent: 'Lost/Cold' },
     'Disappointed with profiles': { label: 'Disappointed with profiles', color: 'bg-red-100 text-red-800', parent: 'Lost/Cold' },
+    'Lost to Competition': { label: 'Lost to Competition', color: 'bg-red-100 text-red-800', parent: 'Lost/Cold' },
     
     'Won': { label: 'Won', color: 'bg-green-100 text-green-800' }
   }
@@ -846,6 +852,49 @@ export function Clients() {
     }
   }
 
+  const handleViewNotes = async (client: Client) => {
+    setSelectedClientForNotes(client)
+    setShowNotesModal(true)
+    
+    try {
+      const { data, error } = await supabase
+        .from('client_notes')
+        .select('*')
+        .eq('client_id', client.id)
+        .order('created_at', { ascending: false })
+      
+      if (error) throw error
+      setClientNotes(data || [])
+    } catch (error) {
+      console.error('Error loading notes:', error)
+      setClientNotes([])
+    }
+  }
+
+  const handleAddNote = async () => {
+    if (!newNote.trim() || !selectedClientForNotes) return
+    
+    try {
+      const { error } = await supabase
+        .from('client_notes')
+        .insert({
+          client_id: selectedClientForNotes.id,
+          note: newNote.trim(),
+          created_by: staff?.name || user?.email || 'Unknown',
+          created_at: new Date().toISOString()
+        })
+      
+      if (error) throw error
+      
+      setNewNote('')
+      await handleViewNotes(selectedClientForNotes)
+      showToast('Note added successfully', 'success')
+    } catch (error) {
+      console.error('Error adding note:', error)
+      showToast('Failed to add note', 'error')
+    }
+  }
+
   if (loading) {
     return (
       <div className="p-6">
@@ -952,6 +1001,7 @@ export function Clients() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Want to Hire</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Custom Reminder</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Notes</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Inquiry Date</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
               </tr>
@@ -1034,6 +1084,15 @@ export function Clients() {
                           )}
                         </div>
                       </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <button
+                        onClick={() => handleViewNotes(client)}
+                        className="text-blue-600 hover:text-blue-800 p-1 border border-blue-300 rounded hover:bg-blue-50"
+                        title="View/Add Notes"
+                      >
+                        <Eye className="w-4 h-4" />
+                      </button>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {new Date(client.inquiry_date).toLocaleDateString()}
@@ -1429,6 +1488,69 @@ export function Clients() {
               >
                 Cancel
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Notes Modal */}
+      {showNotesModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-2xl w-full max-h-screen overflow-y-auto">
+            <div className="p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">
+                Notes for {selectedClientForNotes?.name}
+              </h2>
+
+              {/* Add new note */}
+              <div className="mb-6">
+                <textarea
+                  value={newNote}
+                  onChange={(e) => setNewNote(e.target.value)}
+                  placeholder="Add a new note..."
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
+                />
+                <div className="flex gap-2 mt-2">
+                  <button
+                    onClick={handleAddNote}
+                    disabled={!newNote.trim()}
+                    className="px-4 py-2 bg-nestalk-primary text-white rounded-lg hover:bg-nestalk-primary/90 disabled:opacity-50"
+                  >
+                    Add Note
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowNotesModal(false)
+                      setSelectedClientForNotes(null)
+                      setClientNotes([])
+                      setNewNote('')
+                    }}
+                    className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+
+              {/* Notes list */}
+              <div className="space-y-4 max-h-96 overflow-y-auto">
+                {clientNotes.length === 0 ? (
+                  <p className="text-gray-500 text-center py-4">No notes yet</p>
+                ) : (
+                  clientNotes.map((note) => (
+                    <div key={note.id} className="bg-gray-50 rounded-lg p-4">
+                      <div className="flex justify-between items-start mb-2">
+                        <span className="font-medium text-gray-900">{note.created_by}</span>
+                        <span className="text-sm text-gray-500">
+                          {new Date(note.created_at).toLocaleString()}
+                        </span>
+                      </div>
+                      <p className="text-gray-700">{note.note}</p>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
           </div>
         </div>

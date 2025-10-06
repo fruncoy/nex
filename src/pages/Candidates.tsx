@@ -2,7 +2,7 @@
 import { supabase } from '../lib/supabase'
 import { SearchFilter } from '../components/ui/SearchFilter'
 import { StatusBadge } from '../components/ui/StatusBadge'
-import { Plus, Users, Phone, Calendar, Edit, CheckCircle, Clock, Upload } from 'lucide-react'
+import { Plus, Users, Phone, Calendar, Edit, CheckCircle, Clock, Upload, Eye } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
 import { ActivityLogger } from '../lib/activityLogger'
@@ -42,6 +42,10 @@ export function Candidates() {
   const [submitting, setSubmitting] = useState(false)
   const [selectedCandidates, setSelectedCandidates] = useState<string[]>([])
   const [bulkStatus, setBulkStatus] = useState('')
+  const [showNotesModal, setShowNotesModal] = useState(false)
+  const [selectedCandidateForNotes, setSelectedCandidateForNotes] = useState<Candidate | null>(null)
+  const [candidateNotes, setCandidateNotes] = useState<any[]>([])
+  const [newNote, setNewNote] = useState('')
 
   // row action state
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
@@ -52,7 +56,7 @@ export function Candidates() {
   const { user, staff } = useAuth()
   const { showToast } = useToast()
 
-  const statusOptions = ['PENDING', 'INTERVIEW_SCHEDULED', 'WON', 'LOST']
+  const statusOptions = ['PENDING', 'INTERVIEW_SCHEDULED', 'WON', 'LOST', 'BLACKLISTED']
   const roleOptions = ['Nanny', 'House Manager', 'Chef', 'Driver', 'Night Nurse', 'Caregiver', 'Housekeeper']
   const sourceOptions = ['TikTok', 'Facebook', 'Instagram', 'Google Search', 'Website', 'Referral', 'LinkedIn', 'Walk-in poster', 'Youtube']
 
@@ -421,6 +425,71 @@ export function Candidates() {
     }
   }
 
+  const handleMarkAsBlacklisted = async (candidate: Candidate) => {
+    try {
+      const { error } = await supabase
+        .from('candidates')
+        .update({ status: 'BLACKLISTED' })
+        .eq('id', candidate.id)
+
+      if (error) throw error
+
+      await supabase.from('updates').insert({
+        linked_to_type: 'candidate',
+        linked_to_id: candidate.id,
+        user_id: user?.id,
+        update_text: `Candidate marked as BLACKLISTED`,
+      })
+
+      updateLocalCandidate(candidate.id, c => ({ ...c, status: 'BLACKLISTED' }))
+    } catch (error) {
+      console.error('Error marking candidate as blacklisted:', error)
+    }
+  }
+
+  const handleViewNotes = async (candidate: Candidate) => {
+    setSelectedCandidateForNotes(candidate)
+    setShowNotesModal(true)
+    
+    try {
+      const { data, error } = await supabase
+        .from('candidate_notes')
+        .select('*, users(name)')
+        .eq('candidate_id', candidate.id)
+        .order('created_at', { ascending: false })
+      
+      if (error) throw error
+      setCandidateNotes(data || [])
+    } catch (error) {
+      console.error('Error loading notes:', error)
+      setCandidateNotes([])
+    }
+  }
+
+  const handleAddNote = async () => {
+    if (!newNote.trim() || !selectedCandidateForNotes) return
+    
+    try {
+      const { error } = await supabase
+        .from('candidate_notes')
+        .insert({
+          candidate_id: selectedCandidateForNotes.id,
+          user_id: user?.id,
+          note: newNote.trim(),
+          created_at: new Date().toISOString()
+        })
+      
+      if (error) throw error
+      
+      setNewNote('')
+      await handleViewNotes(selectedCandidateForNotes)
+      showToast('Note added successfully', 'success')
+    } catch (error) {
+      console.error('Error adding note:', error)
+      showToast('Failed to add note', 'error')
+    }
+  }
+
   const formatDisplayDate = (dateString: string) => {
     const date = new Date(dateString)
     const day = date.getDate()
@@ -568,8 +637,8 @@ export function Candidates() {
           }
 
           // Validate status
-          if (!['PENDING', 'INTERVIEW_SCHEDULED', 'WON', 'LOST'].includes(status)) {
-            errors.push(`Row ${i + 2}: Invalid status "${status}". Must be PENDING, INTERVIEW_SCHEDULED, WON, or LOST`)
+          if (!['PENDING', 'INTERVIEW_SCHEDULED', 'WON', 'LOST', 'BLACKLISTED'].includes(status)) {
+            errors.push(`Row ${i + 2}: Invalid status "${status}". Must be PENDING, INTERVIEW_SCHEDULED, WON, LOST, or BLACKLISTED`)
             continue
           }
 
@@ -775,6 +844,7 @@ export function Candidates() {
               <option value="PENDING">PENDING</option>
               <option value="WON">WON</option>
               <option value="LOST">LOST</option>
+              <option value="BLACKLISTED">BLACKLISTED</option>
             </select>
             <button
               onClick={handleBulkStatusChange}
@@ -812,6 +882,7 @@ export function Candidates() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Source</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Notes</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Inquiry Date</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
               </tr>
@@ -858,6 +929,15 @@ export function Candidates() {
                       )}
                     </div>
                   </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <button
+                      onClick={() => handleViewNotes(candidate)}
+                      className="text-nestalk-primary hover:text-nestalk-primary/80"
+                      title="View/Add Notes"
+                    >
+                      <Eye className="w-4 h-4" />
+                    </button>
+                  </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{formatDisplayDate(candidate.inquiry_date)}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     <div className="relative inline-flex items-center gap-2">
@@ -903,6 +983,7 @@ export function Candidates() {
                           if (v === 'PENDING') handleSetPending(candidate)
                           if (v === 'INTERVIEW_SCHEDULED') openSchedule(candidate)
                           if (v === 'LOST') handleMarkAsLost(candidate)
+          if (v === 'BLACKLISTED') handleMarkAsBlacklisted(candidate)
                           e.currentTarget.selectedIndex = 0
                         }}
                         className={`px-2 py-1 border border-gray-300 rounded text-sm bg-white ${
@@ -921,6 +1002,7 @@ export function Candidates() {
                         <option value="PENDING">Pending</option>
                         <option value="INTERVIEW_SCHEDULED">Interview Scheduled</option>
                         <option value="LOST">Lost</option>
+                        <option value="BLACKLISTED">Blacklisted</option>
                       </select>
                     </div>
                   </td>
@@ -1145,6 +1227,72 @@ export function Candidates() {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Notes Modal */}
+      {showNotesModal && selectedCandidateForNotes && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-2xl w-full max-h-screen overflow-y-auto">
+            <div className="p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">
+                Notes - {selectedCandidateForNotes.name}
+              </h2>
+              
+              {/* Add Note */}
+              <div className="mb-6">
+                <textarea
+                  value={newNote}
+                  onChange={(e) => setNewNote(e.target.value)}
+                  placeholder="Add a note..."
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
+                />
+                <div className="flex justify-end mt-2">
+                  <button
+                    onClick={handleAddNote}
+                    disabled={!newNote.trim()}
+                    className="px-4 py-2 bg-nestalk-primary text-white rounded-lg hover:bg-nestalk-primary/90 disabled:opacity-50"
+                  >
+                    Add Note
+                  </button>
+                </div>
+              </div>
+              
+              {/* Notes List */}
+              <div className="space-y-4 max-h-96 overflow-y-auto">
+                {candidateNotes.length === 0 ? (
+                  <p className="text-gray-500 text-center py-4">No notes yet</p>
+                ) : (
+                  candidateNotes.map((note) => (
+                    <div key={note.id} className="bg-gray-50 rounded-lg p-4">
+                      <div className="flex justify-between items-start mb-2">
+                        <span className="font-medium text-gray-900">{note.users?.name || 'Unknown'}</span>
+                        <span className="text-sm text-gray-500">
+                          {new Date(note.created_at).toLocaleString()}
+                        </span>
+                      </div>
+                      <p className="text-gray-700">{note.note}</p>
+                    </div>
+                  ))
+                )}
+              </div>
+              
+              <div className="flex justify-end mt-6">
+                <button
+                  onClick={() => {
+                    setShowNotesModal(false)
+                    setSelectedCandidateForNotes(null)
+                    setCandidateNotes([])
+                    setNewNote('')
+                  }}
+                  className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600"
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-import { BarChart3, TrendingUp, Calendar, Users, CheckCircle, XCircle, RefreshCcw, PieChart, Target, Award, Filter } from 'lucide-react'
+import { BarChart3, TrendingUp, Calendar, Users, CheckCircle, XCircle, RefreshCcw, PieChart, Target, Award, Filter, DollarSign } from 'lucide-react'
 
 interface Client {
   id: string
@@ -8,6 +8,8 @@ interface Client {
   source: string
   want_to_hire: string
   created_at: string
+  placement_fee?: number
+  placement_status?: string
 }
 
 interface Candidate {
@@ -68,7 +70,16 @@ export function Insights() {
   }
 
   const getFilteredClients = () => {
-    return clients
+    let filteredClients = clients
+    if (dateRange.start && dateRange.end) {
+      const startDate = new Date(dateRange.start)
+      const endDate = new Date(dateRange.end + 'T23:59:59Z')
+      filteredClients = clients.filter(c => {
+        const createdDate = new Date(c.created_at)
+        return createdDate >= startDate && createdDate <= endDate
+      })
+    }
+    return filteredClients
   }
 
   const getFilteredCandidates = () => {
@@ -457,7 +468,7 @@ export function Insights() {
       <div className="mb-6">
         <div className="border-b border-gray-200">
           <nav className="-mb-px flex space-x-8">
-            {[['general', 'General'], ['clients', 'Clients'], ['candidates', 'Candidates']].map(([tab, label]) => (
+            {[['general', 'General'], ['clients', 'Clients'], ['candidates', 'Candidates'], ['business', 'Business Core']].map(([tab, label]) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -649,6 +660,473 @@ export function Insights() {
             <div className="text-center p-3 bg-gray-50 rounded-lg">
               <p className="text-xs md:text-sm text-gray-600">Interview → Won Conversion: <span className="font-bold text-nestalk-primary">{funnelData.conversionRate}%</span></p>
               <p className="text-xs text-gray-500">Formula: Won / Interviewed</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Business Core Tab */}
+      {activeTab === 'business' && (
+        <div className="space-y-6">
+          {/* Financial KPI Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="bg-white rounded-lg p-4 border border-gray-200">
+              <div className="flex items-center">
+                <div className="p-2 bg-green-50 rounded-lg"><DollarSign className="w-5 h-5 text-green-600" /></div>
+                <div className="ml-3">
+                  <p className="text-xs text-gray-500">Total Income</p>
+                  <p className="text-2xl font-bold text-gray-900">
+                    ${formatNumber((() => {
+                      let startDate = new Date()
+                      let endDate = new Date()
+                      if (dateRange.start && dateRange.end) {
+                        startDate = new Date(dateRange.start)
+                        endDate = new Date(dateRange.end + 'T23:59:59Z')
+                      } else {
+                        startDate = new Date(startDate.getFullYear(), startDate.getMonth(), 1)
+                      }
+                      return clients
+                        .filter(c => {
+                          const createdDate = new Date(c.created_at)
+                          return c.status === 'Won' && c.placement_fee && 
+                                 createdDate >= startDate && createdDate <= endDate
+                        })
+                        .reduce((sum, c) => sum + (c.placement_fee || 0), 0)
+                    })())}
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-white rounded-lg p-4 border border-gray-200">
+              <div className="flex items-center">
+                <div className="p-2 bg-red-50 rounded-lg"><XCircle className="w-5 h-5 text-red-600" /></div>
+                <div className="ml-3">
+                  <p className="text-xs text-gray-500">Total Refunded</p>
+                  <p className="text-2xl font-bold text-gray-900">
+                    ${formatNumber((() => {
+                      let startDate = new Date()
+                      let endDate = new Date()
+                      if (dateRange.start && dateRange.end) {
+                        startDate = new Date(dateRange.start)
+                        endDate = new Date(dateRange.end + 'T23:59:59Z')
+                      } else {
+                        startDate = new Date(startDate.getFullYear(), startDate.getMonth(), 1)
+                      }
+                      return clients
+                        .filter(c => {
+                          const createdDate = new Date(c.created_at)
+                          return (c.placement_status === 'Refunded' || c.placement_status === 'Lost (Refunded)') && 
+                                 c.placement_fee && createdDate >= startDate && createdDate <= endDate
+                        })
+                        .reduce((sum, c) => sum + (c.placement_fee || 0), 0)
+                    })())}
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-white rounded-lg p-4 border border-gray-200">
+              <div className="flex items-center">
+                <div className="p-2 bg-blue-50 rounded-lg"><Users className="w-5 h-5 text-blue-600" /></div>
+                <div className="ml-3">
+                  <p className="text-xs text-gray-500">Active Clients</p>
+                  <p className="text-2xl font-bold text-gray-900">
+                    {formatNumber((() => {
+                      let startDate = new Date()
+                      let endDate = new Date()
+                      if (dateRange.start && dateRange.end) {
+                        startDate = new Date(dateRange.start)
+                        endDate = new Date(dateRange.end + 'T23:59:59Z')
+                      } else {
+                        startDate = new Date(startDate.getFullYear(), startDate.getMonth(), 1)
+                      }
+                      return clients.filter(c => {
+                        const createdDate = new Date(c.created_at)
+                        return c.status === 'Won' && c.placement_status === 'Active' && createdDate >= startDate && createdDate <= endDate
+                      }).length
+                    })())}
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-white rounded-lg p-4 border border-gray-200">
+              <div className="flex items-center">
+                <div className="p-2 bg-amber-50 rounded-lg"><RefreshCcw className="w-5 h-5 text-amber-600" /></div>
+                <div className="ml-3">
+                  <p className="text-xs text-gray-500">Refund Rate</p>
+                  <p className="text-2xl font-bold text-gray-900">
+                    {(() => {
+                      let startDate = new Date()
+                      let endDate = new Date()
+                      if (dateRange.start && dateRange.end) {
+                        startDate = new Date(dateRange.start)
+                        endDate = new Date(dateRange.end + 'T23:59:59Z')
+                      } else {
+                        startDate = new Date(startDate.getFullYear(), startDate.getMonth(), 1)
+                      }
+                      const wonClients = clients.filter(c => {
+                        const createdDate = new Date(c.created_at)
+                        return c.status === 'Won' && createdDate >= startDate && createdDate <= endDate
+                      })
+                      const refundedClients = wonClients.filter(c => 
+                        c.placement_status === 'Refunded' || c.placement_status === 'Lost (Refunded)'
+                      )
+                      return wonClients.length > 0 ? Math.round((refundedClients.length / wonClients.length) * 100) : 0
+                    })()}%
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Secondary Financial Metrics */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="bg-white rounded-lg p-4 border border-gray-200">
+              <div className="flex items-center">
+                <div className="p-2 bg-emerald-50 rounded-lg"><TrendingUp className="w-5 h-5 text-emerald-600" /></div>
+                <div className="ml-3">
+                  <p className="text-xs text-gray-500">Net Revenue</p>
+                  <p className="text-2xl font-bold text-gray-900">
+                    ${formatNumber((() => {
+                      let startDate = new Date()
+                      let endDate = new Date()
+                      if (dateRange.start && dateRange.end) {
+                        startDate = new Date(dateRange.start)
+                        endDate = new Date(dateRange.end + 'T23:59:59Z')
+                      } else {
+                        startDate = new Date(startDate.getFullYear(), startDate.getMonth(), 1)
+                      }
+                      const totalIncome = clients
+                        .filter(c => {
+                          const createdDate = new Date(c.created_at)
+                          return c.status === 'Won' && c.placement_fee && 
+                                 createdDate >= startDate && createdDate <= endDate
+                        })
+                        .reduce((sum, c) => sum + (c.placement_fee || 0), 0)
+                      const totalRefunded = clients
+                        .filter(c => {
+                          const createdDate = new Date(c.created_at)
+                          return (c.placement_status === 'Refunded' || c.placement_status === 'Lost (Refunded)') && 
+                                 c.placement_fee && createdDate >= startDate && createdDate <= endDate
+                        })
+                        .reduce((sum, c) => sum + (c.placement_fee || 0), 0)
+                      return totalIncome - totalRefunded
+                    })())}
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-white rounded-lg p-4 border border-gray-200">
+              <div className="flex items-center">
+                <div className="p-2 bg-purple-50 rounded-lg"><Target className="w-5 h-5 text-purple-600" /></div>
+                <div className="ml-3">
+                  <p className="text-xs text-gray-500">Avg Placement Fee</p>
+                  <p className="text-2xl font-bold text-gray-900">
+                    ${formatNumber((() => {
+                      let startDate = new Date()
+                      let endDate = new Date()
+                      if (dateRange.start && dateRange.end) {
+                        startDate = new Date(dateRange.start)
+                        endDate = new Date(dateRange.end + 'T23:59:59Z')
+                      } else {
+                        startDate = new Date(startDate.getFullYear(), startDate.getMonth(), 1)
+                      }
+                      const wonClientsWithFees = clients.filter(c => {
+                        const createdDate = new Date(c.created_at)
+                        return c.status === 'Won' && c.placement_fee && 
+                               createdDate >= startDate && createdDate <= endDate
+                      })
+                      if (wonClientsWithFees.length === 0) return 0
+                      const totalFees = wonClientsWithFees.reduce((sum, c) => sum + (c.placement_fee || 0), 0)
+                      return Math.round(totalFees / wonClientsWithFees.length)
+                    })())}
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-white rounded-lg p-4 border border-gray-200">
+              <div className="flex items-center">
+                <div className="p-2 bg-orange-50 rounded-lg"><XCircle className="w-5 h-5 text-orange-600" /></div>
+                <div className="ml-3">
+                  <p className="text-xs text-gray-500">Lost Clients</p>
+                  <p className="text-2xl font-bold text-gray-900">
+                    {formatNumber((() => {
+                      let startDate = new Date()
+                      let endDate = new Date()
+                      if (dateRange.start && dateRange.end) {
+                        startDate = new Date(dateRange.start)
+                        endDate = new Date(dateRange.end + 'T23:59:59Z')
+                      } else {
+                        startDate = new Date(startDate.getFullYear(), startDate.getMonth(), 1)
+                      }
+                      return clients.filter(c => {
+                        const createdDate = new Date(c.created_at)
+                        return (c.placement_status === 'Lost (Refunded)' || c.placement_status === 'Lost (No Refund)') && 
+                               createdDate >= startDate && createdDate <= endDate
+                      }).length
+                    })())}
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-white rounded-lg p-4 border border-gray-200">
+              <div className="flex items-center">
+                <div className="p-2 bg-red-50 rounded-lg"><RefreshCcw className="w-5 h-5 text-red-600" /></div>
+                <div className="ml-3">
+                  <p className="text-xs text-gray-500">Clients Refunded</p>
+                  <p className="text-2xl font-bold text-gray-900">
+                    {formatNumber((() => {
+                      let startDate = new Date()
+                      let endDate = new Date()
+                      if (dateRange.start && dateRange.end) {
+                        startDate = new Date(dateRange.start)
+                        endDate = new Date(dateRange.end + 'T23:59:59Z')
+                      } else {
+                        startDate = new Date(startDate.getFullYear(), startDate.getMonth(), 1)
+                      }
+                      return clients.filter(c => {
+                        const createdDate = new Date(c.created_at)
+                        return (c.placement_status === 'Refunded' || c.placement_status === 'Lost (Refunded)') && 
+                               createdDate >= startDate && createdDate <= endDate
+                      }).length
+                    })())}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Revenue by Source */}
+          <div className="bg-white rounded-lg p-6 border border-gray-200">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Revenue by Source</h3>
+            
+            {/* Bar Chart */}
+            <div className="mb-6">
+              <div className="h-64 flex items-end justify-between px-4 border-b border-l border-gray-200 overflow-x-auto">
+                {(() => {
+                  let startDate = new Date()
+                  let endDate = new Date()
+                  if (dateRange.start && dateRange.end) {
+                    startDate = new Date(dateRange.start)
+                    endDate = new Date(dateRange.end + 'T23:59:59Z')
+                  } else {
+                    startDate = new Date(startDate.getFullYear(), startDate.getMonth(), 1)
+                  }
+                  
+                  const sourceData = sources.map(source => {
+                    const sourceClients = clients.filter(c => {
+                      const createdDate = new Date(c.created_at)
+                      return (c.source || 'Other') === source && c.status === 'Won' && 
+                             c.placement_fee && createdDate >= startDate && createdDate <= endDate
+                    })
+                    
+                    const totalRevenue = sourceClients.reduce((sum, c) => sum + (c.placement_fee || 0), 0)
+                    const refundedRevenue = sourceClients
+                      .filter(c => c.placement_status === 'Refunded' || c.placement_status === 'Lost (Refunded)')
+                      .reduce((sum, c) => sum + (c.placement_fee || 0), 0)
+                    const netRevenue = totalRevenue - refundedRevenue
+                    
+                    return { source, totalRevenue, netRevenue, refundedRevenue }
+                  }).filter(d => d.totalRevenue > 0)
+                  
+                  const maxRevenue = Math.max(...sourceData.map(d => d.totalRevenue))
+                  
+                  return sourceData.map(({ source, totalRevenue, netRevenue, refundedRevenue }) => {
+                    const totalHeight = maxRevenue > 0 ? (totalRevenue / maxRevenue) * 200 : 0
+                    const netHeight = maxRevenue > 0 ? (netRevenue / maxRevenue) * 200 : 0
+                    
+                    return (
+                      <div key={source} className="flex flex-col items-center min-w-0 flex-shrink-0">
+                        <div className="mb-2 text-xs text-gray-600">${formatNumber(netRevenue)}</div>
+                        <div className="relative">
+                          <div 
+                            className="w-12 bg-gray-300 rounded-t" 
+                            style={{ height: `${totalHeight}px`, minHeight: '2px' }}
+                          ></div>
+                          <div 
+                            className="w-12 bg-green-500 rounded-t absolute bottom-0" 
+                            style={{ height: `${netHeight}px`, minHeight: '2px' }}
+                          ></div>
+                        </div>
+                        <div className="mt-2 text-xs text-gray-700 text-center w-16">
+                          <div className="transform -rotate-45 origin-center whitespace-nowrap">{source}</div>
+                        </div>
+                      </div>
+                    )
+                  })
+                })()}
+              </div>
+              <div className="mt-2 flex justify-center gap-4 text-xs">
+                <div className="flex items-center gap-1">
+                  <div className="w-3 h-3 bg-gray-300 rounded"></div>
+                  <span>Total Revenue</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-3 h-3 bg-green-500 rounded"></div>
+                  <span>Net Revenue</span>
+                </div>
+              </div>
+            </div>
+            
+            {/* Detailed List */}
+            <div className="space-y-4">
+              {sources.map(source => {
+                let startDate = new Date()
+                let endDate = new Date()
+                if (dateRange.start && dateRange.end) {
+                  startDate = new Date(dateRange.start)
+                  endDate = new Date(dateRange.end + 'T23:59:59Z')
+                } else {
+                  startDate = new Date(startDate.getFullYear(), startDate.getMonth(), 1)
+                }
+                
+                const sourceClients = clients.filter(c => {
+                  const createdDate = new Date(c.created_at)
+                  return (c.source || 'Other') === source && c.status === 'Won' && 
+                         c.placement_fee && createdDate >= startDate && createdDate <= endDate
+                })
+                
+                const totalRevenue = sourceClients.reduce((sum, c) => sum + (c.placement_fee || 0), 0)
+                const refundedRevenue = sourceClients
+                  .filter(c => c.placement_status === 'Refunded' || c.placement_status === 'Lost (Refunded)')
+                  .reduce((sum, c) => sum + (c.placement_fee || 0), 0)
+                const netRevenue = totalRevenue - refundedRevenue
+                
+                if (totalRevenue === 0) return null
+                
+                return (
+                  <div key={source} className="p-4 bg-gray-50 rounded-lg">
+                    <div className="flex justify-between items-center mb-2">
+                      <h4 className="font-semibold text-gray-900">{source}</h4>
+                      <div className="text-right">
+                        <div className="text-lg font-bold text-green-600">${formatNumber(netRevenue)}</div>
+                        <div className="text-xs text-gray-500">Net Revenue</div>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-4 text-sm">
+                      <div>
+                        <div className="text-gray-600">Total Income</div>
+                        <div className="font-semibold">${formatNumber(totalRevenue)}</div>
+                      </div>
+                      <div>
+                        <div className="text-gray-600">Refunded</div>
+                        <div className="font-semibold text-red-600">${formatNumber(refundedRevenue)}</div>
+                      </div>
+                      <div>
+                        <div className="text-gray-600">Clients</div>
+                        <div className="font-semibold">{sourceClients.length}</div>
+                      </div>
+                    </div>
+                  </div>
+                )
+              }).filter(Boolean)}
+            </div>
+          </div>
+
+          {/* Financial Trends */}
+          <div className="bg-white rounded-lg p-6 border border-gray-200">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Revenue Trend</h3>
+            <div className="flex gap-4 mb-4">
+              <button 
+                onClick={() => setTrendView('monthly')} 
+                className={`px-3 py-1 text-sm rounded ${trendView === 'monthly' ? 'bg-nestalk-primary text-white' : 'bg-gray-100'}`}
+              >
+                Monthly
+              </button>
+              <button 
+                onClick={() => setTrendView('daily')} 
+                className={`px-3 py-1 text-sm rounded ${trendView === 'daily' ? 'bg-nestalk-primary text-white' : 'bg-gray-100'}`}
+              >
+                Daily (Last 30)
+              </button>
+            </div>
+            <div className="h-64 flex items-end justify-between px-4 border-b border-l border-gray-200 overflow-x-auto">
+              {(() => {
+                const trendData = trendView === 'monthly' ? 
+                  (() => {
+                    const last6Months = []
+                    const now = new Date()
+                    for (let i = 5; i >= 0; i--) {
+                      const date = new Date(now.getFullYear(), now.getMonth() - i, 1)
+                      const monthName = date.toLocaleDateString('en-US', { month: 'short' })
+                      const revenue = clients.filter(c => {
+                        const clientDate = new Date(c.created_at)
+                        return clientDate.getMonth() === date.getMonth() && 
+                               clientDate.getFullYear() === date.getFullYear() &&
+                               c.status === 'Won' && c.placement_fee
+                      }).reduce((sum, c) => sum + (c.placement_fee || 0), 0)
+                      last6Months.push({ period: monthName, revenue })
+                    }
+                    return last6Months
+                  })() :
+                  (() => {
+                    const last30Days = []
+                    const now = new Date()
+                    for (let i = 29; i >= 0; i--) {
+                      const date = new Date(now)
+                      date.setDate(date.getDate() - i)
+                      const dayName = date.getDate().toString()
+                      const revenue = clients.filter(c => {
+                        const clientDate = new Date(c.created_at)
+                        return clientDate.toDateString() === date.toDateString() &&
+                               c.status === 'Won' && c.placement_fee
+                      }).reduce((sum, c) => sum + (c.placement_fee || 0), 0)
+                      last30Days.push({ period: dayName, revenue })
+                    }
+                    return last30Days
+                  })()
+                
+                const maxRevenue = Math.max(...trendData.map(m => m.revenue))
+                
+                return trendData.map(({ period, revenue }) => {
+                  const height = maxRevenue > 0 ? (revenue / maxRevenue) * 200 : 0
+                  return (
+                    <div key={period} className="flex flex-col items-center min-w-0 flex-shrink-0">
+                      <div className="mb-2 text-xs text-gray-600">${formatNumber(revenue)}</div>
+                      <div 
+                        className="w-8 bg-green-500 rounded-t" 
+                        style={{ height: `${height}px`, minHeight: '2px' }}
+                      ></div>
+                      <div className="mt-2 text-xs text-gray-500 transform -rotate-45 origin-left whitespace-nowrap">{period}</div>
+                    </div>
+                  )
+                })
+              })()}
+            </div>
+          </div>
+
+          {/* Placement Status Distribution */}
+          <div className="bg-white rounded-lg p-6 border border-gray-200">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Placement Status Distribution</h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {['Active', 'Refunded', 'Lost (Refunded)', 'Lost (No Refund)'].map(status => {
+                let startDate = new Date()
+                let endDate = new Date()
+                if (dateRange.start && dateRange.end) {
+                  startDate = new Date(dateRange.start)
+                  endDate = new Date(dateRange.end + 'T23:59:59Z')
+                } else {
+                  startDate = new Date(startDate.getFullYear(), startDate.getMonth(), 1)
+                }
+                
+                const count = clients.filter(c => {
+                  const createdDate = new Date(c.created_at)
+                  return c.placement_status === status && createdDate >= startDate && createdDate <= endDate
+                }).length
+                
+                const colors = {
+                  'Active': 'text-green-600',
+                  'Refunded': 'text-yellow-600', 
+                  'Lost (Refunded)': 'text-red-600',
+                  'Lost (No Refund)': 'text-gray-600'
+                }
+                
+                return (
+                  <div key={status} className="p-3 bg-gray-50 rounded-lg text-center">
+                    <p className={`text-2xl font-bold ${colors[status as keyof typeof colors]}`}>{count}</p>
+                    <p className="text-xs text-gray-600">{status}</p>
+                  </div>
+                )
+              })}
             </div>
           </div>
         </div>

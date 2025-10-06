@@ -17,7 +17,9 @@ import {
   FileText,
   Shield,
   UserCheck,
-  Target
+  Target,
+  CheckCircle,
+  Brain
 } from 'lucide-react'
 
 export function Layout() {
@@ -59,10 +61,18 @@ export function Layout() {
       subItems: [
         { name: 'Vetting', href: '/vetting', icon: Shield },
         { name: 'Interviews', href: '/interviews', icon: Calendar },
-        { name: 'Staff', href: '/staff', icon: UserCheck }
+        { name: 'Staff', href: '/staff', icon: UserCheck },
+        { name: 'Blacklisted', href: '/blacklisted', icon: Users }
       ]
     },
-    { name: 'Clients', href: '/clients', icon: Building2 },
+    { 
+      name: 'Clients', 
+      href: '/clients', 
+      icon: Building2,
+      subItems: [
+        { name: 'Converted Clients', href: '/converted-clients', icon: CheckCircle }
+      ]
+    },
     { 
       name: 'Training Leads', 
       href: '/training', 
@@ -81,6 +91,7 @@ export function Layout() {
     },
     { name: 'Reporting', href: '/reporting', icon: FileText },
     { name: 'Insights', href: '/insights', icon: BarChart3 },
+    { name: 'Nestara AI', href: '/nestara-ai', icon: Brain },
   ]
 
   const getPageTitle = () => {
