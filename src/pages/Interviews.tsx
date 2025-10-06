@@ -224,11 +224,13 @@ export function Interviews() {
       if (!selectedInterview && formData.candidate_id) {
         const { data: existingInterviews } = await supabase
           .from('interviews')
-          .select('id')
+          .select('id, outcome, attended')
           .eq('candidate_id', formData.candidate_id)
-          .eq('status', 'scheduled')
         
-        if (existingInterviews && existingInterviews.length > 0) {
+        // Check if there's already a scheduled interview (no outcome and not attended)
+        const scheduledInterviews = existingInterviews?.filter(i => !i.outcome && !i.attended) || []
+        
+        if (scheduledInterviews.length > 0) {
           showToast('This candidate already has a scheduled interview', 'error')
           return
         }

@@ -403,6 +403,30 @@ export function Candidates() {
     }
   }
 
+  const handleMarkAsWon = async (candidate: Candidate) => {
+    try {
+      const { error } = await supabase
+        .from('candidates')
+        .update({ status: 'WON' })
+        .eq('id', candidate.id)
+
+      if (error) throw error
+
+      await supabase.from('updates').insert({
+        linked_to_type: 'candidate',
+        linked_to_id: candidate.id,
+        user_id: user?.id,
+        update_text: `Candidate marked as WON`,
+      })
+
+      updateLocalCandidate(candidate.id, c => ({ ...c, status: 'WON' }))
+      showToast(`${candidate.name} marked as Won`, 'success')
+    } catch (error) {
+      console.error('Error marking candidate as won:', error)
+      showToast('Failed to mark candidate as won', 'error')
+    }
+  }
+
   const handleMarkAsLost = async (candidate: Candidate) => {
     try {
       const { error } = await supabase
@@ -502,7 +526,7 @@ export function Candidates() {
   }
 
   const downloadTemplate = () => {
-    const csvContent = `Name,Phone,Source,Role,Status,Scheduled Date (YYYY-MM-DD)\nJohn Doe,555-1234,Referral,Nanny,PENDING,\nJane Smith,555-5678,TikTok,Chef,INTERVIEW_SCHEDULED,2025-09-15\nMary Johnson,555-9999,Youtube,Housekeeper,PENDING,`
+    const csvContent = `Name,Phone,Source,Role,Status,Scheduled Date (YYYY-MM-DD)\nJohn Doe,555-1234,Referral,Nanny,PENDING,\nJane Smith,555-5678,TikTok,Chef,INTERVIEW_SCHEDULED,2025-09-15\nMary Johnson,555-9999,Youtube,Housekeeper,WON,\nSarah Wilson,555-7777,Facebook,Driver,LOST,`
     const blob = new Blob([csvContent], { type: 'text/csv' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -637,8 +661,9 @@ export function Candidates() {
           }
 
           // Validate status
-          if (!['PENDING', 'INTERVIEW_SCHEDULED', 'WON', 'LOST', 'BLACKLISTED'].includes(status)) {
-            errors.push(`Row ${i + 2}: Invalid status "${status}". Must be PENDING, INTERVIEW_SCHEDULED, WON, LOST, or BLACKLISTED`)
+          const validStatuses = ['PENDING', 'INTERVIEW_SCHEDULED', 'WON', 'LOST', 'BLACKLISTED']
+          if (!validStatuses.includes(status)) {
+            errors.push(`Row ${i + 2}: Invalid status "${status}". Must be one of: ${validStatuses.join(', ')}`)
             continue
           }
 
@@ -982,8 +1007,9 @@ export function Candidates() {
                           }
                           if (v === 'PENDING') handleSetPending(candidate)
                           if (v === 'INTERVIEW_SCHEDULED') openSchedule(candidate)
+                          if (v === 'WON') handleMarkAsWon(candidate)
                           if (v === 'LOST') handleMarkAsLost(candidate)
-          if (v === 'BLACKLISTED') handleMarkAsBlacklisted(candidate)
+                          if (v === 'BLACKLISTED') handleMarkAsBlacklisted(candidate)
                           e.currentTarget.selectedIndex = 0
                         }}
                         className={`px-2 py-1 border border-gray-300 rounded text-sm bg-white ${
@@ -1001,6 +1027,7 @@ export function Candidates() {
                         <option value="" disabled>Actions</option>
                         <option value="PENDING">Pending</option>
                         <option value="INTERVIEW_SCHEDULED">Interview Scheduled</option>
+                        <option value="WON">Won</option>
                         <option value="LOST">Lost</option>
                         <option value="BLACKLISTED">Blacklisted</option>
                       </select>

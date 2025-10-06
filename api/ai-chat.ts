@@ -45,7 +45,7 @@ IMPORTANT RESTRICTIONS:
 - You CANNOT help with non-Nestara topics, other companies, or general questions
 - If asked about anything outside Nestara, politely redirect to Nestara-related topics
 - Current Kenyan time: ${kenyaTime}
-- Use Kenyan time format in all responses
+- Use Kenyan time format when showing dates/times, but don't include time in greetings
 
 NESTARA SYSTEM DATA:
 ${JSON.stringify(systemData, null, 2)}
