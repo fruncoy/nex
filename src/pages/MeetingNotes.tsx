@@ -15,16 +15,15 @@ interface MeetingNote {
     name: string
     username: string
   }
-  deliverables?: Deliverable[]
+  tasks?: MeetingTask[]
 }
 
-interface Deliverable {
+interface MeetingTask {
   id: string
   meeting_note_id: string
   task_description: string
   assigned_to: string
-  status: 'pending' | 'done'
-  due_date?: string
+  status: 'pending' | 'completed'
   completed_at?: string
   completed_by?: string
   created_at: string
@@ -109,29 +108,48 @@ export function MeetingNotes() {
 
   const loadMeetingNotes = async () => {
     try {
-      const { data, error } = await supabase
+      const { data: notesData, error: notesError } = await supabase
         .from('meeting_notes')
         .select(`
           *,
-          staff:created_by (name, username),
-          deliverables (
-            *,
-            assigned_staff:assigned_to (name, username)
-          )
+          staff:created_by (name, username)
         `)
         .order('meeting_date', { ascending: false })
 
-      if (error) throw error
-      setMeetingNotes(data || [])
+      if (notesError) throw notesError
+
+      // Get tasks separately
+      const { data: tasksData, error: tasksError } = await supabase
+        .from('meeting_note_tasks')
+        .select(`
+          *,
+          assigned_staff:assigned_to (name, username)
+        `)
+
+      if (tasksError) {
+        console.error('Error loading tasks:', tasksError)
+      }
+
+      // Combine notes with their tasks
+      const notesWithTasks = (notesData || []).map(note => {
+        const noteTasks = (tasksData || []).filter(task => task.meeting_note_id === note.id)
+        return { ...note, tasks: noteTasks }
+      })
+      
+
+
+
+      setMeetingNotes(notesWithTasks)
       
       // Group meeting notes by date
-      const grouped = (data || []).reduce((acc: {[key: string]: MeetingNote[]}, note) => {
+      const grouped = notesWithTasks.reduce((acc: {[key: string]: MeetingNote[]}, note) => {
         const date = note.meeting_date
         if (!acc[date]) acc[date] = []
         acc[date].push(note)
         return acc
       }, {})
       
+
       setGroupedMeetingNotes(grouped)
     } catch (error) {
       console.error('Error loading meeting notes:', error)
@@ -155,20 +173,9 @@ export function MeetingNotes() {
     }
 
     try {
-      // Collect all notes from all deliverable groups
-      const allNotes: string[] = []
-      meetingForm.deliverable_groups.forEach(group => {
-        const lines = group.notes_text
-          .split('\n')
-          .map((line: string) => line.trim())
-          .filter((line: string) => line !== '')
-        allNotes.push(...lines)
-      })
-
       const meetingData = {
         title: meetingForm.title || `Meeting - ${new Date(meetingForm.meeting_date).toLocaleDateString()}`,
         meeting_date: meetingForm.meeting_date,
-        notes: allNotes, // Save as array for display
         created_by: user.id
       }
 
@@ -193,14 +200,14 @@ export function MeetingNotes() {
         meetingNoteId = data.id
       }
 
-      // Create deliverables for each group
-      const deliverablesToCreate: any[] = []
-      const existingDeliverablesMap = new Map<string, Deliverable>()
+      // Create tasks for each group
+      const tasksToCreate: any[] = []
+      const existingTasksMap = new Map<string, MeetingTask>()
       
-      // Create a map of existing deliverables by task description for reference
-      if (editingMeetingNote && editingMeetingNote.deliverables) {
-        editingMeetingNote.deliverables.forEach(d => {
-          existingDeliverablesMap.set(d.task_description, d)
+      // Create a map of existing tasks by task description for reference
+      if (editingMeetingNote && editingMeetingNote.tasks) {
+        editingMeetingNote.tasks.forEach(t => {
+          existingTasksMap.set(t.task_description, t)
         })
       }
       
@@ -211,37 +218,40 @@ export function MeetingNotes() {
           .filter((line: string) => line !== '')
         
         lines.forEach((line: string) => {
-          // Check if this deliverable existed before and was marked as done
-          const existingDeliverable = existingDeliverablesMap.get(line)
-          
-          deliverablesToCreate.push({
-            meeting_note_id: meetingNoteId,
-            task_description: line,
-            assigned_to: group.assigned_to || user.id,
-            status: existingDeliverable?.status || 'pending',
-            ...(existingDeliverable?.status === 'done' && {
-              completed_at: existingDeliverable.completed_at,
-              completed_by: existingDeliverable.completed_by
+          const cleanLine = line.trim()
+          if (cleanLine) {
+            const existingTask = existingTasksMap.get(cleanLine)
+            
+            tasksToCreate.push({
+              meeting_note_id: meetingNoteId,
+              task_description: cleanLine,
+              assigned_to: group.assigned_to || user.id,
+              assigned_by: user.id,
+              status: existingTask?.status || 'pending',
+              ...(existingTask?.status === 'completed' && {
+                completed_at: existingTask.completed_at,
+                completed_by: existingTask.completed_by
+              })
             })
-          })
+          }
         })
       })
 
-      if (deliverablesToCreate.length > 0) {
-        // Delete existing deliverables if editing
+      if (tasksToCreate.length > 0) {
+        // Delete existing tasks if editing
         if (editingMeetingNote) {
           await supabase
-            .from('deliverables')
+            .from('meeting_note_tasks')
             .delete()
             .eq('meeting_note_id', meetingNoteId)
         }
 
-        // Insert new deliverables
-        const { error: deliverableError } = await supabase
-          .from('deliverables')
-          .insert(deliverablesToCreate)
+        // Insert new tasks
+        const { error: taskError } = await supabase
+          .from('meeting_note_tasks')
+          .insert(tasksToCreate)
 
-        if (deliverableError) throw deliverableError
+        if (taskError) throw taskError
       }
 
       // Log the activity for meeting note creation/edit
@@ -282,12 +292,12 @@ export function MeetingNotes() {
     }
   }
 
-  const toggleDeliverable = async (deliverableId: string, currentStatus: 'pending' | 'done') => {
+  const toggleTask = async (taskId: string, currentStatus: 'pending' | 'completed') => {
     try {
-      const newStatus = currentStatus === 'pending' ? 'done' : 'pending'
+      const newStatus = currentStatus === 'pending' ? 'completed' : 'pending'
       const updateData = {
         status: newStatus,
-        ...(newStatus === 'done' ? {
+        ...(newStatus === 'completed' ? {
           completed_at: new Date().toISOString(),
           completed_by: user?.id
         } : {
@@ -297,33 +307,33 @@ export function MeetingNotes() {
       }
 
       const { error } = await supabase
-        .from('deliverables')
+        .from('meeting_note_tasks')
         .update(updateData)
-        .eq('id', deliverableId)
+        .eq('id', taskId)
 
       if (error) throw error
       
       // Log the activity
       if (user?.id && staff?.name) {
-        const deliverable = meetingNotes
-          .flatMap(note => note.deliverables || [])
-          .find(d => d.id === deliverableId)
+        const task = meetingNotes
+          .flatMap(note => note.tasks || [])
+          .find(t => t.id === taskId)
         
-        if (deliverable) {
+        if (task) {
           await ActivityLogger.log({
             userId: user.id,
             actionType: 'edit',
             entityType: 'meeting_note',
-            entityId: deliverable.meeting_note_id,
-            entityName: deliverable.task_description,
-            description: `${staff.name} marked deliverable "${deliverable.task_description}" as ${newStatus}`
+            entityId: task.meeting_note_id,
+            entityName: task.task_description,
+            description: `${staff.name} marked task "${task.task_description}" as ${newStatus}`
           })
         }
       }
       
       await loadMeetingNotes()
     } catch (error) {
-      console.error('Error updating deliverable:', error)
+      console.error('Error updating task:', error)
     }
   }
 
@@ -358,19 +368,23 @@ export function MeetingNotes() {
   const openMeetingModal = (note?: MeetingNote) => {
     if (note) {
       setEditingMeetingNote(note)
-      // Group deliverables by assigned user when editing
+      // Group tasks by assigned user when editing
       const groups: {[key: string]: string[]} = {}
       
-      if (note.deliverables && note.deliverables.length > 0) {
-        note.deliverables.forEach(deliverable => {
-          const assignedTo = deliverable.assigned_to
+      if (note.tasks && note.tasks.length > 0) {
+        note.tasks.forEach(task => {
+          const assignedTo = task.assigned_to
           if (!groups[assignedTo]) groups[assignedTo] = []
-          groups[assignedTo].push(deliverable.task_description)
+          // Decode HTML entities
+          const cleanTask = task.task_description
+            .replace(/&quot;/g, '"')
+            .replace(/&#39;/g, "'")
+            .replace(/&amp;/g, '&')
+          groups[assignedTo].push(cleanTask)
         })
       } else {
-        // Fallback to notes if no deliverables
-        const notesText = Array.isArray(note.notes) ? note.notes.join('\n') : (note.notes || '')
-        groups[user?.id || ''] = [notesText]
+        // No tasks found, create empty group
+        groups[user?.id || ''] = ['']
       }
       
       const deliverableGroups = Object.entries(groups).map(([assignedTo, tasks]) => ({
@@ -479,33 +493,37 @@ export function MeetingNotes() {
                           
                           {!collapsedNotes.has(note.id) && (
                             <>
-                              {/* Meeting Notes Content - Show deliverables if they exist, otherwise show raw notes */}
-                              {note.deliverables && note.deliverables.length > 0 ? (
+                              {/* Meeting Notes Content - Show tasks if they exist, otherwise show raw notes */}
+                              {note.tasks && note.tasks.length > 0 ? (
                                 <div className="space-y-2">
-                                  {note.deliverables.map((deliverable) => (
-                                    <div key={deliverable.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                                  {note.tasks.map((task) => (
+                                    <div key={task.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
                                       <div className="flex items-center gap-3">
                                         <button
-                                          onClick={() => toggleDeliverable(deliverable.id, deliverable.status)}
+                                          onClick={() => toggleTask(task.id, task.status)}
                                           className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
-                                            deliverable.status === 'done'
+                                            task.status === 'completed'
                                               ? 'bg-green-500 border-green-500 text-white'
                                               : 'border-gray-300 hover:border-green-500'
                                           }`}
                                         >
-                                          {deliverable.status === 'done' && <Check className="w-3 h-3" />}
+                                          {task.status === 'completed' && <Check className="w-3 h-3" />}
                                         </button>
                                         <span className={`text-sm ${
-                                          deliverable.status === 'done' ? 'text-gray-500 line-through' : 'text-gray-900'
+                                          task.status === 'completed' ? 'text-gray-500 line-through' : 'text-gray-900'
                                         }`}>
-                                          {deliverable.task_description}
+                                          {task.task_description
+                                            .replace(/&quot;/g, '"')
+                                            .replace(/&#39;/g, "'")
+                                            .replace(/&amp;/g, '&')
+                                          }
                                         </span>
                                       </div>
                                       <div className="flex items-center gap-2">
                                         <span className="text-xs text-gray-500">
-                                          {deliverable.assigned_staff?.name || 'Unassigned'}
+                                          {task.assigned_staff?.name || 'Unassigned'}
                                         </span>
-                                        {deliverable.status === 'done' && (
+                                        {task.status === 'completed' && (
                                           <span className="text-xs text-green-600">✓ Done</span>
                                         )}
                                       </div>
@@ -513,19 +531,8 @@ export function MeetingNotes() {
                                   ))}
                                 </div>
                               ) : (
-                                <div className="mb-4">
-                                  {Array.isArray(note.notes) ? (
-                                    <div className="space-y-2">
-                                      {note.notes.map((item, index) => (
-                                        <div key={index} className="flex items-start gap-2">
-                                          <span className="text-gray-400 mt-1">•</span>
-                                          <span className="text-sm text-gray-700">{item}</span>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  ) : (
-                                    <p className="text-sm text-gray-700">{note.notes}</p>
-                                  )}
+                                <div className="mb-4 text-sm text-gray-500">
+                                  No tasks assigned
                                 </div>
                               )}
                               
