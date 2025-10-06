@@ -74,7 +74,7 @@ export function NestaraAI() {
     } catch (error) {
       console.error('Error sending message:', error)
       
-      let errorContent = 'I apologize, but I\'m having trouble connecting right now. Please try again in a moment.'
+      let errorContent = 'Take a cup of coffee ☕ and get back in a few minutes. I need a moment to recharge!'
       
       // Check for rate limit error
       if (error instanceof Error && (error.message.includes('429') || error.message.includes('quota') || error.message.includes('rate limit'))) {
