@@ -12,8 +12,14 @@ export function StatusBadge({ status, type = 'candidate' }: StatusBadgeProps) {
     const candidateStatusColors: Record<string, string> = {
       'WON': 'bg-green-100 text-green-800',
       'LOST': 'bg-red-100 text-red-800',
+      'LOST, NO RESPONSE': 'bg-red-100 text-red-800',
+      'LOST, PERSONALITY': 'bg-red-100 text-red-800',
+      'LOST, SALARY': 'bg-red-100 text-red-800',
+      'LOST, EXPERIENCE': 'bg-red-100 text-red-800',
+      'LOST, NO GOOD CONDUCT': 'bg-red-100 text-red-800',
       'PENDING': 'bg-yellow-100 text-yellow-800',
       'INTERVIEW_SCHEDULED': 'bg-blue-100 text-blue-800',
+      'BLACKLISTED': 'bg-gray-800 text-white',
       'ARCHIVED': 'bg-gray-200 text-gray-700'
     }
 
@@ -80,10 +86,15 @@ export function StatusBadge({ status, type = 'candidate' }: StatusBadgeProps) {
       'SCHEDULED': 'bg-blue-100 text-blue-800',
       'COMPLETED': 'bg-green-100 text-green-800',
       'WON': 'bg-green-100 text-green-800',
+      'INTERVIEW_WON': 'bg-green-100 text-green-800',
       'LOST': 'bg-red-100 text-red-800',
+      'INTERVIEW_LOST': 'bg-red-100 text-red-800',
+      'MISSED': 'bg-orange-100 text-orange-800',
+      'MISSED_INTERVIEW': 'bg-orange-100 text-orange-800',
+      'RESCHEDULE': 'bg-purple-100 text-purple-800',
+      'RESCHEDULE_INTERVIEW': 'bg-purple-100 text-purple-800',
       'NO-SHOW': 'bg-red-100 text-red-800',
       'NEEDS-ATTENTION': 'bg-red-100 text-red-800 border border-red-500',
-      // PENDING status removed as per requirements
     }
 
     const mapByType: Record<string, Record<string, string>> = {
@@ -113,7 +124,19 @@ export function StatusBadge({ status, type = 'candidate' }: StatusBadgeProps) {
   }
 
   const formatStatusText = (status: string) => {
-    // Return the status as-is for the new MainStatus - SubStatus format
+    // Format interview statuses to show full names
+    if (type === 'interview') {
+      switch (status.toUpperCase()) {
+        case 'INTERVIEW_WON': return 'Interview Won'
+        case 'INTERVIEW_LOST': return 'Interview Lost'
+        case 'MISSED_INTERVIEW': return 'Missed Interview'
+        case 'RESCHEDULE_INTERVIEW': return 'Reschedule Interview'
+        case 'SCHEDULED': return 'Scheduled'
+        case 'NEEDS-ATTENTION': return 'Needs Attention'
+        default: return status
+      }
+    }
+    // Return the status as-is for other types
     return status
   }
 

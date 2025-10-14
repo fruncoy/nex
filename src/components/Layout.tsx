@@ -19,7 +19,8 @@ import {
   UserCheck,
   Target,
   CheckCircle,
-  Brain
+  Brain,
+  Clock
 } from 'lucide-react'
 
 export function Layout() {
@@ -86,6 +87,7 @@ export function Layout() {
       href: '/updates', 
       icon: MessageCircle,
       subItems: [
+        { name: 'Reminders', href: '/reminders', icon: Clock },
         { name: 'Meeting Notes', href: '/meeting-notes', icon: MessageCircle }
       ]
     },

@@ -10,6 +10,7 @@ import { Clients } from './pages/Clients'
 import { TrainingLeads } from './pages/TrainingLeads'
 import { Interviews } from './pages/Interviews'
 import { Updates } from './pages/Updates'
+import { Reminders } from './pages/Reminders'
 import { MeetingNotes } from './pages/MeetingNotes'
 import { Reporting } from './pages/Reporting'
 import { DataEntry } from './pages/reporting/DataEntry'
@@ -64,6 +65,7 @@ function AppRoutes() {
         <Route path="insights" element={<Insights />} />
         <Route path="nestara-ai" element={<NestaraAI />} />
         <Route path="updates" element={<Updates />} />
+        <Route path="reminders" element={<Reminders />} />
         <Route path="meeting-notes" element={<MeetingNotes />} />
         <Route path="reporting" element={<Reporting />}>
           <Route index element={<DataEntry />} />

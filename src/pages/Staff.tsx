@@ -13,6 +13,7 @@ interface WonCandidate {
   created_at: string
   id_number?: string
   place_of_stay?: string
+  hired_date?: string
 }
 
 export function Staff() {
@@ -44,12 +45,64 @@ export function Staff() {
         .order('created_at', { ascending: false })
 
       if (error) throw error
-      setCandidates(data || [])
+      
+      // Get hired dates for each candidate
+      const candidatesWithHiredDate = await Promise.all(
+        (data || []).map(async (candidate) => {
+          const hiredDate = await getHiredDate(candidate.id)
+          return { ...candidate, hired_date: hiredDate }
+        })
+      )
+      
+      setCandidates(candidatesWithHiredDate)
     } catch (error) {
       console.error('Error loading won candidates:', error)
       showToast('Failed to load staff', 'error')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const getHiredDate = async (candidateId: string) => {
+    try {
+      // First check if there's a won interview
+      const { data: interviews } = await supabase
+        .from('interviews')
+        .select('date_time, outcome, updated_at')
+        .eq('candidate_id', candidateId)
+        .eq('outcome', 'Won Interview')
+        .order('updated_at', { ascending: false })
+        .limit(1)
+      
+      if (interviews && interviews.length > 0) {
+        return interviews[0].updated_at
+      }
+      
+      // If no won interview, check updates table for when candidate was marked as WON
+      const { data: updates } = await supabase
+        .from('updates')
+        .select('created_at')
+        .eq('linked_to_type', 'candidate')
+        .eq('linked_to_id', candidateId)
+        .ilike('update_text', '%marked as WON%')
+        .order('created_at', { ascending: false })
+        .limit(1)
+      
+      if (updates && updates.length > 0) {
+        return updates[0].created_at
+      }
+      
+      // Fallback to candidate created_at
+      const { data: candidate } = await supabase
+        .from('candidates')
+        .select('created_at')
+        .eq('id', candidateId)
+        .single()
+      
+      return candidate?.created_at || new Date().toISOString()
+    } catch (error) {
+      console.error('Error getting hired date:', error)
+      return new Date().toISOString()
     }
   }
 
@@ -165,7 +218,7 @@ export function Staff() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{candidate.role}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{candidate.source || 'N/A'}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{formatDisplayDate(candidate.created_at)}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{formatDisplayDate(candidate.hired_date || candidate.created_at)}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <button
                         onClick={() => handleViewDetails(candidate)}
@@ -224,7 +277,7 @@ export function Staff() {
                   <label className="block text-sm font-medium text-gray-700">Hired Date</label>
                   <p className="text-sm text-gray-900 flex items-center">
                     <Calendar className="w-4 h-4 mr-2 text-gray-400" />
-                    {formatDisplayDate(selectedCandidate.created_at)}
+                    {formatDisplayDate(selectedCandidate.hired_date || selectedCandidate.created_at)}
                   </p>
                 </div>
                 {selectedCandidate.id_number && (

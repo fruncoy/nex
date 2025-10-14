@@ -7,6 +7,8 @@ import { Plus, Building2, Calendar, User, MessageSquare, Eye, Edit, AlertTriangl
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
 import { ActivityLogger } from '../lib/activityLogger'
+import { formatDateTime } from '../utils/dateFormat'
+import { StatusHistoryLogger } from '../lib/statusHistory'
 
 interface Client {
   id: string
@@ -22,13 +24,6 @@ interface Client {
   updated_at: string
 }
 
-interface StatusOption {
-  label: string
-  color: string
-  subcategories?: string[]
-  parent?: string
-}
-
 export function Clients() {
   const [clients, setClients] = useState<Client[]>([])
   const [filteredClients, setFilteredClients] = useState<Client[]>([])
@@ -40,9 +35,6 @@ export function Clients() {
   const [showBulkUpload, setShowBulkUpload] = useState(false)
   const [showReminderModal, setShowReminderModal] = useState(false)
   const [selectedClientForReminder, setSelectedClientForReminder] = useState<Client | null>(null)
-  const [showStatusModal, setShowStatusModal] = useState(false)
-  const [selectedClientForStatus, setSelectedClientForStatus] = useState<Client | null>(null)
-  const [statusForm, setStatusForm] = useState({ mainStatus: '', subStatus: '' })
   const [reminderForm, setReminderForm] = useState({ date: '', time: '' })
   const [uploadFile, setUploadFile] = useState<File | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -53,55 +45,43 @@ export function Clients() {
   const [selectedClientForNotes, setSelectedClientForNotes] = useState<Client | null>(null)
   const [clientNotes, setClientNotes] = useState<any[]>([])
   const [newNote, setNewNote] = useState('')
+  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({})
+  const [noteCounts, setNoteCounts] = useState<Record<string, number>>({})
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
     gmail: '',
     source: '',
     want_to_hire: '',
-    status: 'Pending',
-    substatus: 'Form not filled', // Default substatus for Pending
+    status: 'Pending - No Comms'
   })
 
   const { user, staff } = useAuth()
   const { showToast } = useToast()
 
-  // Exact status system as specified
-  const statusOptions: Record<string, StatusOption> = {
-    'Pending': { label: 'Pending', color: 'bg-yellow-100 text-yellow-800', subcategories: [
-      'Form not filled',
-      'PAF not PAID', 
-      'Silent after profiles'
-    ]},
-    'Form not filled': { label: 'Form not filled', color: 'bg-yellow-100 text-yellow-800', parent: 'Pending' },
-    'PAF not PAID': { label: 'PAF not PAID', color: 'bg-yellow-100 text-yellow-800', parent: 'Pending' },
-    'Silent after profiles': { label: 'Silent after profiles', color: 'bg-yellow-100 text-yellow-800', parent: 'Pending' },
+  // Status system without plain options
+  const statusOptions = {
+    'Pending - No Comms': { label: 'Pending - No Comms', color: 'bg-yellow-100 text-yellow-800' },
+    'Pending - Form not filled': { label: 'Pending - Form not filled', color: 'bg-yellow-100 text-yellow-800' },
+    'Pending - PAF not PAID': { label: 'Pending - PAF not PAID', color: 'bg-yellow-100 text-yellow-800' },
+    'Pending - Silent after profiles': { label: 'Pending - Silent after profiles', color: 'bg-yellow-100 text-yellow-800' },
     
-    'Active': { label: 'Active', color: 'bg-blue-100 text-blue-800', subcategories: [
-      'Form filled, no response yet',
-      'Communication ongoing',
-      'Payment pending'
-    ]},
-    'Form filled, no response yet': { label: 'Form filled, no response yet', color: 'bg-blue-100 text-blue-800', parent: 'Active' },
-    'Communication ongoing': { label: 'Communication ongoing', color: 'bg-blue-100 text-blue-800', parent: 'Active' },
-    'Payment pending': { label: 'Payment pending', color: 'bg-blue-100 text-blue-800', parent: 'Active' },
+    'Active - Form filled, no response yet': { label: 'Active - Form filled, no response yet', color: 'bg-blue-100 text-blue-800' },
+    'Active - Communication ongoing': { label: 'Active - Communication ongoing', color: 'bg-blue-100 text-blue-800' },
+    'Active - Payment pending': { label: 'Active - Payment pending', color: 'bg-blue-100 text-blue-800' },
     
-    'Lost/Cold': { label: 'Lost/Cold', color: 'bg-red-100 text-red-800', subcategories: [
-      'Ghosted',
-      'Budget constraints', 
-      'Disappointed with profiles',
-      'Lost to Competition'
-    ]},
-    'Ghosted': { label: 'Ghosted', color: 'bg-red-100 text-red-800', parent: 'Lost/Cold' },
-    'Budget constraints': { label: 'Budget constraints', color: 'bg-red-100 text-red-800', parent: 'Lost/Cold' },
-    'Disappointed with profiles': { label: 'Disappointed with profiles', color: 'bg-red-100 text-red-800', parent: 'Lost/Cold' },
-    'Lost to Competition': { label: 'Lost to Competition', color: 'bg-red-100 text-red-800', parent: 'Lost/Cold' },
+    'Lost/Cold - Ghosted': { label: 'Lost/Cold - Ghosted', color: 'bg-red-100 text-red-800' },
+    'Lost/Cold - Budget constraints': { label: 'Lost/Cold - Budget constraints', color: 'bg-red-100 text-red-800' },
+    'Lost/Cold - Disappointed with profiles': { label: 'Lost/Cold - Disappointed with profiles', color: 'bg-red-100 text-red-800' },
+    'Lost/Cold - Lost to Competition': { label: 'Lost/Cold - Lost to Competition', color: 'bg-red-100 text-red-800' },
     
     'Won': { label: 'Won', color: 'bg-green-100 text-green-800' }
   }
   
   const statusOptionsList = Object.keys(statusOptions)
-  const mainStatusOptions = ['Pending', 'Active', 'Lost/Cold', 'Won']
+  const pendingOptions = ['Pending - No Comms', 'Pending - Form not filled', 'Pending - PAF not PAID', 'Pending - Silent after profiles']
+  const activeOptions = ['Active - Form filled, no response yet', 'Active - Communication ongoing', 'Active - Payment pending']
+  const lostOptions = ['Lost/Cold - Ghosted', 'Lost/Cold - Budget constraints', 'Lost/Cold - Disappointed with profiles', 'Lost/Cold - Lost to Competition']
   
   // Source options (same as candidates table)
   const sourceOptions = ['TikTok', 'Facebook', 'Instagram', 'Google Search', 'Website', 'Referral', 'LinkedIn', 'Walk-in poster', 'Youtube']
@@ -109,13 +89,34 @@ export function Clients() {
   // Role options (updated as requested)  
   const roleOptions = ['Nanny', 'House Manager', 'Chef', 'Driver', 'Night Nurse', 'Caregiver', 'Housekeeper', 'Uniforms']
 
-  // Time options for business hours (8am-5pm) - Currently used for display reference
-  // Note: Reminders are set via date picker only, default time is 9:00 AM
-  const businessHours = [
-    '08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30',
-    '12:00', '12:30', '13:00', '13:30', '14:00', '14:30', '15:00', '15:30',
-    '16:00', '16:30', '17:00'
-  ]
+  // Load unread notes counts
+  const loadUnreadCounts = async () => {
+    if (!staff?.name) return
+    
+    const counts: Record<string, number> = {}
+    const totalCounts: Record<string, number> = {}
+    
+    for (const client of clients) {
+      // Get unread count
+      const { data: unreadData } = await supabase.rpc('get_unread_notes_count', {
+        entity_type: 'client',
+        entity_id: client.id,
+        user_name: staff.name
+      })
+      counts[client.id] = unreadData || 0
+      
+      // Get total note count
+      const { data: totalData } = await supabase
+        .from('client_notes')
+        .select('id', { count: 'exact' })
+        .eq('client_id', client.id)
+      
+      totalCounts[client.id] = totalData?.length || 0
+    }
+    
+    setUnreadCounts(counts)
+    setNoteCounts(totalCounts)
+  }
 
   // Helper function to get time until reminder
   const getTimeUntilReminder = (reminderDateTime: string) => {
@@ -138,42 +139,15 @@ export function Clients() {
       return { overdue: true, text: 'Need Attention' }
     }
   }
-  // Helper function to format date for logging with "Tue, 24th June 2025" format
-  const formatDateForLogging = (dateString: string) => {
-    const date = new Date(dateString)
-    const day = date.getDate()
-    const month = date.toLocaleString('default', { month: 'long' })
-    const year = date.getFullYear()
-    const dayOfWeek = date.toLocaleString('default', { weekday: 'short' })
-    const suffix = day === 1 || day === 21 || day === 31 ? 'st' :
-                   day === 2 || day === 22 ? 'nd' :
-                   day === 3 || day === 23 ? 'rd' : 'th'
-    return `${dayOfWeek}, ${day}${suffix} ${month} ${year}`
-  }
 
   // Helper function to check if client needs attention - ONLY for reminders
   const needsAttention = (client: Client): boolean => {
-    // Only check custom reminder datetime
     if (client.custom_reminder_datetime) {
       const now = new Date()
       const reminderTime = new Date(client.custom_reminder_datetime)
       if (now >= reminderTime) return true
     }
-    
     return false
-  }
-
-  // Helper function to format status for display
-  const getStatusDisplay = (status: string) => {
-    return statusOptions[status]?.label || status
-  }
-
-  // Helper function to get the final status for saving
-  const getFinalStatus = () => {
-    if (statusOptions[formData.status]?.subcategories && formData.substatus) {
-      return `${formData.status} - ${formData.substatus}`
-    }
-    return formData.status
   }
 
   // Bulk upload functionality
@@ -208,7 +182,6 @@ export function Clients() {
         return
       }
 
-      // Helper function to parse CSV rows properly
       const parseCSVRow = (row: string) => {
         const result = []
         let current = ''
@@ -234,7 +207,6 @@ export function Clients() {
       const header = rows[0]
       const dataRows = rows.slice(1)
       
-      // Parse header row
       const headerCols = parseCSVRow(header).map(s => s.trim().toLowerCase())
       const nameIdx = headerCols.findIndex(col => col.includes('name'))
       const phoneIdx = headerCols.findIndex(col => col.includes('phone'))
@@ -250,7 +222,6 @@ export function Clients() {
         return
       }
 
-      // fetch existing phones to avoid duplicates
       const { data: existing, error: fetchError } = await supabase.from('clients').select('phone')
       if (fetchError) {
         console.error('Error fetching existing clients:', fetchError)
@@ -297,10 +268,16 @@ export function Clients() {
             continue
           }
 
-          if (!statusOptionsList.includes(status)) {
+          if (!statusOptionsList.includes(status) && status !== 'Pending' && status !== 'Active' && status !== 'Lost/Cold') {
             errors.push(`Row ${i + 2}: Invalid status '${status}'. Must be one of: ${statusOptionsList.join(', ')}`)
             continue
           }
+          
+          // Convert legacy statuses
+          let finalStatus = status
+          if (status === 'Pending') finalStatus = 'Pending - No Comms'
+          if (status === 'Active') finalStatus = 'Active - Communication ongoing'
+          if (status === 'Lost/Cold') finalStatus = 'Lost/Cold - Ghosted'
 
           existingSet.add(phone)
 
@@ -314,7 +291,7 @@ export function Clients() {
             gmail,
             source,
             want_to_hire, 
-            status, 
+            status: finalStatus, 
             custom_reminder_datetime,
             inquiry_date: new Date().toISOString().split('T')[0],
             created_at: new Date().toISOString()
@@ -345,7 +322,6 @@ export function Clients() {
         return
       }
 
-      // Log the bulk upload activity
       if (staff?.id && staff?.name) {
         await ActivityLogger.logBulkUpload(
           staff.id,
@@ -370,7 +346,6 @@ export function Clients() {
   useEffect(() => {
     loadClients()
     
-    // Set up real-time subscription
     const subscription = supabase
       .channel('clients-changes')
       .on(
@@ -388,6 +363,12 @@ export function Clients() {
       subscription.unsubscribe()
     }
   }, [])
+
+  useEffect(() => {
+    if (clients.length > 0) {
+      loadUnreadCounts()
+    }
+  }, [clients, staff?.name])
 
   useEffect(() => {
     filterClients()
@@ -425,15 +406,16 @@ export function Clients() {
 
     if (filterStatus !== 'all') {
       filtered = filtered.filter(client => {
-        // Handle both "MainStatus" and "MainStatus - SubStatus" formats
-        if (client.status === filterStatus) {
-          return true // Exact match for main status
+        if (filterStatus === 'Pending') {
+          return client.status.startsWith('Pending -')
         }
-        // Check if the status starts with the main status followed by " - "
-        if (client.status.startsWith(`${filterStatus} - `)) {
-          return true // Status is "MainStatus - SubStatus" format
+        if (filterStatus === 'Active') {
+          return client.status.startsWith('Active -')
         }
-        return false
+        if (filterStatus === 'Lost/Cold') {
+          return client.status.startsWith('Lost/Cold -')
+        }
+        return client.status === filterStatus
       })
     }
 
@@ -443,17 +425,8 @@ export function Clients() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
-    // Validation: If main status has subcategories, require substatus selection
-    if (statusOptions[formData.status]?.subcategories && !formData.substatus) {
-      showToast(`Please select a specific ${formData.status.toLowerCase()} status`, 'error')
-      return
-    }
-    
     try {
-      const finalStatus = getFinalStatus()
-
       if (selectedClient) {
-        // Update existing client
         const { error } = await supabase
           .from('clients')
           .update({
@@ -462,14 +435,29 @@ export function Clients() {
             gmail: formData.gmail,
             source: formData.source,
             want_to_hire: formData.want_to_hire,
-            status: finalStatus,
+            status: formData.status,
           })
           .eq('id', selectedClient.id)
 
         if (error) throw error
 
-        // Log the activity
         if (staff?.id && staff?.name) {
+          const oldStatus = selectedClient.status
+          const newStatus = formData.status
+          
+          if (oldStatus !== newStatus) {
+            // Log status change to history
+            await StatusHistoryLogger.logStatusChange(
+              'client',
+              selectedClient.id,
+              formData.name,
+              oldStatus,
+              newStatus,
+              staff.id,
+              staff.name
+            )
+          }
+          
           await ActivityLogger.logEdit(
             staff.id,
             'client',
@@ -481,8 +469,7 @@ export function Clients() {
 
         showToast(`Client updated successfully`, 'success')
       } else {
-        // Create new client
-        const { error } = await supabase
+        const { data, error } = await supabase
           .from('clients')
           .insert({
             name: formData.name,
@@ -490,19 +477,31 @@ export function Clients() {
             gmail: formData.gmail,
             source: formData.source,
             want_to_hire: formData.want_to_hire,
-            status: finalStatus,
+            status: formData.status,
           })
+          .select()
+          .single()
 
         if (error) throw error
         
-        // Log the activity for new client creation
-        if (staff?.id && staff?.name) {
+        if (staff?.id && staff?.name && data) {
           await ActivityLogger.logCreate(
             staff.id,
             'client',
-            'new', // We don't have the ID yet, but we'll use 'new'
+            data.id,
             formData.name,
             staff.name
+          )
+          // Log initial status to history
+          await StatusHistoryLogger.logStatusChange(
+            'client',
+            data.id,
+            formData.name,
+            null,
+            formData.status,
+            staff.id,
+            staff.name,
+            'Initial status on creation'
           )
         }
         
@@ -525,35 +524,22 @@ export function Clients() {
       gmail: '',
       source: '',
       want_to_hire: '',
-      status: 'Pending',
-      substatus: 'Form not filled', // Default substatus for Pending
+      status: 'Pending - No Comms'
     })
     setSelectedClient(null)
   }
 
   const handleEdit = (client: Client) => {
     setSelectedClient(client)
-    // Determine if the client status is a subcategory
-    const statusOption = statusOptions[client.status]
-    const isSubcategory = statusOption?.parent !== undefined
-    const mainStatus = isSubcategory ? statusOption?.parent : client.status
-    const subStatus = isSubcategory ? client.status : ''
-    
     setFormData({
       name: client.name,
       phone: client.phone,
       gmail: client.gmail,
       source: client.source || 'Referral',
       want_to_hire: client.want_to_hire,
-      status: mainStatus || 'Pending',
-      substatus: subStatus,
+      status: client.status,
     })
     setShowModal(true)
-  }
-
-  const handleViewComms = (client: Client) => {
-    setSelectedClient(client)
-    setShowCommsModal(true)
   }
 
   const handleReminderEdit = (client: Client) => {
@@ -586,58 +572,6 @@ export function Clients() {
 
       if (error) throw error
 
-      // Log the reminder activity
-      if (staff?.id && staff?.name) {
-        const oldReminder = selectedClientForReminder.custom_reminder_datetime
-        if (oldReminder && custom_reminder_datetime) {
-          // Rescheduling reminder
-          const formatDateForLogging = (dateString: string) => {
-            const date = new Date(dateString)
-            const day = date.getDate()
-            const month = date.toLocaleString('default', { month: 'long' })
-            const year = date.getFullYear()
-            const dayOfWeek = date.toLocaleString('default', { weekday: 'short' })
-            const suffix = day === 1 || day === 21 || day === 31 ? 'st' :
-                           day === 2 || day === 22 ? 'nd' :
-                           day === 3 || day === 23 ? 'rd' : 'th'
-            return `${dayOfWeek}, ${day}${suffix} ${month} ${year}`
-          }
-          
-          await ActivityLogger.log({
-            userId: staff.id,
-            actionType: 'reschedule',
-            entityType: 'client',
-            entityId: selectedClientForReminder.id,
-            entityName: selectedClientForReminder.name,
-            oldValue: formatDateForLogging(oldReminder),
-            newValue: formatDateForLogging(custom_reminder_datetime),
-            description: `${staff.name}: rescheduled reminder for Client "${selectedClientForReminder.name}" from ${formatDateForLogging(oldReminder)} to ${formatDateForLogging(custom_reminder_datetime)}`
-          })
-        } else if (custom_reminder_datetime) {
-          // Setting new reminder
-          const formatDateForLogging = (dateString: string) => {
-            const date = new Date(dateString)
-            const day = date.getDate()
-            const month = date.toLocaleString('default', { month: 'long' })
-            const year = date.getFullYear()
-            const dayOfWeek = date.toLocaleString('default', { weekday: 'short' })
-            const suffix = day === 1 || day === 21 || day === 31 ? 'st' :
-                           day === 2 || day === 22 ? 'nd' :
-                           day === 3 || day === 23 ? 'rd' : 'th'
-            return `${dayOfWeek}, ${day}${suffix} ${month} ${year}`
-          }
-          
-          await ActivityLogger.log({
-            userId: staff.id,
-            actionType: 'edit',
-            entityType: 'client',
-            entityId: selectedClientForReminder.id,
-            entityName: selectedClientForReminder.name,
-            description: `${staff.name}: set reminder for Client "${selectedClientForReminder.name}" on ${formatDateForLogging(custom_reminder_datetime)}`
-          })
-        }
-      }
-
       await loadClients()
       setShowReminderModal(false)
       setSelectedClientForReminder(null)
@@ -649,17 +583,8 @@ export function Clients() {
     }
   }
 
-  const handleReminderCancel = () => {
-    setShowReminderModal(false)
-    setSelectedClientForReminder(null)
-    setReminderForm({ date: '', time: '' })
-  }
-
   const handleReminderDelete = async (clientId: string) => {
     try {
-      // Get client info for logging
-      const client = clients.find(c => c.id === clientId)
-      
       const { error } = await supabase
         .from('clients')
         .update({ custom_reminder_datetime: null })
@@ -667,160 +592,12 @@ export function Clients() {
 
       if (error) throw error
 
-      // Log the reminder cancellation
-      if (staff?.id && staff?.name && client) {
-        await ActivityLogger.log({
-          userId: staff.id,
-          actionType: 'edit',
-          entityType: 'client',
-          entityId: clientId,
-          entityName: client.name,
-          description: `${staff.name}: cancelled reminder for Client "${client.name}"`
-        })
-      }
-
       await loadClients()
       showToast('Reminder cancelled successfully', 'success')
     } catch (error) {
       console.error('Error cancelling reminder:', error)
       showToast('Failed to cancel reminder', 'error')
     }
-  }
-
-  const handleStatusEdit = (client: Client) => {
-    setSelectedClientForStatus(client)
-    
-    // Parse MainStatus - SubStatus format
-    if (client.status.includes(' - ')) {
-      const [mainStatus, subStatus] = client.status.split(' - ')
-      setStatusForm({
-        mainStatus: mainStatus.trim(),
-        subStatus: subStatus.trim()
-      })
-    } else {
-      // Handle single status (like "Won" or legacy statuses)
-      const statusOption = statusOptions[client.status]
-      const isSubcategory = statusOption?.parent !== undefined
-      const mainStatus = isSubcategory ? statusOption?.parent : client.status
-      const subStatus = isSubcategory ? client.status : ''
-      
-      setStatusForm({
-        mainStatus: mainStatus || 'Pending',
-        subStatus: subStatus
-      })
-    }
-    
-    setShowStatusModal(true)
-  }
-
-  const handleStatusSave = async () => {
-    if (!selectedClientForStatus) return
-    
-    // Validation
-    if (!statusForm.mainStatus) {
-      showToast('Please select a main status', 'error')
-      return
-    }
-    
-    if (statusForm.mainStatus !== 'Won' && statusOptions[statusForm.mainStatus]?.subcategories && !statusForm.subStatus) {
-      showToast(`Please select a ${statusForm.mainStatus.toLowerCase()} substatus`, 'error')
-      return
-    }
-    
-    try {
-      let finalStatus = statusForm.mainStatus
-      
-      // Format as "MainStatus - SubStatus" if sub-status is selected
-      if (statusForm.subStatus) {
-        finalStatus = `${statusForm.mainStatus} - ${statusForm.subStatus}`
-      }
-      
-      console.log('Attempting to update status:', {
-        clientId: selectedClientForStatus.id,
-        currentStatus: selectedClientForStatus.status,
-        newStatus: finalStatus,
-        mainStatus: statusForm.mainStatus,
-        subStatus: statusForm.subStatus
-      })
-      
-      // Test basic connectivity first
-      console.log('Testing Supabase connection...')
-      const { data: testData, error: testError } = await supabase
-        .from('clients')
-        .select('id, status')
-        .eq('id', selectedClientForStatus.id)
-        .single()
-      
-      if (testError) {
-        console.error('Connection test failed:', testError)
-        throw new Error(`Database connection failed: ${testError.message}`)
-      }
-      
-      console.log('Connection test successful:', testData)
-      
-      const { data, error } = await supabase
-        .from('clients')
-        .update({ 
-          status: finalStatus,
-          custom_reminder_datetime: null // Auto-cancel reminder when status is updated
-        })
-        .eq('id', selectedClientForStatus.id)
-        .select() // Return the updated record
-
-      if (error) {
-        console.error('Supabase error:', error)
-        throw error
-      }
-      
-      console.log('Update successful:', data)
-      
-      // Log the activity
-      if (staff?.id && staff?.name) {
-        await ActivityLogger.logStatusChange(
-          staff.id,
-          'client',
-          selectedClientForStatus.id,
-          selectedClientForStatus.name,
-          selectedClientForStatus.status,
-          finalStatus,
-          staff.name
-        )
-      }
-
-      await loadClients()
-      setShowStatusModal(false)
-      setSelectedClientForStatus(null)
-      setStatusForm({ mainStatus: '', subStatus: '' })
-      showToast('Status updated successfully', 'success')
-    } catch (error) {
-      console.error('Full error object:', error)
-      console.error('Error type:', typeof error)
-      console.error('Error keys:', Object.keys(error || {}))
-      
-      let errorMessage = 'Unknown error'
-      
-      if (error && typeof error === 'object') {
-        if ('message' in error) {
-          errorMessage = String(error.message)
-        } else if ('error' in error) {
-          errorMessage = String(error.error)
-        } else if ('details' in error) {
-          errorMessage = String(error.details)
-        } else {
-          errorMessage = JSON.stringify(error)
-        }
-      } else if (typeof error === 'string') {
-        errorMessage = error
-      }
-      
-      showToast(`Failed to update status: ${errorMessage}`, 'error')
-    }
-  }
-
-  const handleStatusCancel = () => {
-    setShowStatusModal(false)
-    setSelectedClientForStatus(null)
-    setStatusForm({ mainStatus: '', subStatus: '' })
   }
 
   const handleBulkStatusChange = async () => {
@@ -855,6 +632,7 @@ export function Clients() {
   const handleViewNotes = async (client: Client) => {
     setSelectedClientForNotes(client)
     setShowNotesModal(true)
+    setClientNotes([]) // Clear previous notes
     
     try {
       const { data, error } = await supabase
@@ -863,10 +641,31 @@ export function Clients() {
         .eq('client_id', client.id)
         .order('created_at', { ascending: false })
       
-      if (error) throw error
+      if (error) {
+        console.error('Error loading notes:', error)
+        return
+      }
+      
+      console.log('Loaded client notes:', data) // Debug log
       setClientNotes(data || [])
+      
+      // Mark all notes as read for current user
+      if (staff?.name && data?.length > 0) {
+        for (const note of data) {
+          const currentReadBy = note.read_by || {}
+          const updatedReadBy = { ...currentReadBy, [staff.name]: new Date().toISOString() }
+          
+          await supabase
+            .from('client_notes')
+            .update({ read_by: updatedReadBy })
+            .eq('id', note.id)
+        }
+        
+        // Update unread count immediately
+        setUnreadCounts(prev => ({ ...prev, [client.id]: 0 }))
+      }
     } catch (error) {
-      console.error('Error loading notes:', error)
+      console.error('Error in handleViewNotes:', error)
       setClientNotes([])
     }
   }
@@ -880,14 +679,14 @@ export function Clients() {
         .insert({
           client_id: selectedClientForNotes.id,
           note: newNote.trim(),
-          created_by: staff?.name || user?.email || 'Unknown',
-          created_at: new Date().toISOString()
+          created_by: staff?.name || user?.email || 'Unknown'
         })
       
       if (error) throw error
       
       setNewNote('')
       await handleViewNotes(selectedClientForNotes)
+      await loadUnreadCounts() // Refresh both counts
       showToast('Note added successfully', 'success')
     } catch (error) {
       console.error('Error adding note:', error)
@@ -942,7 +741,7 @@ export function Clients() {
         onSearchChange={setSearchTerm}
         filterStatus={filterStatus}
         onFilterChange={setFilterStatus}
-        statusOptions={mainStatusOptions}
+        statusOptions={['Pending', 'Active', 'Lost/Cold', 'Won']}
         placeholder="Search by name, phone, gmail, source, or role..."
       />
 
@@ -959,9 +758,21 @@ export function Clients() {
               className="px-3 py-1 border border-blue-300 rounded text-sm"
             >
               <option value="">Change status to...</option>
-              <option value="Pending">Pending</option>
-              <option value="Active">Active</option>
-              <option value="Lost/Cold">Lost/Cold</option>
+              <optgroup label="Pending">
+                {pendingOptions.map(status => (
+                  <option key={status} value={status}>{status}</option>
+                ))}
+              </optgroup>
+              <optgroup label="Active">
+                {activeOptions.map(status => (
+                  <option key={status} value={status}>{status}</option>
+                ))}
+              </optgroup>
+              <optgroup label="Lost/Cold">
+                {lostOptions.map(status => (
+                  <option key={status} value={status}>{status}</option>
+                ))}
+              </optgroup>
               <option value="Won">Won</option>
             </select>
             <button
@@ -1035,17 +846,7 @@ export function Clients() {
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{client.source || 'N/A'}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{client.want_to_hire}</td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center gap-2">
-                        <StatusBadge status={client.status} type="client" />
-                        {(() => {
-                          const timeInfo = client.custom_reminder_datetime ? getTimeUntilReminder(client.custom_reminder_datetime) : null
-                          return timeInfo?.overdue && (
-                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                              ⚠️ Needs Attention
-                            </span>
-                          )
-                        })()} 
-                      </div>
+                      <StatusBadge status={client.status} type="client" />
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       <div className="flex items-center gap-2">
@@ -1086,34 +887,39 @@ export function Clients() {
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      <button
-                        onClick={() => handleViewNotes(client)}
-                        className="text-blue-600 hover:text-blue-800 p-1 border border-blue-300 rounded hover:bg-blue-50"
-                        title="View/Add Notes"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </button>
+                      <div className="relative">
+                        <button
+                          onClick={() => handleViewNotes(client)}
+                          className="text-nestalk-primary hover:text-nestalk-primary/80"
+                          title="View/Add Notes"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+                        {/* Red badge for unread notes */}
+                        {(unreadCounts[client.id] || 0) > 0 && (
+                          <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-4 w-4 flex items-center justify-center">
+                            {unreadCounts[client.id]}
+                          </span>
+                        )}
+                        {/* Gray badge for read notes (when there are notes but all are read) */}
+                        {(noteCounts[client.id] || 0) > 0 && (unreadCounts[client.id] || 0) === 0 && (
+                          <span className="absolute -top-1 -right-1 bg-gray-500 text-white text-xs rounded-full h-4 w-4 flex items-center justify-center">
+                            {noteCounts[client.id]}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {new Date(client.inquiry_date).toLocaleDateString()}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => handleEdit(client)}
-                          className="text-nestalk-primary hover:text-nestalk-primary/80"
-                          title="Edit"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleStatusEdit(client)}
-                          className="text-gray-600 hover:text-gray-800 text-xs px-3 py-1 border border-gray-300 rounded hover:bg-gray-50"
-                          title="Update Status"
-                        >
-                          Update Status
-                        </button>
-                      </div>
+                      <button
+                        onClick={() => handleEdit(client)}
+                        className="text-nestalk-primary hover:text-nestalk-primary/80"
+                        title="Edit"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
                     </td>
                   </tr>
                 )
@@ -1213,44 +1019,27 @@ export function Clients() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
                   <select
                     value={formData.status}
-                    onChange={(e) => {
-                      const newStatus = e.target.value;
-                      const newSubstatus = statusOptions[newStatus]?.subcategories?.[0] || '';
-                      setFormData({ ...formData, status: newStatus, substatus: newSubstatus })
-                    }}
+                    onChange={(e) => setFormData({ ...formData, status: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
                   >
-                    {mainStatusOptions.map(status => (
-                      <option key={status} value={status}>
-                        {getStatusDisplay(status)}
-                      </option>
-                    ))}
+                    <optgroup label="Pending">
+                      {pendingOptions.map(status => (
+                        <option key={status} value={status}>{status}</option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Active">
+                      {activeOptions.map(status => (
+                        <option key={status} value={status}>{status}</option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Lost/Cold">
+                      {lostOptions.map(status => (
+                        <option key={status} value={status}>{status}</option>
+                      ))}
+                    </optgroup>
+                    <option value="Won">Won</option>
                   </select>
                 </div>
-
-                {/* Conditional substatus dropdown */}
-                {statusOptions[formData.status]?.subcategories && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      {formData.status} Status <span className="text-red-500">*</span>
-                    </label>
-                    <select
-                      required
-                      value={formData.substatus}
-                      onChange={(e) => setFormData({ ...formData, substatus: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
-                    >
-                      <option value="">Select {formData.status.toLowerCase()} status</option>
-                      {statusOptions[formData.status].subcategories?.map(substatus => (
-                        <option key={substatus} value={substatus}>
-                          {substatus}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-
-
 
                 <div className="flex gap-3 pt-4">
                   <button
@@ -1275,15 +1064,6 @@ export function Clients() {
           </div>
         </div>
       )}
-
-      {/* Communications Modal */}
-      <CommunicationsModal
-        isOpen={showCommsModal}
-        onClose={() => setShowCommsModal(false)}
-        linkedToType="client"
-        linkedToId={selectedClient?.id || ''}
-        linkedToName={selectedClient?.name || ''}
-      />
 
       {/* Bulk Upload Modal */}
       {showBulkUpload && (
@@ -1316,11 +1096,8 @@ export function Clients() {
                     <li>Source (optional, defaults to Referral)</li>
                     <li>Want to Hire (optional, defaults to Caregiver)</li>
                     <li>Status (optional, defaults to Pending)</li>
-                    <li>Custom Reminder Date (optional, YYYY-MM-DD, time can be set later in table)</li>
+                    <li>Custom Reminder Date (optional, YYYY-MM-DD)</li>
                   </ul>
-                  <p className="text-xs text-blue-600 mt-2">
-                    💡 Set specific reminder times directly in the table after upload
-                  </p>
                 </div>
 
                 <div className="flex gap-3 pt-4">
@@ -1371,7 +1148,6 @@ export function Clients() {
                   value={reminderForm.date}
                   onChange={(e) => setReminderForm({ ...reminderForm, date: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="mm/dd/yyyy"
                 />
               </div>
               
@@ -1381,26 +1157,16 @@ export function Clients() {
                   value={reminderForm.time}
                   onChange={(e) => setReminderForm({ ...reminderForm, time: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  size={6}
                 >
                   <option value="08:00">08:00 AM</option>
-                  <option value="08:30">08:30 AM</option>
                   <option value="09:00">09:00 AM</option>
-                  <option value="09:30">09:30 AM</option>
                   <option value="10:00">10:00 AM</option>
-                  <option value="10:30">10:30 AM</option>
                   <option value="11:00">11:00 AM</option>
-                  <option value="11:30">11:30 AM</option>
                   <option value="12:00">12:00 PM</option>
-                  <option value="12:30">12:30 PM</option>
                   <option value="13:00">01:00 PM</option>
-                  <option value="13:30">01:30 PM</option>
                   <option value="14:00">02:00 PM</option>
-                  <option value="14:30">02:30 PM</option>
                   <option value="15:00">03:00 PM</option>
-                  <option value="15:30">03:30 PM</option>
                   <option value="16:00">04:00 PM</option>
-                  <option value="16:30">04:30 PM</option>
                   <option value="17:00">05:00 PM</option>
                 </select>
               </div>
@@ -1410,80 +1176,16 @@ export function Clients() {
               <button
                 onClick={handleReminderSave}
                 disabled={!reminderForm.date || !reminderForm.time}
-                className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
               >
                 Save
               </button>
               <button
-                onClick={handleReminderCancel}
-                className="flex-1 px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Status Modal */}
-      {showStatusModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg p-6 w-80">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">
-              Update Status
-            </h3>
-            
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Main Status</label>
-                <select
-                  value={statusForm.mainStatus}
-                  onChange={(e) => {
-                    setStatusForm({ 
-                      mainStatus: e.target.value, 
-                      subStatus: e.target.value === 'Won' ? '' : statusForm.subStatus 
-                    })
-                  }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="">Select Main Status</option>
-                  <option value="Pending">Pending</option>
-                  <option value="Active">Active</option>
-                  <option value="Lost/Cold">Lost/Cold</option>
-                  <option value="Won">Won</option>
-                </select>
-              </div>
-              
-              {statusForm.mainStatus && statusForm.mainStatus !== 'Won' && statusOptions[statusForm.mainStatus]?.subcategories && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    {statusForm.mainStatus} Status <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    value={statusForm.subStatus}
-                    onChange={(e) => setStatusForm({ ...statusForm, subStatus: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  >
-                    <option value="">Select {statusForm.mainStatus} Status</option>
-                    {statusOptions[statusForm.mainStatus].subcategories?.map(sub => (
-                      <option key={sub} value={sub}>{sub}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-            </div>
-            
-            <div className="flex gap-3 pt-6">
-              <button
-                onClick={handleStatusSave}
-                disabled={!statusForm.mainStatus || (statusForm.mainStatus !== 'Won' && statusOptions[statusForm.mainStatus]?.subcategories && !statusForm.subStatus)}
-                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                title={(!statusForm.mainStatus || (statusForm.mainStatus !== 'Won' && statusOptions[statusForm.mainStatus]?.subcategories && !statusForm.subStatus)) ? 'Please select both main status and substatus' : 'Update status'}
-              >
-                Update
-              </button>
-              <button
-                onClick={handleStatusCancel}
+                onClick={() => {
+                  setShowReminderModal(false)
+                  setSelectedClientForReminder(null)
+                  setReminderForm({ date: '', time: '' })
+                }}
                 className="flex-1 px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors"
               >
                 Cancel
@@ -1499,10 +1201,9 @@ export function Clients() {
           <div className="bg-white rounded-lg max-w-2xl w-full max-h-screen overflow-y-auto">
             <div className="p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">
-                Notes for {selectedClientForNotes?.name}
+                Notes for {selectedClientForNotes?.name} ({noteCounts[selectedClientForNotes?.id || ''] || 0} notes)
               </h2>
 
-              {/* Add new note */}
               <div className="mb-6">
                 <textarea
                   value={newNote}
@@ -1533,7 +1234,6 @@ export function Clients() {
                 </div>
               </div>
 
-              {/* Notes list */}
               <div className="space-y-4 max-h-96 overflow-y-auto">
                 {clientNotes.length === 0 ? (
                   <p className="text-gray-500 text-center py-4">No notes yet</p>
@@ -1543,7 +1243,7 @@ export function Clients() {
                       <div className="flex justify-between items-start mb-2">
                         <span className="font-medium text-gray-900">{note.created_by}</span>
                         <span className="text-sm text-gray-500">
-                          {new Date(note.created_at).toLocaleString()}
+                          {formatDateTime(note.created_at)}
                         </span>
                       </div>
                       <p className="text-gray-700">{note.note}</p>

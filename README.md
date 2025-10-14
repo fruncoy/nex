@@ -2,7 +2,7 @@
 # Project Name: Nestalk
 
 ## Description
-Nestalk is a lightweight internal web application designed for the Nestara team to efficiently track candidate outreach, client inquiries, and training interest, replacing cumbersome Excel sheets and WhatsApp threads with a centralized system that integrates seamlessly with Zoho CRM.
+Nestalk is a lightweight internal web application designed for the Nestara team to efficiently track candidate outreach, client inquiries, and training interest, replacing cumbersome Excel sheets and WhatsApp threads
 
 ## Primary Goals
 - Track candidate inquiries (especially from ads) and monitor outreach follow-up actions.

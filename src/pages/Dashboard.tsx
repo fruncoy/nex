@@ -23,6 +23,7 @@ export function Dashboard() {
     endDate: new Date().toISOString().split('T')[0]
   })
   const [recentActivity, setRecentActivity] = useState<any[]>([])
+  const [placementFollowups, setPlacementFollowups] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -97,7 +98,15 @@ export function Dashboard() {
         .order('created_at', { ascending: false })
         .limit(10)
 
+      // Load placement follow-ups that are due or overdue
+      const { data: followups } = await supabase
+        .from('placement_followup_dashboard')
+        .select('*')
+        .in('status', ['overdue', 'due_today'])
+        .limit(5)
+
       setRecentActivity(activityLogs || [])
+      setPlacementFollowups(followups || [])
     } catch (error) {
       console.error('Error loading dashboard data:', error)
     } finally {
@@ -250,7 +259,51 @@ export function Dashboard() {
         ))}
       </div>
 
-      <div className="grid grid-cols-1 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {/* Placement Follow-ups */}
+        {placementFollowups.length > 0 && (
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+            <div className="p-6 border-b border-gray-200">
+              <div className="flex items-center">
+                <MessageCircle className="w-5 h-5 text-red-400" />
+                <h2 className="ml-2 text-lg font-semibold text-gray-900">Placement Follow-ups Due</h2>
+                <button
+                  onClick={() => navigate('/converted-clients')}
+                  className="ml-auto text-sm text-nestalk-primary hover:text-nestalk-primary/80"
+                >
+                  View All
+                </button>
+              </div>
+            </div>
+            <div className="p-6">
+              <div className="space-y-4">
+                {placementFollowups.map((followup) => (
+                  <div key={followup.id} className={`flex items-start space-x-3 p-3 rounded-lg ${
+                    followup.status === 'overdue' ? 'bg-red-50 border border-red-200' : 'bg-yellow-50 border border-yellow-200'
+                  }`}>
+                    <div className="flex-shrink-0">
+                      <div className={`w-2 h-2 rounded-full mt-2 ${
+                        followup.status === 'overdue' ? 'bg-red-500' : 'bg-yellow-500'
+                      }`}></div>
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-gray-900">
+                        {followup.client_name} - {followup.candidate_name}
+                      </p>
+                      <p className="text-xs text-gray-600">
+                        {followup.followup_type.replace('_', ' ')} check - {followup.status === 'overdue' ? 'OVERDUE' : 'DUE TODAY'}
+                      </p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Scheduled: {new Date(followup.scheduled_date).toLocaleDateString()}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Recent Activity */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200">
           <div className="p-6 border-b border-gray-200">

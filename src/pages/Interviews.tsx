@@ -58,7 +58,7 @@ export function Interviews() {
   const { showToast } = useToast()
 
   const statusOptions = ['all', 'scheduled', 'won', 'lost'] // Include lost interviews for visibility
-  const outcomeOptions = ['Won', 'Lost']
+  const outcomeOptions = ['Interview_Won', 'Interview_Lost', 'Missed_Interview', 'Reschedule_Interview']
 
   useEffect(() => {
     Promise.all([loadInterviews(), loadScheduledCandidates()])
@@ -249,7 +249,7 @@ export function Interviews() {
 
         // Update candidate status based on outcome
         if (formData.outcome) {
-          const candidateStatus = formData.outcome === 'Won' ? 'WON' : 'LOST'
+          const candidateStatus = formData.outcome === 'Won Interview' ? 'WON' : 'LOST'
           
           const { error: candidateError } = await supabase
             .from('candidates')
@@ -315,11 +315,17 @@ export function Interviews() {
           throw candidateError
         }
         
-        await supabase.from('updates').insert({
-          linked_to_type: 'interview',
-          linked_to_id: formData.candidate_id,
-          user_id: user?.id,
-          update_text: `Interview scheduled for ${d.toDateString()} at 2:00 PM`,
+        // Log to activity_logs
+        await supabase.from('activity_logs').insert({
+          activity_type: 'interview_scheduled',
+          entity_type: 'interview',
+          entity_id: formData.candidate_id,
+          performed_by: staff?.name || user?.email || 'Unknown',
+          action_description: `scheduled interview for ${d.toDateString()} at 2:00 PM`,
+          metadata: {
+            candidate_id: formData.candidate_id,
+            interview_date: isoDateTime
+          }
         })
         
         showToast('Interview scheduled successfully', 'success')
@@ -350,10 +356,11 @@ export function Interviews() {
   // Removed edit functionality as per requirements
 
   const getInterviewStatus = (interview: Interview) => {
-    if (interview.attended && interview.outcome === 'Won') return 'won'
-    if (interview.attended && interview.outcome === 'Lost') return 'lost'
-    if (!interview.attended && interview.outcome === 'Lost') return 'lost' // Also show lost interviews that weren't attended
-    if (!interview.attended && interview.outcome) return 'no-show'
+    console.log('Interview outcome:', interview.outcome) // Debug log
+    if (interview.outcome === 'Interview_Won') return 'Interview_Won'
+    if (interview.outcome === 'Interview_Lost') return 'Interview_Lost'
+    if (interview.outcome === 'Missed_Interview') return 'Missed_Interview'
+    if (interview.outcome === 'Reschedule_Interview') return 'Reschedule_Interview'
     if (interview.needsAttention) return 'needs-attention'
     return 'scheduled'
   }
@@ -383,19 +390,21 @@ export function Interviews() {
 
   // setPending function removed as we no longer use PENDING status
 
-  const setOutcome = async (interview: Interview, outcome: 'Won' | 'Lost') => {
+  const setOutcome = async (interview: Interview, outcome: 'Interview_Won' | 'Interview_Lost' | 'Missed_Interview' | 'Reschedule_Interview') => {
     try {
       showToast(`Setting outcome to ${outcome}...`, 'loading')
       
       // Update interview outcome
       const { error } = await supabase
         .from('interviews')
-        .update({ attended: true, outcome })
+        .update({ attended: outcome !== 'Missed', outcome })
         .eq('id', interview.id)
       if (error) throw error
 
       // Update candidate status
-      const candidateStatus = outcome === 'Won' ? 'WON' : 'LOST'
+      const candidateStatus = outcome === 'Interview_Won' ? 'WON' : 
+                             outcome === 'Interview_Lost' ? 'LOST' :
+                             outcome === 'Missed_Interview' ? 'LOST' : 'INTERVIEW_SCHEDULED'
       const { error: candidateError } = await supabase
         .from('candidates')
         .update({ status: candidateStatus })
@@ -406,12 +415,19 @@ export function Interviews() {
         throw candidateError
       }
 
-      // Add update record
-      await supabase.from('updates').insert({
-        linked_to_type: 'interview',
-        linked_to_id: interview.id,
-        user_id: user?.id,
-        update_text: `Interview outcome set to ${outcome}`,
+      // Log to activity_logs
+      await supabase.from('activity_logs').insert({
+        activity_type: 'interview_outcome',
+        entity_type: 'interview',
+        entity_id: interview.id,
+        performed_by: staff?.name || user?.email || 'Unknown',
+        action_description: `set interview outcome to ${outcome} for ${interview.candidates?.name}`,
+        metadata: {
+          candidate_id: interview.candidate_id,
+          candidate_name: interview.candidates?.name,
+          previous_outcome: interview.outcome,
+          new_outcome: outcome
+        }
       })
       
       // Refresh data
@@ -465,24 +481,19 @@ export function Interviews() {
         throw candidateError
       }
 
-      // Log the reschedule activity
-      if (staff?.id && staff?.name) {
-        await ActivityLogger.logReschedule(
-          staff.id,
-          'interview',
-          interview.id,
-          interview.candidate_name,
-          interview.date_time,
-          iso,
-          staff.name
-        )
-      }
-
-      await supabase.from('updates').insert({
-        linked_to_type: 'interview',
-        linked_to_id: interview.id,
-        user_id: user?.id,
-        update_text: `Interview rescheduled to ${formatDisplayDate(iso)} at 2:00 PM`,
+      // Log to activity_logs
+      await supabase.from('activity_logs').insert({
+        activity_type: 'interview_rescheduled',
+        entity_type: 'interview',
+        entity_id: interview.id,
+        performed_by: staff?.name || user?.email || 'Unknown',
+        action_description: `rescheduled ${interview.candidates?.name}'s interview from ${formatDisplayDate(interview.date_time)} to ${formatDisplayDate(iso)}`,
+        metadata: {
+          candidate_id: interview.candidate_id,
+          candidate_name: interview.candidates?.name,
+          old_date: interview.date_time,
+          new_date: iso
+        }
       })
 
       setReschedule({ open: false, interview: null, dateTime: '' })
@@ -508,8 +519,8 @@ export function Interviews() {
   }
 
   const getCountdown = (interview: Interview) => {
-    // Stop countdown for won/lost interviews
-    if (interview.outcome === 'Won' || interview.outcome === 'Lost') {
+    // Stop countdown for completed interviews
+    if (interview.outcome === 'Interview_Won' || interview.outcome === 'Interview_Lost' || interview.outcome === 'Missed_Interview') {
       return '-'
     }
     
@@ -534,7 +545,7 @@ export function Interviews() {
     if (!bulkStatus || selectedInterviews.length === 0) return
     
     try {
-      const outcome = bulkStatus === 'WON' ? 'Won' : bulkStatus === 'LOST' ? 'Lost' : null
+      const outcome = bulkStatus === 'WON' ? 'Won Interview' : bulkStatus === 'LOST' ? 'Lost Interview' : null
       
       const { error } = await supabase
         .from('interviews')
@@ -737,8 +748,9 @@ export function Interviews() {
                       <select
                         onChange={(e) => {
                           const v = e.target.value;
-                          if (v === 'WON') setOutcome(interview, 'Won');
-                          if (v === 'LOST') setOutcome(interview, 'Lost');
+                          if (v === 'WON') setOutcome(interview, 'Interview_Won');
+                          if (v === 'LOST') setOutcome(interview, 'Interview_Lost');
+                          if (v === 'MISSED') setOutcome(interview, 'Missed_Interview');
                           if (v === 'RESCHEDULE') openReschedule(interview);
                           e.currentTarget.selectedIndex = 0;
                         }}
@@ -746,10 +758,11 @@ export function Interviews() {
                         defaultValue=""
                         title="Actions"
                       >
-                        <option value="" disabled>Actions</option>
-                        <option value="WON">Won</option>
-                        <option value="LOST">Lost</option>
-                        <option value="RESCHEDULE">Reschedule</option>
+                        <option value="" disabled>Set Status</option>
+                        <option value="WON">Interview Won</option>
+                        <option value="LOST">Interview Lost</option>
+                        <option value="MISSED">Missed Interview</option>
+                        <option value="RESCHEDULE">Reschedule Interview</option>
                       </select>
                     </div>
                   </td>
