@@ -913,13 +913,19 @@ export function Clients() {
                       {new Date(client.inquiry_date).toLocaleDateString()}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      <button
-                        onClick={() => handleEdit(client)}
-                        className="text-nestalk-primary hover:text-nestalk-primary/80"
-                        title="Edit"
-                      >
-                        <Edit className="w-4 h-4" />
-                      </button>
+                      {client.status === 'Won' ? (
+                        <span className="text-gray-400" title="Cannot edit Won clients">
+                          <Edit className="w-4 h-4" />
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => handleEdit(client)}
+                          className="text-nestalk-primary hover:text-nestalk-primary/80"
+                          title="Edit"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </button>
+                      )}
                     </td>
                   </tr>
                 )

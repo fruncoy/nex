@@ -56,13 +56,13 @@ export function Dashboard() {
           .lt('date_time', today + 'T23:59:59')
           .eq('attended', false),
         supabase.from('interviews')
-          .select('id', { count: 'exact', head: true })
-          .eq('outcome', 'Won')
+          .select('id, outcome', { count: 'exact' })
+          .not('outcome', 'is', null)
           .gte('date_time', startDate)
           .lte('date_time', endDate),
         supabase.from('interviews')
-          .select('id', { count: 'exact', head: true })
-          .eq('outcome', 'Lost')
+          .select('id, outcome', { count: 'exact' })
+          .not('outcome', 'is', null)
           .gte('date_time', startDate)
           .lte('date_time', endDate),
         supabase.from('candidates')
@@ -76,14 +76,21 @@ export function Dashboard() {
           .gte('created_at', startDate)
           .lte('created_at', endDate)
       ])
+      
+      // Debug: Log the actual interview outcomes
+      console.log('Interview outcomes found:', interviewsWonCount.data?.map(i => i.outcome))
 
+      // Count won and lost interviews manually
+      const wonCount = interviewsWonCount.data?.filter(i => i.outcome === 'Interview_Won').length || 0
+      const lostCount = interviewsLostCount.data?.filter(i => i.outcome === 'Interview_Lost' || i.outcome === 'Missed_Interview').length || 0
+      
       setStats({
         totalCandidates: candidatesCount.count || 0,
         totalClients: clientsCount.count || 0,
         totalTrainingLeads: trainingCount.count || 0,
         todayInterviews: todayInterviewsCount.count || 0,
-        interviewsWon: interviewsWonCount.count || 0,
-        interviewsLost: interviewsLostCount.count || 0,
+        interviewsWon: wonCount,
+        interviewsLost: lostCount,
         candidatesLost: candidatesLostCount.count || 0,
         clientsLost: clientsLostCount.count || 0
       })

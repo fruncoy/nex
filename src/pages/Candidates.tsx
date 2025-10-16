@@ -7,7 +7,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
 import { ActivityLogger } from '../lib/activityLogger'
 import { formatDateTime } from '../utils/dateFormat'
-import { StatusHistoryLogger } from '../lib/statusHistory'
+
 
 interface Candidate {
   id: string
@@ -182,19 +182,19 @@ export function Candidates() {
     const totalCounts: Record<string, number> = {}
     
     for (const candidate of candidates) {
-      const { data: unreadData } = await supabase.rpc('get_unread_notes_count', {
-        entity_type: 'candidate',
-        entity_id: candidate.id,
-        user_name: staff.name
-      })
-      counts[candidate.id] = unreadData || 0
-      
-      const { data: totalData } = await supabase
+      // Count unread notes manually
+      const { data: notes } = await supabase
         .from('candidate_notes')
-        .select('id', { count: 'exact' })
+        .select('read_by')
         .eq('candidate_id', candidate.id)
       
-      totalCounts[candidate.id] = totalData?.length || 0
+      const unreadCount = notes?.filter(note => {
+        const readBy = note.read_by || {}
+        return !readBy[staff.name]
+      }).length || 0
+      
+      counts[candidate.id] = unreadCount
+      totalCounts[candidate.id] = notes?.length || 0
     }
     
     setUnreadCounts(counts)
@@ -268,11 +268,11 @@ export function Candidates() {
         referee_1_name: formData.referee_1_name || null,
         referee_2_phone: formData.referee_2_phone || null,
         referee_2_name: formData.referee_2_name || null,
-        address: formData.address || null,
-        apartment: formData.apartment || null,
         total_years_experience: formData.total_years_experience ? parseInt(formData.total_years_experience) : null,
         has_good_conduct_cert: formData.has_good_conduct_cert,
-        good_conduct_cert_receipt: formData.good_conduct_cert_receipt || null
+        good_conduct_cert_receipt: formData.good_conduct_cert_receipt || null,
+        address: formData.address || null,
+        apartment: formData.apartment || null
       }
       
       if (selectedCandidate) {
@@ -283,6 +283,11 @@ export function Candidates() {
           .eq('id', selectedCandidate.id)
         if (error) throw error
         
+        // Log candidate edit
+        if (user?.id && staff?.name) {
+          await ActivityLogger.logEdit(user.id, 'candidate', selectedCandidate.id, selectedCandidate.name, staff.name)
+        }
+        
         setCandidates(prev => prev.map(c => c.id === selectedCandidate.id ? { ...c, ...payload } : c))
       } else {
         // Add new candidate
@@ -290,19 +295,29 @@ export function Candidates() {
           ...payload,
           inquiry_date: new Date().toISOString().split('T')[0],
           assigned_to: user?.id,
-          added_by: staff?.name || user?.email || 'System'
+          added_by: 'System'
         }
         
         const { data, error } = await supabase.from('candidates').insert(insertPayload).select('*').single()
         if (error) throw error
+        
+        // Log candidate creation
+        if (user?.id && staff?.name) {
+          await ActivityLogger.logCreate(user.id, 'candidate', data.id, data.name, staff.name)
+        }
         
         setCandidates(prev => [data, ...prev])
       }
       
       setShowModal(false)
       resetForm()
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving candidate:', error)
+      if (error?.code === '23505' || error?.message?.includes('duplicate key value violates unique constraint')) {
+        alert('A candidate with this phone number already exists')
+      } else {
+        alert(`Error saving candidate: ${error?.message || 'Unknown error'}`)
+      }
     } finally {
       setSubmitting(false)
     }
@@ -382,7 +397,13 @@ export function Candidates() {
       'John Smith,+254723456789,Facebook,Driver,PENDING'
     ]
     
-    const csvContent = [headers.join(','), ...sampleData].join('\n')
+    const validValues = [
+      '# Valid roles: ' + roleOptions.join(', '),
+      '# Valid sources: ' + sourceOptions.join(', '),
+      '# Valid statuses: ' + statusOptions.join(', ')
+    ]
+    
+    const csvContent = [validValues.join('\n'), headers.join(','), ...sampleData].join('\n')
     const blob = new Blob([csvContent], { type: 'text/csv' })
     const url = window.URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -412,6 +433,7 @@ export function Candidates() {
       const dataRows = rows.slice(1)
       
       const inserts: any[] = []
+      const errors: string[] = []
       
       for (let i = 0; i < dataRows.length; i++) {
         const row = dataRows[i]
@@ -420,11 +442,81 @@ export function Candidates() {
         const parts = row.split(',')
         const name = parts[0]?.trim()
         const phone = parts[1]?.trim()
-        const source = parts[2]?.trim() || 'Referral'
-        const role = parts[3]?.trim() || 'Caregiver'
-        const status = parts[4]?.trim() || 'PENDING'
+        let source = (parts[2]?.trim() || 'Referral')
+        let role = (parts[3]?.trim() || 'Caregiver')
+        let status = (parts[4]?.trim() || 'PENDING')
+        
+        // Ensure no empty strings
+        if (!source) source = 'Referral'
+        if (!role) role = 'Caregiver'
+        if (!status) status = 'PENDING'
 
-        if (!name || !phone || !role) continue
+        if (!name || !phone) {
+          errors.push(`Row ${i + 2}: Missing name or phone`)
+          continue
+        }
+        
+        // Check for duplicate phone number
+        const { data: existingCandidate } = await supabase
+          .from('candidates')
+          .select('id')
+          .eq('phone', phone)
+          .single()
+        
+        if (existingCandidate) {
+          errors.push(`Row ${i + 2}: Phone number ${phone} already exists`)
+          continue
+        }
+
+        // Map and validate role (case-insensitive)
+        const roleMap: Record<string, string> = {
+          'chef': 'Chef',
+          'nurse': 'Night Nurse',
+          'housekeeping': 'Housekeeper',
+          'housekeeper': 'Housekeeper',
+          'nanny': 'Nanny',
+          'driver': 'Driver',
+          'caregiver': 'Caregiver',
+          'house manager': 'House Manager',
+          'night nurse': 'Night Nurse'
+        }
+        
+        const mappedRole = roleMap[role.toLowerCase()]
+        if (mappedRole) {
+          role = mappedRole
+        } else if (!roleOptions.includes(role)) {
+          errors.push(`Row ${i + 2}: Invalid role '${role}'. Using 'Caregiver' instead.`)
+          role = 'Caregiver'
+        }
+        
+
+
+        // Map and validate source (case-insensitive)
+        const sourceMap: Record<string, string> = {
+          'tiktok': 'TikTok',
+          'facebook': 'Facebook',
+          'instagram': 'Instagram',
+          'google search': 'Google Search',
+          'website': 'Website',
+          'referral': 'Referral',
+          'linkedin': 'LinkedIn',
+          'walk-in poster': 'Walk-in poster',
+          'youtube': 'Youtube'
+        }
+        
+        const mappedSource = sourceMap[source.toLowerCase()]
+        if (mappedSource) {
+          source = mappedSource
+        } else if (!sourceOptions.includes(source)) {
+          errors.push(`Row ${i + 2}: Invalid source '${source}'. Using 'Referral' instead.`)
+          source = 'Referral'
+        }
+
+        // Validate and fix status
+        if (!statusOptions.includes(status)) {
+          errors.push(`Row ${i + 2}: Invalid status '${status}'. Using 'PENDING' instead.`)
+          status = 'PENDING'
+        }
 
         inserts.push({ 
           name, 
@@ -434,7 +526,7 @@ export function Candidates() {
           status, 
           assigned_to: user?.id, 
           inquiry_date: new Date().toISOString().split('T')[0],
-          added_by: staff?.name || user?.email || 'System'
+          added_by: 'System'
         })
       }
 
@@ -443,13 +535,23 @@ export function Candidates() {
         return
       }
 
+      if (errors.length > 0) {
+        const proceed = confirm(`Found ${errors.length} validation issues:\n\n${errors.slice(0, 5).join('\n')}${errors.length > 5 ? '\n...and more' : ''}\n\nProceed with corrected values?`)
+        if (!proceed) return
+      }
+
       const { error } = await supabase.from('candidates').insert(inserts)
       if (error) throw error
+
+      // Log bulk upload activity
+      if (user?.id && staff?.name) {
+        await ActivityLogger.logBulkUpload(user.id, 'candidate', inserts.length, staff.name)
+      }
 
       await loadCandidates()
       setShowBulkUpload(false)
       setUploadFile(null)
-      alert(`Successfully uploaded ${inserts.length} candidates`)
+      alert(`Successfully uploaded ${inserts.length} candidates${errors.length > 0 ? ` with ${errors.length} corrections` : ''}`)
     } catch (error) {
       console.error('Error bulk uploading candidates:', error)
       alert(`Error uploading candidates: ${error instanceof Error ? error.message : 'Unknown error'}`)
@@ -527,6 +629,7 @@ export function Candidates() {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Notes</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Phone</th>
@@ -539,8 +642,9 @@ export function Candidates() {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {filteredCandidates.map((candidate) => (
+              {filteredCandidates.map((candidate, index) => (
                 <tr key={candidate.id} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{index + 1}</td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="relative">
                       <button
@@ -622,15 +726,50 @@ export function Candidates() {
                         onChange={async (e) => {
                           const newStatus = e.target.value
                           if (newStatus) {
+                            // Check if status change is allowed
+                            if (candidate.status === 'WON' || candidate.status === 'INTERVIEW_SCHEDULED') {
+                              alert('Cannot change status. Use Staff page or Interviews page to modify.')
+                              e.target.selectedIndex = 0
+                              return
+                            }
+                            
+                            // If setting to INTERVIEW_SCHEDULED, open date picker
+                            if (newStatus === 'INTERVIEW_SCHEDULED') {
+                              setScheduleModal({ open: true, candidate, dateOnly: '' })
+                              e.target.selectedIndex = 0
+                              return
+                            }
+                            
                             try {
+                              const oldStatus = candidate.status
                               const { error } = await supabase
                                 .from('candidates')
                                 .update({ status: newStatus })
                                 .eq('id', candidate.id)
                               if (error) throw error
+                              
                               setCandidates(prev => prev.map(c => c.id === candidate.id ? { ...c, status: newStatus } : c))
-                            } catch (error) {
+                              
+                              // Log status change to activity_logs
+                              if (user?.id && staff?.name) {
+                                try {
+                                  await supabase.from('activity_logs').insert({
+                                    user_id: user.id,
+                                    action_type: 'status_change',
+                                    entity_type: 'candidate',
+                                    entity_id: candidate.id,
+                                    entity_name: candidate.name,
+                                    old_value: oldStatus,
+                                    new_value: newStatus,
+                                    description: `${staff.name} changed ${candidate.name} status from ${oldStatus} to ${newStatus}`
+                                  })
+                                } catch (logError) {
+                                  console.error('Error logging status change:', logError)
+                                }
+                              }
+                            } catch (error: any) {
                               console.error('Error updating status:', error)
+                              alert(`Error updating status: ${error?.message || 'Unknown error'}`)
                             }
                           }
                           e.target.selectedIndex = 0
@@ -1129,6 +1268,91 @@ export function Candidates() {
                 >
                   Close
                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Schedule Interview Modal */}
+      {scheduleModal.open && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-md w-full">
+            <div className="p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">
+                Schedule Interview for {scheduleModal.candidate?.name}
+              </h2>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Interview Date (Time will be set to 2:00 PM)
+                  </label>
+                  <input
+                    type="date"
+                    value={scheduleModal.dateOnly}
+                    onChange={(e) => setScheduleModal(prev => ({ ...prev, dateOnly: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
+                  />
+                </div>
+                <div className="flex gap-3 pt-2">
+                  <button
+                    onClick={() => setScheduleModal({ open: false, candidate: null, dateOnly: '' })}
+                    className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={async () => {
+                      if (!scheduleModal.dateOnly || !scheduleModal.candidate) return
+                      
+                      try {
+                        const date = new Date(scheduleModal.dateOnly)
+                        date.setHours(14, 0, 0, 0) // Set to 2:00 PM
+                        const isoDateTime = date.toISOString()
+                        
+                        // Create interview
+                        const { error: interviewError } = await supabase
+                          .from('interviews')
+                          .insert({
+                            candidate_id: scheduleModal.candidate.id,
+                            date_time: isoDateTime,
+                            location: 'Office',
+                            assigned_staff: user?.id,
+                            attended: false,
+                            outcome: null,
+                            status: 'scheduled'
+                          })
+                        if (interviewError) throw interviewError
+                        
+                        // Update candidate status
+                        const { error: candidateError } = await supabase
+                          .from('candidates')
+                          .update({ 
+                            status: 'INTERVIEW_SCHEDULED',
+                            scheduled_date: isoDateTime
+                          })
+                          .eq('id', scheduleModal.candidate.id)
+                        if (candidateError) throw candidateError
+                        
+                        setCandidates(prev => prev.map(c => 
+                          c.id === scheduleModal.candidate?.id 
+                            ? { ...c, status: 'INTERVIEW_SCHEDULED', scheduled_date: isoDateTime } 
+                            : c
+                        ))
+                        
+                        setScheduleModal({ open: false, candidate: null, dateOnly: '' })
+                        alert('Interview scheduled successfully')
+                      } catch (error: any) {
+                        console.error('Error scheduling interview:', error)
+                        alert(`Error scheduling interview: ${error?.message || 'Unknown error'}`)
+                      }
+                    }}
+                    disabled={!scheduleModal.dateOnly}
+                    className="flex-1 px-4 py-2 bg-nestalk-primary text-white rounded-lg hover:bg-nestalk-primary/90 disabled:opacity-50"
+                  >
+                    Schedule Interview
+                  </button>
+                </div>
               </div>
             </div>
           </div>

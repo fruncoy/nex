@@ -393,7 +393,6 @@ export function ConvertedClients() {
       '12_week': '12 Weeks',
       // Legacy labels (in case migration hasn't run)
       '1_week': '2 Weeks',
-      '2_week': '4 Weeks',
       '3_week': '6 Weeks',
       '1_month': '8 Weeks'
     }
@@ -964,8 +963,8 @@ export function ConvertedClients() {
                 </div>
               </div>
 
-              {/* Close Button */}
-              <div className="flex justify-end">
+               {/* Close Button */}
+              <div className="absolute top-4 right-4">
                 <button
                   onClick={() => {
                     setShowDetailModal(false)

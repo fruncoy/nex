@@ -79,7 +79,7 @@ export function Updates() {
         ...item,
         type: 'activity_log',
         timestamp: item.created_at,
-        description: item.action_description,
+        description: item.description || 'Activity logged',
         entity_type: item.entity_type || 'general',
         staff: { name: item.performed_by }
       }))
@@ -100,7 +100,7 @@ export function Updates() {
           ...item,
           type: 'update',
           timestamp: item.created_at,
-          description: item.update_text,
+          description: item.update_text || 'Update logged',
           entity_type: item.linked_to_type || 'general'
         })))
       }

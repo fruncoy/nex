@@ -23,10 +23,17 @@ export class ActivityLogger {
     description
   }: ActivityLogParams) {
     try {
+      // Get staff info for user_id
+      const { data: staffData } = await supabase
+        .from('staff')
+        .select('id')
+        .eq('id', userId)
+        .single()
+
       const { error } = await supabase
         .from('activity_logs')
         .insert({
-          user_id: userId,
+          user_id: staffData?.id || userId,
           action_type: actionType,
           entity_type: entityType,
           entity_id: entityId,
@@ -54,8 +61,8 @@ export class ActivityLogger {
     newStatus: string,
     userName: string
   ) {
-    const entityTypeDisplay = entityType === 'candidate' ? 'Candidate' : 
-                             entityType === 'client' ? 'Client' : 'Training Lead'
+    const entityTypeDisplay = entityType === 'candidate' ? 'candidate' : 
+                             entityType === 'client' ? 'client' : 'training lead'
     
     await this.log({
       userId,
@@ -65,7 +72,7 @@ export class ActivityLogger {
       entityName,
       oldValue: oldStatus,
       newValue: newStatus,
-      description: `${userName} marked ${entityName} (${entityTypeDisplay}) as ${newStatus}`
+      description: `${userName} changed ${entityName} status from ${oldStatus} to ${newStatus}`
     })
   }
 

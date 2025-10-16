@@ -481,20 +481,27 @@ export function Interviews() {
         throw candidateError
       }
 
-      // Log to activity_logs
-      await supabase.from('activity_logs').insert({
-        activity_type: 'interview_rescheduled',
-        entity_type: 'interview',
-        entity_id: interview.id,
-        performed_by: staff?.name || user?.email || 'Unknown',
-        action_description: `rescheduled ${interview.candidates?.name}'s interview from ${formatDisplayDate(interview.date_time)} to ${formatDisplayDate(iso)}`,
-        metadata: {
-          candidate_id: interview.candidate_id,
-          candidate_name: interview.candidates?.name,
-          old_date: interview.date_time,
-          new_date: iso
-        }
-      })
+      // Get candidate name from database since interview object might not have it
+      const { data: candidateData } = await supabase
+        .from('candidates')
+        .select('name')
+        .eq('id', interview.candidate_id)
+        .single()
+      
+      const candidateName = candidateData?.name || interview.candidates?.name || 'Unknown Candidate'
+      
+      // Log reschedule activity using ActivityLogger
+      if (staff?.id && staff?.name) {
+        await ActivityLogger.logReschedule(
+          staff.id,
+          'interview',
+          interview.id,
+          candidateName,
+          interview.date_time,
+          iso,
+          staff.name
+        )
+      }
 
       setReschedule({ open: false, interview: null, dateTime: '' })
       await loadInterviews()
