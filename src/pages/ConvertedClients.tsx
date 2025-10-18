@@ -700,7 +700,21 @@ export function ConvertedClients() {
       {/* Detail Modal */}
       {showDetailModal && selectedClient && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-4xl w-full max-h-screen overflow-y-auto">
+          <div className="bg-white rounded-lg max-w-4xl w-full max-h-screen overflow-y-auto relative">
+            <button
+              onClick={() => {
+                setShowDetailModal(false)
+                setSelectedClient(null)
+                setShowAddPlacement(false)
+                setShowAddReplacement(false)
+                setSelectedCandidate('')
+                setPlacementNotes('')
+              }}
+              className="absolute top-4 right-4 p-2 text-gray-400 hover:text-gray-600 transition-colors z-10"
+              title="Close"
+            >
+              <XCircle className="w-6 h-6" />
+            </button>
             <div className="p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">
                 Placement Management - {selectedClient.name}
@@ -963,23 +977,7 @@ export function ConvertedClients() {
                 </div>
               </div>
 
-               {/* Close Button */}
-              <div className="absolute top-4 right-4">
-                <button
-                  onClick={() => {
-                    setShowDetailModal(false)
-                    setSelectedClient(null)
-                    setShowAddPlacement(false)
-                    setShowAddReplacement(false)
-                    setSelectedCandidate('')
-                    setPlacementNotes('')
-                  }}
-                  className="p-2 text-gray-400 hover:text-gray-600"
-                  title="Close"
-                >
-                  <XCircle className="w-6 h-6" />
-                </button>
-              </div>
+
             </div>
           </div>
         </div>

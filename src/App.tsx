@@ -23,6 +23,7 @@ import { LeadTracker } from './pages/LeadTracker'
 import { ConvertedClients } from './pages/ConvertedClients'
 import { Blacklisted } from './pages/Blacklisted'
 import { NestaraAI } from './pages/NestaraAI'
+import { CreateProfile } from './pages/CreateProfile'
 
 function ProtectedLayout() {
   const { user, loading } = useAuth()
@@ -51,6 +52,7 @@ function AppRoutes() {
   console.log('AppRoutes rendering')
   return (
     <Routes>
+      <Route path="/createprofile" element={<CreateProfile />} />
       <Route path="/" element={<ProtectedLayout />}>
         <Route index element={<Dashboard />} />
         <Route path="candidates" element={<Candidates />} />

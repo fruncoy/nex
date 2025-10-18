@@ -913,11 +913,7 @@ export function Clients() {
                       {new Date(client.inquiry_date).toLocaleDateString()}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      {client.status === 'Won' ? (
-                        <span className="text-gray-400" title="Cannot edit Won clients">
-                          <Edit className="w-4 h-4" />
-                        </span>
-                      ) : (
+                      <div className="flex items-center gap-2">
                         <button
                           onClick={() => handleEdit(client)}
                           className="text-nestalk-primary hover:text-nestalk-primary/80"
@@ -925,7 +921,69 @@ export function Clients() {
                         >
                           <Edit className="w-4 h-4" />
                         </button>
-                      )}
+                        <select
+                          onChange={async (e) => {
+                            const newStatus = e.target.value
+                            if (newStatus) {
+                              try {
+                                const oldStatus = client.status
+                                const { error } = await supabase
+                                  .from('clients')
+                                  .update({ status: newStatus })
+                                  .eq('id', client.id)
+                                if (error) throw error
+                                
+                                setClients(prev => prev.map(c => c.id === client.id ? { ...c, status: newStatus } : c))
+                                
+                                // Log status change
+                                if (user?.id && staff?.name) {
+                                  await supabase.from('activity_logs').insert({
+                                    user_id: user.id,
+                                    action_type: 'status_change',
+                                    entity_type: 'client',
+                                    entity_id: client.id,
+                                    entity_name: client.name,
+                                    old_value: oldStatus,
+                                    new_value: newStatus,
+                                    description: `${staff.name} changed ${client.name} status from ${oldStatus} to ${newStatus}`
+                                  })
+                                }
+                                
+                                showToast(`Status updated to ${newStatus}`, 'success')
+                              } catch (error: any) {
+                                console.error('Error updating status:', error)
+                                showToast(`Error: ${error?.message || 'Unknown error'}`, 'error')
+                              }
+                            }
+                            e.target.selectedIndex = 0
+                          }}
+                          disabled={client.status === 'Won'}
+                          className={`px-2 py-1 border border-gray-300 rounded text-sm ${
+                            client.status === 'Won' 
+                              ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
+                              : 'bg-white'
+                          }`}
+                          defaultValue=""
+                        >
+                          <option value="" disabled>Update Status</option>
+                          <optgroup label="Pending">
+                            {pendingOptions.map(status => (
+                              <option key={status} value={status}>{status}</option>
+                            ))}
+                          </optgroup>
+                          <optgroup label="Active">
+                            {activeOptions.map(status => (
+                              <option key={status} value={status}>{status}</option>
+                            ))}
+                          </optgroup>
+                          <optgroup label="Lost/Cold">
+                            {lostOptions.map(status => (
+                              <option key={status} value={status}>{status}</option>
+                            ))}
+                          </optgroup>
+                          <option value="Won">Won</option>
+                        </select>
+                      </div>
                     </td>
                   </tr>
                 )
@@ -1026,7 +1084,12 @@ export function Clients() {
                   <select
                     value={formData.status}
                     onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
+                    disabled={selectedClient && selectedClient.status === 'Won'}
+                    className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent ${
+                      selectedClient && selectedClient.status === 'Won'
+                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                        : ''
+                    }`}
                   >
                     <optgroup label="Pending">
                       {pendingOptions.map(status => (
@@ -1045,6 +1108,9 @@ export function Clients() {
                     </optgroup>
                     <option value="Won">Won</option>
                   </select>
+                  {selectedClient && selectedClient.status === 'Won' && (
+                    <p className="text-xs text-gray-500 mt-1">Status locked - Won clients cannot change status</p>
+                  )}
                 </div>
 
                 <div className="flex gap-3 pt-4">

@@ -97,12 +97,14 @@ export function Candidates() {
   const [addedByFilter, setAddedByFilter] = useState('all')
   const [addedByOptions, setAddedByOptions] = useState<string[]>([])
   const [scheduleModal, setScheduleModal] = useState<{ open: boolean; candidate: Candidate | null; dateOnly: string }>({ open: false, candidate: null, dateOnly: '' })
+  const [showProfileModal, setShowProfileModal] = useState(false)
+  const [selectedCandidateForProfile, setSelectedCandidateForProfile] = useState<Candidate | null>(null)
 
   const { user, staff } = useAuth()
   const { showToast } = useToast()
 
   const statusOptions = ['PENDING', 'INTERVIEW_SCHEDULED', 'WON', 'Lost, No Response', 'Lost, Personality', 'Lost, Salary', 'Lost, Experience', 'Lost, No Good Conduct', 'BLACKLISTED']
-  const filterStatusOptions = ['Pending', 'Won', 'Lost', 'Blacklisted', 'Added by System', 'Self']
+  const filterStatusOptions = ['Pending', 'Won', 'Lost', 'Blacklisted', 'Added by System', 'Self-Registered']
   const roleOptions = ['Nanny', 'House Manager', 'Chef', 'Driver', 'Night Nurse', 'Caregiver', 'Housekeeper']
   const sourceOptions = ['TikTok', 'Facebook', 'Instagram', 'Google Search', 'Website', 'Referral', 'LinkedIn', 'Walk-in poster', 'Youtube']
 
@@ -223,7 +225,7 @@ export function Candidates() {
         filtered = filtered.filter(candidate => candidate.status === 'BLACKLISTED')
       } else if (filterStatus === 'Added by System') {
         filtered = filtered.filter(candidate => candidate.added_by === 'admin' || candidate.added_by === 'System')
-      } else if (filterStatus === 'Self') {
+      } else if (filterStatus === 'Self-Registered') {
         filtered = filtered.filter(candidate => candidate.added_by === 'self')
       }
     }
@@ -622,6 +624,74 @@ export function Candidates() {
           statusOptions={filterStatusOptions}
           placeholder="Search by name, phone, or role..."
         />
+        
+        {selectedCandidates.length > 0 && (
+          <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
+            <span className="text-sm font-medium text-blue-900">
+              {selectedCandidates.length} selected
+            </span>
+            <select
+              value={bulkStatus}
+              onChange={(e) => setBulkStatus(e.target.value)}
+              className="px-3 py-1 border border-blue-300 rounded text-sm bg-white"
+            >
+              <option value="">Bulk Update Status</option>
+              {statusOptions.map(status => (
+                <option key={status} value={status}>
+                  {status.replace('_', ' ')}
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={async () => {
+                if (!bulkStatus) {
+                  alert('Please select a status')
+                  return
+                }
+                
+                try {
+                  const { error } = await supabase
+                    .from('candidates')
+                    .update({ status: bulkStatus })
+                    .in('id', selectedCandidates)
+                  
+                  if (error) throw error
+                  
+                  setCandidates(prev => prev.map(c => 
+                    selectedCandidates.includes(c.id) ? { ...c, status: bulkStatus } : c
+                  ))
+                  
+                  // Log bulk status change
+                  if (user?.id && staff?.name) {
+                    await supabase.from('activity_logs').insert({
+                      user_id: user.id,
+                      action_type: 'bulk_status_change',
+                      entity_type: 'candidate',
+                      description: `${staff.name} bulk updated ${selectedCandidates.length} candidates to ${bulkStatus}`
+                    })
+                  }
+                  
+                  setSelectedCandidates([])
+                  setBulkStatus('')
+                  alert(`Updated ${selectedCandidates.length} candidates to ${bulkStatus}`)
+                } catch (error: any) {
+                  console.error('Error bulk updating:', error)
+                  alert(`Error: ${error?.message || 'Unknown error'}`)
+                }
+              }}
+              disabled={!bulkStatus}
+              className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 disabled:opacity-50"
+            >
+              Update
+            </button>
+            <button
+              onClick={() => setSelectedCandidates([])}
+              className="px-3 py-1 bg-gray-500 text-white rounded text-sm hover:bg-gray-600"
+            >
+              Clear
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden mt-3">
@@ -629,6 +699,19 @@ export function Candidates() {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <input
+                    type="checkbox"
+                    checked={selectedCandidates.length === filteredCandidates.length && filteredCandidates.length > 0}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedCandidates(filteredCandidates.map(c => c.id))
+                      } else {
+                        setSelectedCandidates([])
+                      }
+                    }}
+                  />
+                </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Notes</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
@@ -644,6 +727,19 @@ export function Candidates() {
             <tbody className="bg-white divide-y divide-gray-200">
               {filteredCandidates.map((candidate, index) => (
                 <tr key={candidate.id} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <input
+                      type="checkbox"
+                      checked={selectedCandidates.includes(candidate.id)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedCandidates(prev => [...prev, candidate.id])
+                        } else {
+                          setSelectedCandidates(prev => prev.filter(id => id !== candidate.id))
+                        }
+                      }}
+                    />
+                  </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{index + 1}</td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="relative">
@@ -683,6 +779,16 @@ export function Candidates() {
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{formatDisplayDate(candidate.inquiry_date)}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => {
+                          setSelectedCandidateForProfile(candidate)
+                          setShowProfileModal(true)
+                        }}
+                        className="text-blue-600 hover:text-blue-800"
+                        title="View Profile"
+                      >
+                        <Eye className="w-4 h-4" />
+                      </button>
                       <button
                         onClick={() => {
                           setShowModal(true)
@@ -726,13 +832,6 @@ export function Candidates() {
                         onChange={async (e) => {
                           const newStatus = e.target.value
                           if (newStatus) {
-                            // Check if status change is allowed
-                            if (candidate.status === 'WON' || candidate.status === 'INTERVIEW_SCHEDULED') {
-                              alert('Cannot change status. Use Staff page or Interviews page to modify.')
-                              e.target.selectedIndex = 0
-                              return
-                            }
-                            
                             // If setting to INTERVIEW_SCHEDULED, open date picker
                             if (newStatus === 'INTERVIEW_SCHEDULED') {
                               setScheduleModal({ open: true, candidate, dateOnly: '' })
@@ -774,7 +873,12 @@ export function Candidates() {
                           }
                           e.target.selectedIndex = 0
                         }}
-                        className="px-2 py-1 border border-gray-300 rounded text-sm bg-white"
+                        disabled={candidate.status === 'WON' || candidate.status === 'INTERVIEW_SCHEDULED'}
+                        className={`px-2 py-1 border border-gray-300 rounded text-sm ${
+                          candidate.status === 'WON' || candidate.status === 'INTERVIEW_SCHEDULED' 
+                            ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
+                            : 'bg-white'
+                        }`}
                         defaultValue=""
                       >
                         <option value="" disabled>Update Status</option>
@@ -875,7 +979,12 @@ export function Candidates() {
                   <select
                     value={formData.status}
                     onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
+                    disabled={selectedCandidate && (selectedCandidate.status === 'WON' || selectedCandidate.status === 'INTERVIEW_SCHEDULED')}
+                    className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent ${
+                      selectedCandidate && (selectedCandidate.status === 'WON' || selectedCandidate.status === 'INTERVIEW_SCHEDULED')
+                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                        : ''
+                    }`}
                   >
                     {statusOptions.map(status => (
                       <option key={status} value={status}>
@@ -883,6 +992,9 @@ export function Candidates() {
                       </option>
                     ))}
                   </select>
+                  {selectedCandidate && (selectedCandidate.status === 'WON' || selectedCandidate.status === 'INTERVIEW_SCHEDULED') && (
+                    <p className="text-xs text-gray-500 mt-1">Status locked - Use Staff or Interviews page to modify</p>
+                  )}
                 </div>
 
                 <div>
@@ -1353,6 +1465,143 @@ export function Candidates() {
                     Schedule Interview
                   </button>
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Candidate Profile Modal */}
+      {showProfileModal && selectedCandidateForProfile && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg w-1/2 h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              {/* Header with Nestara branding */}
+              <div className="bg-[#ae491e] text-white p-6 rounded-lg mb-6" style={{letterSpacing: '-1px'}}>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-2xl font-bold">NESTARA ID CARD</h2>
+                    <p className="text-white">{selectedCandidateForProfile.name}</p>
+                  </div>
+
+                </div>
+              </div>
+
+              {/* Profile Information */}
+              <div className="space-y-4">
+                {/* Personal Information */}
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  <h3 className="text-lg font-bold text-gray-900 mb-3">Personal Information</h3>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div><span className="font-semibold">Full Name:</span> {selectedCandidateForProfile.name}</div>
+                    <div><span className="font-semibold">Phone:</span> {selectedCandidateForProfile.phone}</div>
+                    <div><span className="font-semibold">Age:</span> {selectedCandidateForProfile.age || 'Not specified'}</div>
+                    <div><span className="font-semibold">Place of Birth:</span> {selectedCandidateForProfile.place_of_birth || 'Not specified'}</div>
+                  </div>
+                </div>
+
+                {/* Professional Details */}
+                <div className="bg-blue-50 p-4 rounded-lg">
+                  <h3 className="text-lg font-bold text-gray-900 mb-3">Professional Details</h3>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div><span className="font-semibold">Role:</span> <span className="text-[#ae491e] font-semibold">{selectedCandidateForProfile.role}</span></div>
+                    <div><span className="font-semibold">Status:</span> <StatusBadge status={selectedCandidateForProfile.status} type="candidate" /></div>
+                    <div><span className="font-semibold">Experience:</span> {selectedCandidateForProfile.total_years_experience || 'Not specified'} years</div>
+                    <div><span className="font-semibold">Good Conduct:</span> {selectedCandidateForProfile.has_good_conduct_cert ? <span className="text-green-600 font-medium">✓ Valid</span> : <span className="text-red-600">Not provided</span>}</div>
+                  </div>
+                </div>
+
+                {/* Work Preferences */}
+                <div className="bg-green-50 p-4 rounded-lg">
+                  <h3 className="text-lg font-bold text-gray-900 mb-3">Work Preferences</h3>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div><span className="font-semibold">Live Arrangement:</span> {selectedCandidateForProfile.live_arrangement || 'Not specified'}</div>
+                    <div><span className="font-semibold">Work Schedule:</span> {selectedCandidateForProfile.work_schedule || 'Not specified'}</div>
+                    <div><span className="font-semibold">Expected Salary:</span> {selectedCandidateForProfile.expected_salary ? `KSh ${selectedCandidateForProfile.expected_salary.toLocaleString()}` : 'Not specified'}</div>
+                  </div>
+                </div>
+
+                {/* Location */}
+                {selectedCandidateForProfile.address && (
+                  <div className="bg-yellow-50 p-4 rounded-lg">
+                    <h3 className="text-lg font-bold text-gray-900 mb-3">Location</h3>
+                    <div className="text-sm space-y-2">
+                      <div><span className="font-semibold">Address:</span> {selectedCandidateForProfile.address}</div>
+                      {selectedCandidateForProfile.apartment && (
+                        <div><span className="font-semibold">Apartment:</span> {selectedCandidateForProfile.apartment}</div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Emergency Contacts */}
+                {(selectedCandidateForProfile.next_of_kin_1_name || selectedCandidateForProfile.next_of_kin_2_name) && (
+                  <div className="bg-red-50 p-4 rounded-lg">
+                    <h3 className="text-lg font-bold text-gray-900 mb-3">Emergency Contacts</h3>
+                    <div className="space-y-3 text-sm">
+                      {selectedCandidateForProfile.next_of_kin_1_name && (
+                        <div>
+                          <div className="font-bold text-gray-800">Next of Kin 1:</div>
+                          <div><span className="font-semibold">Name:</span> {selectedCandidateForProfile.next_of_kin_1_name}</div>
+                          {selectedCandidateForProfile.next_of_kin_1_phone && <div><span className="font-semibold">Phone:</span> {selectedCandidateForProfile.next_of_kin_1_phone}</div>}
+                          {selectedCandidateForProfile.next_of_kin_1_location && <div><span className="font-semibold">Location:</span> {selectedCandidateForProfile.next_of_kin_1_location}</div>}
+                        </div>
+                      )}
+                      {selectedCandidateForProfile.next_of_kin_2_name && (
+                        <div>
+                          <div className="font-bold text-gray-800">Next of Kin 2:</div>
+                          <div><span className="font-semibold">Name:</span> {selectedCandidateForProfile.next_of_kin_2_name}</div>
+                          {selectedCandidateForProfile.next_of_kin_2_phone && <div><span className="font-semibold">Phone:</span> {selectedCandidateForProfile.next_of_kin_2_phone}</div>}
+                          {selectedCandidateForProfile.next_of_kin_2_location && <div><span className="font-semibold">Location:</span> {selectedCandidateForProfile.next_of_kin_2_location}</div>}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* References */}
+                {(selectedCandidateForProfile.referee_1_name || selectedCandidateForProfile.referee_2_name) && (
+                  <div className="bg-purple-50 p-4 rounded-lg">
+                    <h3 className="text-lg font-bold text-gray-900 mb-3">References</h3>
+                    <div className="space-y-3 text-sm">
+                      {selectedCandidateForProfile.referee_1_name && (
+                        <div>
+                          <div className="font-bold text-gray-800">Reference 1:</div>
+                          <div><span className="font-semibold">Name:</span> {selectedCandidateForProfile.referee_1_name}</div>
+                          {selectedCandidateForProfile.referee_1_phone && <div><span className="font-semibold">Phone:</span> {selectedCandidateForProfile.referee_1_phone}</div>}
+                        </div>
+                      )}
+                      {selectedCandidateForProfile.referee_2_name && (
+                        <div>
+                          <div className="font-bold text-gray-800">Reference 2:</div>
+                          <div><span className="font-semibold">Name:</span> {selectedCandidateForProfile.referee_2_name}</div>
+                          {selectedCandidateForProfile.referee_2_phone && <div><span className="font-semibold">Phone:</span> {selectedCandidateForProfile.referee_2_phone}</div>}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Footer */}
+                <div className="bg-gray-100 p-4 rounded-lg">
+                  <h3 className="text-lg font-bold text-gray-900 mb-3">Registration Details</h3>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div><span className="font-semibold">Inquiry Date:</span> {formatDisplayDate(selectedCandidateForProfile.inquiry_date)}</div>
+                    <div><span className="font-semibold">Source:</span> {selectedCandidateForProfile.source || 'N/A'}</div>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="flex justify-end mt-6">
+                <button
+                  onClick={() => {
+                    setShowProfileModal(false)
+                    setSelectedCandidateForProfile(null)
+                  }}
+                  className="px-6 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600"
+                >
+                  Close
+                </button>
               </div>
             </div>
           </div>
