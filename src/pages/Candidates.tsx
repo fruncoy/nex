@@ -42,6 +42,25 @@ interface Candidate {
   total_years_experience?: number
   has_good_conduct_cert?: boolean
   good_conduct_cert_receipt?: string
+  good_conduct_status?: string
+  work_experiences?: string
+  kenya_years?: number
+  qualification_score?: number
+  qualification_notes?: string
+  preferred_interview_date?: string
+  id_number?: string
+  email?: string
+  county?: string
+  town?: string
+  estate?: string
+  marital_status?: string
+  has_kids?: boolean
+  kids_count?: number
+  has_parents?: string
+  off_day?: string
+  has_siblings?: boolean
+  dependent_siblings?: number
+  education_level?: string
 }
 
 export function Candidates() {
@@ -54,11 +73,12 @@ export function Candidates() {
   const [showModal, setShowModal] = useState(false)
   const [selectedCandidate, setSelectedCandidate] = useState<Candidate | null>(null)
   const [formData, setFormData] = useState({
+    profile_id: '',
     name: '',
     phone: '',
     source: '',
     role: '',
-    status: 'PENDING' as 'PENDING' | 'INTERVIEW_SCHEDULED' | 'Lost, No Response' | 'Lost, Personality' | 'Lost, Salary' | 'Lost, Experience' | 'Lost, No Good Conduct',
+    status: 'PENDING' as 'PENDING' | 'INTERVIEW_SCHEDULED' | 'Lost, Age' | 'Lost, No References' | 'Lost, No Response' | 'Lost, Personality' | 'Lost, Salary' | 'Lost, Experience' | 'Lost, No Good Conduct' | 'Pending, applying GC',
     scheduledDateOnly: '',
     live_arrangement: '',
     work_schedule: '',
@@ -80,7 +100,23 @@ export function Candidates() {
     apartment: '',
     total_years_experience: '',
     has_good_conduct_cert: false,
-    good_conduct_cert_receipt: ''
+    good_conduct_cert_receipt: '',
+    good_conduct_status: '',
+    kenya_years: '',
+    qualification_notes: '',
+    id_number: '',
+    email: '',
+    county: '',
+    town: '',
+    estate: '',
+    marital_status: '',
+    has_kids: null,
+    kids_count: '',
+    has_parents: '',
+    off_day: '',
+    has_siblings: null,
+    dependent_siblings: '',
+    education_level: ''
   })
   const [showBulkUpload, setShowBulkUpload] = useState(false)
   const [uploadFile, setUploadFile] = useState<File | null>(null)
@@ -103,7 +139,7 @@ export function Candidates() {
   const { user, staff } = useAuth()
   const { showToast } = useToast()
 
-  const statusOptions = ['PENDING', 'INTERVIEW_SCHEDULED', 'WON', 'Lost, No Response', 'Lost, Personality', 'Lost, Salary', 'Lost, Experience', 'Lost, No Good Conduct', 'BLACKLISTED']
+  const statusOptions = ['PENDING', 'INTERVIEW_SCHEDULED', 'WON', 'Lost, Age', 'Lost, No References', 'Lost, No Response', 'Lost, Personality', 'Lost, Salary', 'Lost, Experience', 'Lost, No Good Conduct', 'Pending, applying GC', 'BLACKLISTED']
   const filterStatusOptions = ['Pending', 'Won', 'Lost', 'Blacklisted', 'Added by System', 'Self-Registered']
   const roleOptions = ['Nanny', 'House Manager', 'Chef', 'Driver', 'Night Nurse', 'Caregiver', 'Housekeeper']
   const sourceOptions = ['TikTok', 'Facebook', 'Instagram', 'Google Search', 'Website', 'Referral', 'LinkedIn', 'Walk-in poster', 'Youtube']
@@ -246,9 +282,17 @@ export function Candidates() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    
+    // Validate scheduled date if status is INTERVIEW_SCHEDULED
+    if (formData.status === 'INTERVIEW_SCHEDULED' && !formData.scheduledDateOnly) {
+      alert('Please select a scheduled date for the interview')
+      return
+    }
+    
     setSubmitting(true)
     try {
       const payload: any = {
+        profile_id: formData.profile_id || null,
         name: formData.name.trim(),
         phone: formData.phone.trim(),
         source: formData.source || 'Referral',
@@ -273,8 +317,51 @@ export function Candidates() {
         total_years_experience: formData.total_years_experience ? parseInt(formData.total_years_experience) : null,
         has_good_conduct_cert: formData.has_good_conduct_cert,
         good_conduct_cert_receipt: formData.good_conduct_cert_receipt || null,
+        good_conduct_status: formData.good_conduct_status || null,
+        kenya_years: formData.kenya_years ? parseInt(formData.kenya_years) : null,
+
+        qualification_notes: formData.qualification_notes || null,
+        qualification_score: (() => {
+          const age = parseInt(formData.age) || 0
+          const totalExp = parseInt(formData.total_years_experience) || 0
+          const kenyaExp = parseInt(formData.kenya_years) || 0
+          const hasGoodConduct = formData.good_conduct_status === 'Valid Certificate' || formData.good_conduct_status === 'Application Receipt'
+          const hasRefs = formData.referee_1_name && formData.referee_1_phone
+          
+          let score = 0
+          if (age >= 24 && age <= 45) score += 20
+          if (totalExp >= 7) score += 25
+          else if (totalExp >= 4) score += 15
+          else if (totalExp >= 2) score += 10
+          if (kenyaExp >= 7) score += 25
+          else if (kenyaExp >= 4) score += 15
+          if (hasGoodConduct) score += 15
+          if (hasRefs) score += 15
+          
+          return score
+        })(),
         address: formData.address || null,
-        apartment: formData.apartment || null
+        apartment: formData.apartment || null,
+        id_number: formData.id_number || null,
+        email: formData.email || null,
+        county: formData.county || null,
+        town: formData.town || null,
+        estate: formData.estate || null,
+        marital_status: formData.marital_status || null,
+        has_kids: formData.has_kids,
+        kids_count: formData.has_kids ? parseInt(formData.kids_count) || 0 : null,
+        has_parents: formData.has_parents || null,
+        off_day: formData.off_day || null,
+        has_siblings: formData.has_siblings,
+        dependent_siblings: formData.has_siblings ? parseInt(formData.dependent_siblings) || 0 : null,
+        education_level: formData.education_level || null
+      }
+      
+      // Add scheduled date if status is INTERVIEW_SCHEDULED
+      if (formData.status === 'INTERVIEW_SCHEDULED' && formData.scheduledDateOnly) {
+        const date = new Date(formData.scheduledDateOnly)
+        date.setHours(14, 0, 0, 0) // Set to 2:00 PM
+        payload.scheduled_date = date.toISOString()
       }
       
       if (selectedCandidate) {
@@ -562,14 +649,18 @@ export function Candidates() {
 
   const resetForm = () => {
     setFormData({
-      name: '', phone: '', source: '', role: '', status: 'PENDING', scheduledDateOnly: '',
+      profile_id: '', name: '', phone: '', source: '', role: '', status: 'PENDING', scheduledDateOnly: '',
       live_arrangement: '', work_schedule: '', employment_type: '', expected_salary: '',
       age: '', place_of_birth: '', next_of_kin_1_phone: '', next_of_kin_1_name: '',
       next_of_kin_1_location: '', next_of_kin_2_phone: '', next_of_kin_2_name: '',
       next_of_kin_2_location: '', referee_1_phone: '', referee_1_name: '',
       referee_2_phone: '', referee_2_name: '', address: '',
       apartment: '', total_years_experience: '', has_good_conduct_cert: false,
-      good_conduct_cert_receipt: ''
+      good_conduct_cert_receipt: '', good_conduct_status: '', kenya_years: '',
+      qualification_notes: '', id_number: '', email: '', county: '', town: '',
+      estate: '', marital_status: '', has_kids: null, kids_count: '',
+      has_parents: '', off_day: '', has_siblings: null, dependent_siblings: '',
+      education_level: ''
     })
     setSelectedCandidate(null)
     setShowExtendedFields(false)
@@ -794,12 +885,13 @@ export function Candidates() {
                           setShowModal(true)
                           setSelectedCandidate(candidate)
                           setFormData({
+                            profile_id: candidate.profile_id || '',
                             name: candidate.name,
                             phone: candidate.phone,
                             source: candidate.source || 'Referral',
                             role: candidate.role,
                             status: candidate.status as any,
-                            scheduledDateOnly: '',
+                            scheduledDateOnly: candidate.scheduled_date ? new Date(candidate.scheduled_date).toISOString().split('T')[0] : '',
                             live_arrangement: candidate.live_arrangement || '',
                             work_schedule: candidate.work_schedule || '',
                             employment_type: candidate.employment_type || '',
@@ -820,7 +912,23 @@ export function Candidates() {
                             apartment: candidate.apartment || '',
                             total_years_experience: candidate.total_years_experience?.toString() || '',
                             has_good_conduct_cert: candidate.has_good_conduct_cert || false,
-                            good_conduct_cert_receipt: candidate.good_conduct_cert_receipt || ''
+                            good_conduct_cert_receipt: candidate.good_conduct_cert_receipt || '',
+                            good_conduct_status: candidate.good_conduct_status || '',
+                            kenya_years: candidate.kenya_years?.toString() || '',
+                            qualification_notes: candidate.qualification_notes || '',
+                            id_number: candidate.id_number || '',
+                            email: candidate.email || '',
+                            county: candidate.county || '',
+                            town: candidate.town || '',
+                            estate: candidate.estate || '',
+                            marital_status: candidate.marital_status || '',
+                            has_kids: candidate.has_kids,
+                            kids_count: candidate.kids_count?.toString() || '',
+                            has_parents: candidate.has_parents || '',
+                            off_day: candidate.off_day || '',
+                            has_siblings: candidate.has_siblings,
+                            dependent_siblings: candidate.dependent_siblings?.toString() || '',
+                            education_level: candidate.education_level || ''
                           })
                         }}
                         className="text-nestalk-primary hover:text-nestalk-primary/80"
@@ -997,6 +1105,19 @@ export function Candidates() {
                   )}
                 </div>
 
+                {formData.status === 'INTERVIEW_SCHEDULED' && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Scheduled Date *</label>
+                    <input
+                      type="date"
+                      value={formData.scheduledDateOnly}
+                      onChange={(e) => setFormData({ ...formData, scheduledDateOnly: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
+                      required
+                    />
+                  </div>
+                )}
+
                 <div>
                   <button
                     type="button"
@@ -1009,133 +1130,402 @@ export function Candidates() {
                 </div>
 
                 {showExtendedFields && (
-                  <div className="space-y-4 border-t pt-4">
-                    <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-4">
+                    {/* Work Preferences */}
+                    <div className="bg-green-50 p-4 rounded-lg space-y-4">
+                      <h3 className="text-sm font-semibold text-gray-900 mb-3">Work Preferences</h3>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Live Arrangement</label>
+                          <select
+                            value={formData.live_arrangement}
+                            onChange={(e) => setFormData({ ...formData, live_arrangement: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
+                          >
+                            <option value="">Select...</option>
+                            <option value="Live-In">Live-In</option>
+                            <option value="Live-Out">Live-Out</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Work Schedule</label>
+                          <select
+                            value={formData.work_schedule}
+                            onChange={(e) => setFormData({ ...formData, work_schedule: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
+                          >
+                            <option value="">Select...</option>
+                            <option value="Full Time">Full Time</option>
+                            <option value="Part Time">Part Time</option>
+                          </select>
+                        </div>
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Employment Type</label>
+                          <select
+                            value={formData.employment_type}
+                            onChange={(e) => setFormData({ ...formData, employment_type: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
+                          >
+                            <option value="">Select...</option>
+                            <option value="Permanent">Permanent</option>
+                            <option value="Temporary">Temporary</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Expected Salary</label>
+                          <input
+                            type="number"
+                            value={formData.expected_salary}
+                            onChange={(e) => setFormData({ ...formData, expected_salary: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
+                            placeholder="0.00"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Personal Details */}
+                    <div className="bg-yellow-50 p-4 rounded-lg space-y-4">
+                      <h3 className="text-sm font-semibold text-gray-900 mb-3">Personal Details</h3>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Profile ID</label>
+                          <input
+                            type="text"
+                            value={formData.profile_id}
+                            onChange={(e) => setFormData({ ...formData, profile_id: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">ID Number</label>
+                          <input
+                            type="text"
+                            value={formData.id_number}
+                            onChange={(e) => setFormData({ ...formData, id_number: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                          <input
+                            type="email"
+                            value={formData.email}
+                            onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-3 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">County</label>
+                          <input
+                            type="text"
+                            value={formData.county}
+                            onChange={(e) => setFormData({ ...formData, county: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Town</label>
+                          <input
+                            type="text"
+                            value={formData.town}
+                            onChange={(e) => setFormData({ ...formData, town: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Estate</label>
+                          <input
+                            type="text"
+                            value={formData.estate}
+                            onChange={(e) => setFormData({ ...formData, estate: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Age</label>
+                          <input
+                            type="number"
+                            value={formData.age}
+                            onChange={(e) => setFormData({ ...formData, age: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Place of Birth</label>
+                          <input
+                            type="text"
+                            value={formData.place_of_birth}
+                            onChange={(e) => setFormData({ ...formData, place_of_birth: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Marital Status</label>
+                          <select
+                            value={formData.marital_status}
+                            onChange={(e) => setFormData({ ...formData, marital_status: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
+                          >
+                            <option value="">Select...</option>
+                            <option value="Single">Single</option>
+                            <option value="Married">Married</option>
+                            <option value="Divorced">Divorced</option>
+                            <option value="Widowed">Widowed</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Parents Status</label>
+                          <select
+                            value={formData.has_parents}
+                            onChange={(e) => setFormData({ ...formData, has_parents: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
+                          >
+                            <option value="">Select...</option>
+                            <option value="Both Parents">Both Parents</option>
+                            <option value="Single Parent">Single Parent</option>
+                            <option value="No Parents">No Parents</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="flex items-center">
+                            <input
+                              type="checkbox"
+                              checked={formData.has_kids}
+                              onChange={(e) => setFormData({ ...formData, has_kids: e.target.checked })}
+                              className="mr-2"
+                            />
+                            Has Kids
+                          </label>
+                          {formData.has_kids && (
+                            <input
+                              type="number"
+                              placeholder="How many?"
+                              value={formData.kids_count}
+                              onChange={(e) => setFormData({ ...formData, kids_count: e.target.value })}
+                              className="w-full mt-2 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
+                            />
+                          )}
+                        </div>
+                        <div>
+                          <label className="flex items-center">
+                            <input
+                              type="checkbox"
+                              checked={formData.has_siblings}
+                              onChange={(e) => setFormData({ ...formData, has_siblings: e.target.checked })}
+                              className="mr-2"
+                            />
+                            Has Siblings
+                          </label>
+                          {formData.has_siblings && (
+                            <input
+                              type="number"
+                              placeholder="How many depend on you?"
+                              value={formData.dependent_siblings}
+                              onChange={(e) => setFormData({ ...formData, dependent_siblings: e.target.value })}
+                              className="w-full mt-2 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
+                            />
+                          )}
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Education Level</label>
+                          <select
+                            value={formData.education_level}
+                            onChange={(e) => setFormData({ ...formData, education_level: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
+                          >
+                            <option value="">Select...</option>
+                            <option value="Primary">Primary</option>
+                            <option value="Secondary">Secondary</option>
+                            <option value="College">College</option>
+                            <option value="University">University</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Preferred Day Off</label>
+                          <select
+                            value={formData.off_day}
+                            onChange={(e) => setFormData({ ...formData, off_day: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
+                          >
+                            <option value="">Select...</option>
+                            <option value="Saturday">Saturday</option>
+                            <option value="Sunday">Sunday</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Experience & Qualifications */}
+                    <div className="bg-purple-50 p-4 rounded-lg space-y-4">
+                      <h3 className="text-sm font-semibold text-gray-900 mb-3">Experience & Qualifications</h3>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Total Years Experience</label>
+                          <input
+                            type="number"
+                            value={formData.total_years_experience}
+                            onChange={(e) => setFormData({ ...formData, total_years_experience: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Kenya Years Experience</label>
+                          <input
+                            type="number"
+                            value={formData.kenya_years}
+                            onChange={(e) => setFormData({ ...formData, kenya_years: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
+                          />
+                        </div>
+                      </div>
+
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Live Arrangement</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Good Conduct Status</label>
                         <select
-                          value={formData.live_arrangement}
-                          onChange={(e) => setFormData({ ...formData, live_arrangement: e.target.value })}
+                          value={formData.good_conduct_status}
+                          onChange={(e) => setFormData({ ...formData, good_conduct_status: e.target.value })}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
                         >
-                          <option value="">Select...</option>
-                          <option value="Live-In">Live-In</option>
-                          <option value="Live-Out">Live-Out</option>
+                          <option value="">Select status</option>
+                          <option value="Valid Certificate">Valid Certificate</option>
+                          <option value="Application Receipt">Application Receipt</option>
+                          <option value="Expired">Expired</option>
+                          <option value="None">None</option>
                         </select>
                       </div>
+
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Work Schedule</label>
-                        <select
-                          value={formData.work_schedule}
-                          onChange={(e) => setFormData({ ...formData, work_schedule: e.target.value })}
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Notes/Comments</label>
+                        <textarea
+                          value={formData.qualification_notes}
+                          onChange={(e) => setFormData({ ...formData, qualification_notes: e.target.value })}
+                          rows={2}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
-                        >
-                          <option value="">Select...</option>
-                          <option value="Full Time">Full Time</option>
-                          <option value="Part Time">Part Time</option>
-                        </select>
-                      </div>
-                    </div>
-                    
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Employment Type</label>
-                        <select
-                          value={formData.employment_type}
-                          onChange={(e) => setFormData({ ...formData, employment_type: e.target.value })}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
-                        >
-                          <option value="">Select...</option>
-                          <option value="Permanent">Permanent</option>
-                          <option value="Temporary">Temporary</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Expected Salary</label>
-                        <input
-                          type="number"
-                          value={formData.expected_salary}
-                          onChange={(e) => setFormData({ ...formData, expected_salary: e.target.value })}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
-                          placeholder="0.00"
+                          placeholder="Add any notes or comments..."
                         />
                       </div>
-                    </div>
 
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Age</label>
-                        <input
-                          type="number"
-                          value={formData.age}
-                          onChange={(e) => setFormData({ ...formData, age: e.target.value })}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Total Years Experience</label>
-                        <input
-                          type="number"
-                          value={formData.total_years_experience}
-                          onChange={(e) => setFormData({ ...formData, total_years_experience: e.target.value })}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Place of Birth</label>
-                      <input
-                        type="text"
-                        value={formData.place_of_birth}
-                        onChange={(e) => setFormData({ ...formData, place_of_birth: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
-                      <textarea
-                        value={formData.address}
-                        onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                        rows={2}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Apartment</label>
-                      <input
-                        type="text"
-                        value={formData.apartment}
-                        onChange={(e) => setFormData({ ...formData, apartment: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <label className="flex items-center">
-                        <input
-                          type="checkbox"
-                          checked={formData.has_good_conduct_cert}
-                          onChange={(e) => setFormData({ ...formData, has_good_conduct_cert: e.target.checked })}
-                          className="mr-2"
-                        />
-                        <span className="text-sm font-medium text-gray-700">Has Valid Good Conduct Certificate</span>
-                      </label>
-                      {formData.has_good_conduct_cert && (
-                        <input
-                          type="text"
-                          value={formData.good_conduct_cert_receipt}
-                          onChange={(e) => setFormData({ ...formData, good_conduct_cert_receipt: e.target.value })}
-                          placeholder="Certificate details or receipt number"
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
-                        />
+                      {selectedCandidate?.added_by === 'System' && (
+                        <div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const age = parseInt(formData.age) || 0
+                              const totalExp = parseInt(formData.total_years_experience) || 0
+                              const kenyaExp = parseInt(formData.kenya_years) || 0
+                              const hasGoodConduct = formData.good_conduct_status === 'Valid Certificate' || formData.good_conduct_status === 'Application Receipt'
+                              const hasRefs = formData.referee_1_name && formData.referee_1_phone
+                              
+                              let score = 0
+                              let notes = 'Assessment: '
+                              
+                              // Age check (24-45)
+                              if (age >= 24 && age <= 45) {
+                                score += 20
+                                notes += 'Age appropriate. '
+                              } else {
+                                notes += 'Age outside range (24-45). '
+                              }
+                              
+                              // Experience scoring
+                              if (totalExp >= 7) {
+                                score += 25
+                                notes += 'Excellent experience. '
+                              } else if (totalExp >= 4) {
+                                score += 15
+                                notes += 'Good experience. '
+                              } else if (totalExp >= 2) {
+                                score += 10
+                                notes += 'Limited experience. '
+                              } else {
+                                notes += 'Insufficient experience. '
+                              }
+                              
+                              // Kenya experience
+                              if (kenyaExp >= 7) {
+                                score += 25
+                                notes += 'Strong Kenya experience. '
+                              } else if (kenyaExp >= 4) {
+                                score += 15
+                                notes += 'Adequate Kenya experience. '
+                              } else {
+                                notes += 'Limited Kenya experience. '
+                              }
+                              
+                              // Good conduct
+                              if (hasGoodConduct) {
+                                score += 15
+                                notes += 'Valid documentation. '
+                              } else {
+                                notes += 'Missing good conduct certificate. '
+                              }
+                              
+                              // References
+                              if (hasRefs) {
+                                score += 15
+                                notes += 'References provided. '
+                              } else {
+                                notes += 'No references provided. '
+                              }
+                              
+                              setFormData(prev => ({
+                                ...prev,
+                                qualification_notes: notes + (prev.qualification_notes ? '\n\nAdditional notes: ' + prev.qualification_notes : '')
+                              }))
+                              
+                              alert(`Qualification Score: ${score}/100\n\n${notes}`)
+                            }}
+                            className="w-full px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
+                          >
+                            Calculate Qualification Score
+                          </button>
+                        </div>
                       )}
                     </div>
 
-                    <div className="space-y-4">
-                      <h4 className="text-sm font-semibold text-gray-900">Next of Kin</h4>
+                    {/* Location */}
+                    <div className="bg-orange-50 p-4 rounded-lg space-y-4">
+                      <h3 className="text-sm font-semibold text-gray-900 mb-3">Location</h3>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Where do you stay</label>
+                        <textarea
+                          value={formData.address}
+                          onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                          rows={2}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Apartment</label>
+                        <input
+                          type="text"
+                          value={formData.apartment}
+                          onChange={(e) => setFormData({ ...formData, apartment: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
+                        />
+                      </div>
+                    </div>
+
+
+
+                    {/* Emergency Contacts */}
+                    <div className="bg-red-50 p-4 rounded-lg space-y-4">
+                      <h3 className="text-sm font-semibold text-gray-900 mb-3">Emergency Contacts</h3>
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">Next of Kin 1 Name</label>
@@ -1197,8 +1587,9 @@ export function Candidates() {
                       </div>
                     </div>
 
-                    <div className="space-y-4">
-                      <h4 className="text-sm font-semibold text-gray-900">References</h4>
+                    {/* References */}
+                    <div className="bg-indigo-50 p-4 rounded-lg space-y-4">
+                      <h3 className="text-sm font-semibold text-gray-900 mb-3">References</h3>
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">Referee 1 Name</label>
@@ -1495,8 +1886,16 @@ export function Candidates() {
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div><span className="font-semibold">Full Name:</span> {selectedCandidateForProfile.name}</div>
                     <div><span className="font-semibold">Phone:</span> {selectedCandidateForProfile.phone}</div>
+                    <div><span className="font-semibold">ID Number:</span> {selectedCandidateForProfile.id_number || 'Not specified'}</div>
+                    <div><span className="font-semibold">Email:</span> {selectedCandidateForProfile.email || 'Not specified'}</div>
                     <div><span className="font-semibold">Age:</span> {selectedCandidateForProfile.age || 'Not specified'}</div>
                     <div><span className="font-semibold">Place of Birth:</span> {selectedCandidateForProfile.place_of_birth || 'Not specified'}</div>
+                    <div><span className="font-semibold">Marital Status:</span> {selectedCandidateForProfile.marital_status || 'Not specified'}</div>
+                    <div><span className="font-semibold">Has Kids:</span> {selectedCandidateForProfile.has_kids === null || selectedCandidateForProfile.has_kids === undefined ? 'Not specified' : selectedCandidateForProfile.has_kids ? `Yes (${selectedCandidateForProfile.kids_count || 0})` : 'No'}</div>
+                    <div><span className="font-semibold">Parents Status:</span> {selectedCandidateForProfile.has_parents || 'Not specified'}</div>
+                    <div><span className="font-semibold">Has Siblings:</span> {selectedCandidateForProfile.has_siblings === null || selectedCandidateForProfile.has_siblings === undefined ? 'Not specified' : selectedCandidateForProfile.has_siblings ? `Yes (${selectedCandidateForProfile.dependent_siblings || 0} dependent)` : 'No'}</div>
+                    <div><span className="font-semibold">Education Level:</span> {selectedCandidateForProfile.education_level || 'Not specified'}</div>
+                    <div><span className="font-semibold">Preferred Day Off:</span> {selectedCandidateForProfile.off_day || 'Not specified'}</div>
                   </div>
                 </div>
 
@@ -1506,10 +1905,177 @@ export function Candidates() {
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div><span className="font-semibold">Role:</span> <span className="text-[#ae491e] font-semibold">{selectedCandidateForProfile.role}</span></div>
                     <div><span className="font-semibold">Status:</span> <StatusBadge status={selectedCandidateForProfile.status} type="candidate" /></div>
-                    <div><span className="font-semibold">Experience:</span> {selectedCandidateForProfile.total_years_experience || 'Not specified'} years</div>
-                    <div><span className="font-semibold">Good Conduct:</span> {selectedCandidateForProfile.has_good_conduct_cert ? <span className="text-green-600 font-medium">✓ Valid</span> : <span className="text-red-600">Not provided</span>}</div>
+                    <div><span className="font-semibold">Kenya Experience:</span> {selectedCandidateForProfile.kenya_years || 'Not specified'} years</div>
+                    <div><span className="font-semibold">Total Experience:</span> {selectedCandidateForProfile.total_years_experience || 'Not specified'} years</div>
+                    <div><span className="font-semibold">Good Conduct:</span> {selectedCandidateForProfile.good_conduct_status || (selectedCandidateForProfile.has_good_conduct_cert ? 'Valid Certificate' : 'Not provided')}</div>
+                    <div><span className="font-semibold">Qualification Score:</span> {(() => {
+                      if (selectedCandidateForProfile.qualification_score !== null && selectedCandidateForProfile.qualification_score !== undefined) {
+                        return selectedCandidateForProfile.qualification_score
+                      }
+                      // Calculate score for display
+                      const age = selectedCandidateForProfile.age || 0
+                      const totalExp = selectedCandidateForProfile.total_years_experience || 0
+                      const kenyaExp = selectedCandidateForProfile.kenya_years || 0
+                      const hasGoodConduct = selectedCandidateForProfile.good_conduct_status === 'Valid Certificate' || selectedCandidateForProfile.good_conduct_status === 'Application Receipt'
+                      const hasRefs = selectedCandidateForProfile.referee_1_name && selectedCandidateForProfile.referee_1_phone
+                      
+                      console.log('Candidate data:', {
+                        age,
+                        totalExp,
+                        kenyaExp,
+                        hasGoodConduct,
+                        hasRefs,
+                        good_conduct_status: selectedCandidateForProfile.good_conduct_status,
+                        referee_1_name: selectedCandidateForProfile.referee_1_name,
+                        referee_1_phone: selectedCandidateForProfile.referee_1_phone
+                      })
+                      
+                      let score = 0
+                      if (age >= 24 && age <= 45) score += 20
+                      if (totalExp >= 7) score += 25
+                      else if (totalExp >= 4) score += 15
+                      else if (totalExp >= 2) score += 10
+                      if (kenyaExp >= 7) score += 25
+                      else if (kenyaExp >= 4) score += 15
+                      if (hasGoodConduct) score += 15
+                      if (hasRefs) score += 15
+                      
+                      console.log('Calculated score:', score)
+                      return score
+                    })()}/100</div>
                   </div>
+                  {selectedCandidateForProfile.work_experiences && (
+                    <div className="mt-3">
+                      <span className="font-semibold">Work History:</span>
+                      <div className="ml-4 text-xs mt-1">
+                        {JSON.parse(selectedCandidateForProfile.work_experiences).map((exp: any, i: number) => (
+                          <div key={i}>• {exp.employer_name} ({exp.country}) - {exp.start_date} to {exp.still_working ? 'Present' : exp.end_date}</div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {selectedCandidateForProfile.qualification_notes && (
+                    <div className="mt-3">
+                      <span className="font-semibold">Notes/Comments:</span>
+                      <div className="text-xs mt-1">{selectedCandidateForProfile.qualification_notes}</div>
+                    </div>
+                  )}
                 </div>
+
+                {/* Internal Rating & Recommendation */}
+                {(() => {
+                  let score = selectedCandidateForProfile.qualification_score
+                  if (score === null || score === undefined) {
+                    const age = selectedCandidateForProfile.age || 0
+                    const totalExp = selectedCandidateForProfile.total_years_experience || 0
+                    const kenyaExp = selectedCandidateForProfile.kenya_years || 0
+                    const hasGoodConduct = selectedCandidateForProfile.good_conduct_status === 'Valid Certificate' || selectedCandidateForProfile.good_conduct_status === 'Application Receipt'
+                    const hasRefs = selectedCandidateForProfile.referee_1_name && selectedCandidateForProfile.referee_1_phone
+                    
+                    score = 0
+                    if (age >= 24 && age <= 45) score += 20
+                    if (totalExp >= 7) score += 25
+                    else if (totalExp >= 4) score += 15
+                    else if (totalExp >= 2) score += 10
+                    if (kenyaExp >= 7) score += 25
+                    else if (kenyaExp >= 4) score += 15
+                    if (hasGoodConduct) score += 15
+                    if (hasRefs) score += 15
+                  }
+                  return score > 0
+                })() && (
+                  <div className="bg-orange-50 p-4 rounded-lg">
+                    <h3 className="text-lg font-bold text-gray-900 mb-3">Internal Assessment</h3>
+                    <div className="space-y-2 text-sm">
+                      <div><span className="font-semibold">Rating:</span> {(() => {
+                        let score = selectedCandidateForProfile.qualification_score
+                        if (score === null || score === undefined) {
+                          const age = selectedCandidateForProfile.age || 0
+                          const totalExp = selectedCandidateForProfile.total_years_experience || 0
+                          const kenyaExp = selectedCandidateForProfile.kenya_years || 0
+                          const hasGoodConduct = selectedCandidateForProfile.good_conduct_status === 'Valid Certificate' || selectedCandidateForProfile.good_conduct_status === 'Application Receipt'
+                          const hasRefs = selectedCandidateForProfile.referee_1_name && selectedCandidateForProfile.referee_1_phone
+                          
+                          score = 0
+                          if (age >= 24 && age <= 45) score += 20
+                          if (totalExp >= 7) score += 25
+                          else if (totalExp >= 4) score += 15
+                          else if (totalExp >= 2) score += 10
+                          if (kenyaExp >= 7) score += 25
+                          else if (kenyaExp >= 4) score += 15
+                          if (hasGoodConduct) score += 15
+                          if (hasRefs) score += 15
+                        }
+                        return score
+                      })()}/100</div>
+                      <div className="bg-white p-3 rounded border-l-4 border-orange-400">
+                        <span className="font-semibold">Recommendation:</span>
+                        <div className="mt-1">
+                          {(() => {
+                            let score = selectedCandidateForProfile.qualification_score
+                            if (score === null || score === undefined) {
+                              const age = selectedCandidateForProfile.age || 0
+                              const totalExp = selectedCandidateForProfile.total_years_experience || 0
+                              const kenyaExp = selectedCandidateForProfile.kenya_years || 0
+                              const hasGoodConduct = selectedCandidateForProfile.good_conduct_status === 'Valid Certificate' || selectedCandidateForProfile.good_conduct_status === 'Application Receipt'
+                              const hasRefs = selectedCandidateForProfile.referee_1_name && selectedCandidateForProfile.referee_1_phone
+                              
+                              score = 0
+                              if (age >= 24 && age <= 45) score += 20
+                              if (totalExp >= 7) score += 25
+                              else if (totalExp >= 4) score += 15
+                              else if (totalExp >= 2) score += 10
+                              if (kenyaExp >= 7) score += 25
+                              else if (kenyaExp >= 4) score += 15
+                              if (hasGoodConduct) score += 15
+                              if (hasRefs) score += 15
+                            }
+                            score = score || 0
+                            const kenyaYears = selectedCandidateForProfile.kenya_years || 0
+                            const hasGoodConduct = selectedCandidateForProfile.good_conduct_status === 'Valid Certificate'
+                            const hasReferees = selectedCandidateForProfile.referee_1_name && selectedCandidateForProfile.referee_1_phone
+                            
+                            let recommendation = `Candidate scored ${score}/100. `
+                            
+                            if (score >= 80) {
+                              recommendation += "Excellent candidate - highly recommended for placement."
+                            } else if (score >= 65) {
+                              recommendation += "Good candidate - recommended with minor considerations."
+                            } else if (score >= 45) {
+                              recommendation += "Average candidate - proceed with caution."
+                            } else {
+                              recommendation += "Below average - not recommended."
+                            }
+                            
+                            recommendation += " Strengths: "
+                            const strengths = []
+                            if (kenyaYears >= 7) strengths.push(`${kenyaYears} years Kenya experience`)
+                            if (hasGoodConduct) strengths.push("valid good conduct certificate")
+                            if (hasReferees) strengths.push("professional references provided")
+                            
+                            if (strengths.length > 0) {
+                              recommendation += strengths.join(", ") + "."
+                            } else {
+                              recommendation += "Limited qualifications."
+                            }
+                            
+                            const gaps = []
+                            if (kenyaYears < 4) gaps.push("insufficient Kenya experience")
+                            if (!hasGoodConduct) gaps.push("missing good conduct certificate")
+                            if (!hasReferees) gaps.push("no professional references")
+                            
+                            if (gaps.length > 0) {
+                              recommendation += " Areas for improvement: " + gaps.join(", ") + "."
+                            }
+                            
+                            return recommendation
+                          })()
+                          }
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Work Preferences */}
                 <div className="bg-green-50 p-4 rounded-lg">
@@ -1517,7 +2083,11 @@ export function Candidates() {
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div><span className="font-semibold">Live Arrangement:</span> {selectedCandidateForProfile.live_arrangement || 'Not specified'}</div>
                     <div><span className="font-semibold">Work Schedule:</span> {selectedCandidateForProfile.work_schedule || 'Not specified'}</div>
+                    <div><span className="font-semibold">Employment Type:</span> {selectedCandidateForProfile.employment_type || 'Not specified'}</div>
                     <div><span className="font-semibold">Expected Salary:</span> {selectedCandidateForProfile.expected_salary ? `KSh ${selectedCandidateForProfile.expected_salary.toLocaleString()}` : 'Not specified'}</div>
+                    <div><span className="font-semibold">County:</span> {selectedCandidateForProfile.county || 'Not specified'}</div>
+                    <div><span className="font-semibold">Town:</span> {selectedCandidateForProfile.town || 'Not specified'}</div>
+                    <div><span className="font-semibold">Estate:</span> {selectedCandidateForProfile.estate || 'Not specified'}</div>
                   </div>
                 </div>
 
@@ -1588,6 +2158,15 @@ export function Candidates() {
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div><span className="font-semibold">Inquiry Date:</span> {formatDisplayDate(selectedCandidateForProfile.inquiry_date)}</div>
                     <div><span className="font-semibold">Source:</span> {selectedCandidateForProfile.source || 'N/A'}</div>
+                    <div><span className="font-semibold">Preferred Interview Date:</span> {selectedCandidateForProfile.preferred_interview_date ? (() => {
+                      const date = new Date(selectedCandidateForProfile.preferred_interview_date)
+                      const day = date.getDate()
+                      const suffix = day === 1 || day === 21 || day === 31 ? 'st' : day === 2 || day === 22 ? 'nd' : day === 3 || day === 23 ? 'rd' : 'th'
+                      const dayName = date.toLocaleDateString('en-US', { weekday: 'short' })
+                      const month = date.toLocaleDateString('en-US', { month: 'long' })
+                      const year = date.getFullYear()
+                      return `${dayName}, ${day}${suffix} ${month} ${year}`
+                    })() : 'Not specified'}</div>
                   </div>
                 </div>
               </div>

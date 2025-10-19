@@ -24,6 +24,7 @@ export function CreateProfile() {
   const [currentStep, setCurrentStep] = useState(0)
   const [loading, setLoading] = useState(false)
   const [submitted, setSubmitted] = useState(false)
+  const [profileSubmitted, setProfileSubmitted] = useState(false)
   const [showConfirmation, setShowConfirmation] = useState(false)
   const [isQualified, setIsQualified] = useState<boolean | null>(null)
   const [qualificationReasons, setQualificationReasons] = useState<string[]>([])
@@ -52,27 +53,34 @@ export function CreateProfile() {
     phone: '',
     id_number: '',
     role: '',
+    source: '',
     county: '',
     town: '',
     
     // Full form (only for qualified)
     email: '',
     live_arrangement: '',
+    work_schedule: '',
+    employment_type: '',
     estate: '',
+    address: '',
+    apartment: '',
     place_of_birth: '',
     marital_status: '',
-    has_kids: false,
+    has_kids: null,
     kids_count: '',
     has_parents: '',
     expected_salary: '',
     off_day: '',
     next_of_kin_1_name: '',
     next_of_kin_1_phone: '',
+    next_of_kin_1_location: '',
     next_of_kin_1_relationship: '',
     next_of_kin_2_name: '',
     next_of_kin_2_phone: '',
+    next_of_kin_2_location: '',
     next_of_kin_2_relationship: '',
-    has_siblings: false,
+    has_siblings: null,
     dependent_siblings: '',
     education_level: '',
     notes: '',
@@ -87,6 +95,7 @@ export function CreateProfile() {
   const educationOptions = ['Primary', 'Secondary', 'College', 'University']
   const conductOptions = ['Valid Certificate', 'Applied (Receipt)', 'Expired', 'None']
   const countryOptions = ['Kenya', 'Saudi Arabia', 'Dubai', 'Qatar', 'UAE', 'Australia', 'Egypt', 'Other']
+  const sourceOptions = ['TikTok', 'Facebook', 'Instagram', 'Google Search', 'Website', 'Referral', 'LinkedIn', 'Walk-in poster', 'Youtube']
 
   const normalizePhone = (phone: string): string => {
     const cleaned = phone.replace(/\D/g, '')
@@ -163,8 +172,16 @@ export function CreateProfile() {
     const reasons: string[] = []
     let score = 0
     
-    const kenyaYears = parseInt(qualificationData.kenya_years) || 0
-    const hasGoodConduct = ['Valid Certificate', 'Applied (Receipt)'].includes(qualificationData.good_conduct_status)
+    // Calculate Kenya years from work experiences
+    const kenyaYears = workExperiences
+      .filter(exp => exp.country === 'Kenya' && exp.employer_name && exp.start_date)
+      .reduce((total, exp) => {
+        const startYear = parseInt(exp.start_date.split('-')[0])
+        const endYear = exp.still_working ? new Date().getFullYear() : parseInt(exp.end_date.split('-')[0])
+        return total + Math.max(0, endYear - startYear)
+      }, 0)
+    
+    const hasGoodConduct = ['Valid Certificate', 'Application Receipt'].includes(formData.good_conduct_status)
     const refereeCount = [qualificationData.referee_1_name, qualificationData.referee_2_name].filter(Boolean).length
     
     // Kenya experience scoring
@@ -174,8 +191,8 @@ export function CreateProfile() {
     else if (kenyaYears >= 4) score += 25
     
     // Good conduct scoring
-    if (qualificationData.good_conduct_status === 'Valid Certificate') score += 20
-    else if (qualificationData.good_conduct_status === 'Applied (Receipt)') score += 10
+    if (formData.good_conduct_status === 'Valid Certificate') score += 20
+    else if (formData.good_conduct_status === 'Application Receipt') score += 10
     
     // Referee scoring
     if (refereeCount >= 2) score += 25
@@ -227,9 +244,27 @@ export function CreateProfile() {
   const handleSubmit = async () => {
     setLoading(true)
     try {
+      // Check if phone already exists - if so, update instead of insert
+      const phoneToCheck = formData.phone || normalizePhone(phoneCheck)
+      const { data: existingCandidate } = await supabase
+        .from('candidates')
+        .select('id')
+        .eq('phone', phoneToCheck)
+        .single()
+      
+      const isUpdate = !!existingCandidate
       // Calculate Kenya years from work experiences
       const kenyaYears = workExperiences
         .filter(exp => exp.country === 'Kenya' && exp.employer_name && exp.start_date)
+        .reduce((total, exp) => {
+          const startYear = parseInt(exp.start_date.split('-')[0])
+          const endYear = exp.still_working ? new Date().getFullYear() : parseInt(exp.end_date.split('-')[0])
+          return total + Math.max(0, endYear - startYear)
+        }, 0)
+      
+      // Calculate total years experience from all work experiences
+      const totalYearsExperience = workExperiences
+        .filter(exp => exp.employer_name && exp.start_date)
         .reduce((total, exp) => {
           const startYear = parseInt(exp.start_date.split('-')[0])
           const endYear = exp.still_working ? new Date().getFullYear() : parseInt(exp.end_date.split('-')[0])
@@ -268,11 +303,13 @@ export function CreateProfile() {
         town: formData.town,
         place_of_birth: formData.place_of_birth,
         age: age,
+        live_arrangement: formData.live_arrangement || null,
         
         // Qualification data
         good_conduct_status: formData.good_conduct_status,
         work_experiences: JSON.stringify(workExperiences.filter(exp => exp.employer_name)),
         kenya_years: kenyaYears,
+        total_years_experience: totalYearsExperience,
         qualification_score: score,
         qualification_notes: isQualified ? 'Qualified candidate' : qualificationReasons.join(', '),
         referee_1_name: qualificationData.referee_1_name || null,
@@ -281,10 +318,39 @@ export function CreateProfile() {
         referee_2_phone: qualificationData.referee_2_phone || null,
         
         // System fields
-        source: 'Website',
-        status: isQualified ? 'PENDING' : 'LOST',
+        source: formData.source,
+        status: (() => {
+          // Determine specific status based on qualification criteria
+          const birthDate = new Date(formData.place_of_birth)
+          const today = new Date()
+          const age = today.getFullYear() - birthDate.getFullYear() - 
+            (today.getMonth() < birthDate.getMonth() || 
+             (today.getMonth() === birthDate.getMonth() && today.getDate() < birthDate.getDate()) ? 1 : 0)
+          
+          const hasReferees = !!(qualificationData.referee_1_name && qualificationData.referee_1_phone)
+          const hasGoodConduct = ['Valid Certificate', 'Application Receipt'].includes(formData.good_conduct_status)
+          
+          // Check disqualifying factors first
+          if (age < 24 || age > 45) return 'Lost, Age'
+          if (kenyaYears < 4) return 'Lost, Experience'
+          if (!hasReferees) return 'Lost, No References'
+          
+          // Special case: 7+ Kenya years but no good conduct = Pending, applying GC
+          if (kenyaYears >= 7 && !hasGoodConduct) {
+            return 'Pending, applying GC'
+          }
+          
+          // Less than 7 years and no good conduct = Lost
+          if (!hasGoodConduct) {
+            return 'Lost, No Good Conduct'
+          }
+          
+          // All requirements met = PENDING
+          return 'PENDING'
+        })(),
         lost_reason: isQualified ? null : qualificationReasons.join(', '),
         inquiry_date: new Date().toISOString().split('T')[0],
+        preferred_interview_date: formData.preferred_interview_date || null,
         added_by: 'self'
       }
       
@@ -294,7 +360,13 @@ export function CreateProfile() {
           phone: formData.phone || normalizePhone(phoneCheck),
           email: formData.email || null,
           live_arrangement: formData.live_arrangement || null,
+          work_schedule: formData.work_schedule || null,
+          employment_type: formData.employment_type || null,
+          county: formData.county || null,
+          town: formData.town || null,
           estate: formData.estate || null,
+          address: formData.address || null,
+          apartment: formData.apartment || null,
           place_of_birth: formData.place_of_birth || null,
           marital_status: formData.marital_status || null,
           has_kids: formData.has_kids,
@@ -304,9 +376,11 @@ export function CreateProfile() {
           off_day: formData.off_day || null,
           next_of_kin_1_name: formData.next_of_kin_1_name || null,
           next_of_kin_1_phone: formData.next_of_kin_1_phone || null,
+          next_of_kin_1_location: formData.next_of_kin_1_location || null,
           next_of_kin_1_relationship: formData.next_of_kin_1_relationship || null,
           next_of_kin_2_name: formData.next_of_kin_2_name || null,
           next_of_kin_2_phone: formData.next_of_kin_2_phone || null,
+          next_of_kin_2_location: formData.next_of_kin_2_location || null,
           next_of_kin_2_relationship: formData.next_of_kin_2_relationship || null,
           has_siblings: formData.has_siblings,
           dependent_siblings: formData.has_siblings ? parseInt(formData.dependent_siblings) || 0 : null,
@@ -316,14 +390,24 @@ export function CreateProfile() {
         })
       }
 
-      const { error } = await supabase
-        .from('candidates')
-        .insert(candidateData)
+      let error
+      if (isUpdate) {
+        const { error: updateError } = await supabase
+          .from('candidates')
+          .update(candidateData)
+          .eq('id', existingCandidate.id)
+        error = updateError
+      } else {
+        const { error: insertError } = await supabase
+          .from('candidates')
+          .insert(candidateData)
+        error = insertError
+      }
 
       if (error) throw error
       
-      // Show toast notification
-      alert('Profile Submitted!')
+      // Show success screen
+      setProfileSubmitted(true)
       
       if (!isQualified) {
         // For unqualified candidates, they stay on the "Not a Good Fit" screen
@@ -352,6 +436,30 @@ export function CreateProfile() {
   }
 
 
+
+  if (profileSubmitted) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full text-center">
+          <div className="w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center" style={{ backgroundColor: '#ae491e' }}>
+            <CheckCircle className="w-10 h-10 text-white" />
+          </div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-4">Welcome to Nestara Family!</h2>
+          <p className="text-gray-600 mb-6">You'll get a call from us in a moment. Thank you for your patience.</p>
+          
+          <a
+            href="https://linktr.ee/nestaralimited"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full text-white py-3 rounded-lg font-medium hover:opacity-90 transition-colors block text-center"
+            style={{ backgroundColor: '#ae491e' }}
+          >
+            Be Part of Our Team
+          </a>
+        </div>
+      </div>
+    )
+  }
 
   if (existingCandidate) {
     return (
@@ -543,6 +651,18 @@ export function CreateProfile() {
                 >
                   <option value="">Select Role</option>
                   {roleOptions.map(role => <option key={role} value={role}>{role}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">How did you hear about us? *</label>
+                <select
+                  value={formData.source}
+                  onChange={(e) => setFormData({ ...formData, source: e.target.value })}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  required
+                >
+                  <option value="">Select source</option>
+                  {sourceOptions.map(source => <option key={source} value={source}>{source}</option>)}
                 </select>
               </div>
             </div>
@@ -750,16 +870,29 @@ export function CreateProfile() {
                       (today.getMonth() < birthDate.getMonth() || 
                        (today.getMonth() === birthDate.getMonth() && today.getDate() < birthDate.getDate()) ? 1 : 0)
                     
+                    // Calculate Kenya years from work experiences
+                    const kenyaYears = workExperiences
+                      .filter(exp => exp.country === 'Kenya' && exp.employer_name && exp.start_date)
+                      .reduce((total, exp) => {
+                        const startYear = parseInt(exp.start_date.split('-')[0])
+                        const endYear = exp.still_working ? new Date().getFullYear() : parseInt(exp.end_date.split('-')[0])
+                        return total + Math.max(0, endYear - startYear)
+                      }, 0)
+                    
                     const ageValid = age >= 24 && age <= 45
                     const conductValid = ['Valid Certificate', 'Application Receipt'].includes(formData.good_conduct_status)
-                    const qualified = hasReferees && ageValid && conductValid
+                    const experienceValid = kenyaYears >= 4
+                    
+                    // Special case: 7+ Kenya years but no good conduct = still qualified for "Pending, applying GC"
+                    const qualified = ageValid && experienceValid && (conductValid || kenyaYears >= 7) && hasReferees
                     
                     setIsQualified(qualified)
                     if (!qualified) {
                       const reasons = []
                       if (!ageValid) reasons.push(`Age requirement not met (must be 24-45 years, you are ${age} years)`)
+                      if (!experienceValid) reasons.push('Minimum 4 years Kenya experience required')
                       if (!hasReferees) reasons.push('Professional references required')
-                      if (!conductValid) reasons.push('Valid good conduct certificate or application receipt required')
+                      if (!conductValid && kenyaYears < 7) reasons.push('Valid good conduct certificate or application receipt required (unless 7+ years experience)')
                       setQualificationReasons(reasons)
                     }
                     if (qualified) {
@@ -808,7 +941,7 @@ export function CreateProfile() {
               <button
                 onClick={() => setCurrentStep(currentStep + 1)}
                 disabled={
-                  (currentStep === 1 && (!formData.name || !formData.good_conduct_status || !formData.id_number || !formData.role || !formData.place_of_birth)) ||
+                  (currentStep === 1 && (!formData.name || !formData.good_conduct_status || !formData.id_number || !formData.role || !formData.source || !formData.place_of_birth)) ||
                   (currentStep === 2 && !workExperiences.every(exp => exp.employer_name && exp.country && exp.start_date && (exp.still_working || exp.end_date)))
                 }
                 className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
@@ -823,53 +956,252 @@ export function CreateProfile() {
   }
 
   if (showConfirmation) {
-    const { qualified: eligible } = checkQualification()
+    const kenyaYears = workExperiences
+      .filter(exp => exp.country === 'Kenya' && exp.employer_name && exp.start_date)
+      .reduce((total, exp) => {
+        const startYear = parseInt(exp.start_date.split('-')[0])
+        const endYear = exp.still_working ? new Date().getFullYear() : parseInt(exp.end_date.split('-')[0])
+        return total + Math.max(0, endYear - startYear)
+      }, 0)
+    
+    const totalYears = workExperiences
+      .filter(exp => exp.employer_name && exp.start_date)
+      .reduce((total, exp) => {
+        const startYear = parseInt(exp.start_date.split('-')[0])
+        const endYear = exp.still_working ? new Date().getFullYear() : parseInt(exp.end_date.split('-')[0])
+        return total + Math.max(0, endYear - startYear)
+      }, 0)
+    
+    let score = 0
+    const hasGoodConduct = ['Valid Certificate', 'Application Receipt'].includes(formData.good_conduct_status)
+    const refereeCount = [qualificationData.referee_1_name, qualificationData.referee_2_name].filter(Boolean).length
+    
+    if (kenyaYears >= 10) score += 40
+    else if (kenyaYears >= 6) score += 35
+    else if (kenyaYears >= 5) score += 30
+    else if (kenyaYears >= 4) score += 25
+    
+    if (formData.good_conduct_status === 'Valid Certificate') score += 20
+    else if (formData.good_conduct_status === 'Application Receipt') score += 10
+    
+    if (refereeCount >= 2) score += 25
+    else if (refereeCount >= 1) score += 20
+    
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
-        <div className="max-w-2xl mx-auto bg-white rounded-2xl shadow-xl p-8">
-          <h2 className="text-2xl font-bold text-gray-900 mb-6">Confirm Your Application</h2>
-          
-          <div className="space-y-4 mb-8">
-            <div className="grid grid-cols-2 gap-4">
-              <div><strong>Name:</strong> {formData.name}</div>
-              <div><strong>Phone:</strong> {formData.phone}</div>
-              <div><strong>Role:</strong> {formData.role}</div>
-              <div><strong>Live Arrangement:</strong> {formData.live_arrangement}</div>
-              <div><strong>Location:</strong> {[formData.county, formData.town, formData.estate].filter(Boolean).join(', ')}</div>
-              <div><strong>Expected Salary:</strong> KSh {formData.expected_salary}</div>
-            </div>
-            
-            <div className="border-t pt-4">
-              <strong>Work Experience:</strong>
-              {workExperiences.filter(exp => exp.employer_name).map((exp, i) => (
-                <div key={i} className="ml-4 text-sm">
-                  • {exp.employer_name} ({exp.country}) - {exp.start_date} to {exp.still_working ? 'Present' : exp.end_date}
-                </div>
-              ))}
-            </div>
-            
-            {!eligible && (
-              <div className="bg-red-50 border border-red-200 p-4 rounded-lg">
-                <div className="text-red-800 font-semibold">Application Status: Not Eligible</div>
-                <div className="text-red-600 text-sm">Your application will be marked as "Closed — Not a Fit" due to eligibility requirements.</div>
+        <div className="max-w-2xl mx-auto">
+          <div className="bg-white rounded-2xl shadow-2xl overflow-hidden">
+            {/* Header */}
+            <div className="text-white p-6" style={{ backgroundColor: '#ae491e' }}>
+              <div>
+                <h1 className="text-2xl font-bold">NESTARA PROFESSIONAL ID</h1>
+                <p className="text-orange-100">Confirm Your Application Details</p>
               </div>
-            )}
-          </div>
-          
-          <div className="flex gap-4">
-            <button
-              onClick={() => setShowConfirmation(false)}
-              className="flex-1 px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
-            >
-              Back to Edit
-            </button>
-            <button
-              onClick={handleSubmit}
-              disabled={loading}
-              className="flex-1 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
-            >
-              {loading ? 'Submitting...' : 'Submit Application'}
-            </button>
+            </div>
+
+            {/* Main Content */}
+            <div className="p-8">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                {/* Personal Information */}
+                <div className="space-y-6">
+                  <div className="border-l-4 pl-4" style={{ borderColor: '#ae491e' }}>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Personal Information</h3>
+                    <div className="space-y-3">
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Name:</span>
+                        <span className="font-medium">{formData.name}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Phone:</span>
+                        <span className="font-medium">{formData.phone || normalizePhone(phoneCheck)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">ID Number:</span>
+                        <span className="font-medium">{formData.id_number}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Email:</span>
+                        <span className="font-medium">{formData.email || 'Not provided'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Role:</span>
+                        <span className="font-medium">{formData.role}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Live Arrangement:</span>
+                        <span className="font-medium">{formData.live_arrangement}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Work Schedule:</span>
+                        <span className="font-medium">{formData.work_schedule || 'Not specified'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Employment Type:</span>
+                        <span className="font-medium">{formData.employment_type || 'Not specified'}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Location */}
+                  <div className="border-l-4 border-blue-500 pl-4">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Location</h3>
+                    <div className="space-y-3">
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">County:</span>
+                        <span className="font-medium">{formData.county}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Town:</span>
+                        <span className="font-medium">{formData.town}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Estate:</span>
+                        <span className="font-medium">{formData.estate || 'Not provided'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Address:</span>
+                        <span className="font-medium">{formData.address || 'Not provided'}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Personal Details */}
+                  <div className="border-l-4 border-green-500 pl-4">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Personal Details</h3>
+                    <div className="space-y-3">
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Marital Status:</span>
+                        <span className="font-medium">{formData.marital_status || 'Not provided'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Has Kids:</span>
+                        <span className="font-medium">{formData.has_kids ? `Yes (${formData.kids_count})` : 'No'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Parents Status:</span>
+                        <span className="font-medium">{formData.has_parents || 'Not provided'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Expected Salary:</span>
+                        <span className="font-medium">KSh {formData.expected_salary}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Experience & Contacts */}
+                <div className="space-y-6">
+                  {/* Work Experience */}
+                  <div className="border-l-4 border-purple-500 pl-4">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Work Experience</h3>
+                    <div className="space-y-3">
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Total Years:</span>
+                        <span className="font-medium">{totalYears} years</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Kenya Years:</span>
+                        <span className="font-medium">{kenyaYears} years</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Good Conduct:</span>
+                        <span className="font-medium">{formData.good_conduct_status}</span>
+                      </div>
+                    </div>
+                    <div className="mt-4">
+                      <div className="text-sm font-medium text-gray-700 mb-2">Experience Details:</div>
+                      {workExperiences.filter(exp => exp.employer_name).map((exp, i) => (
+                        <div key={i} className="text-sm text-gray-600 mb-1">
+                          • {exp.employer_name} ({exp.country}) - {exp.start_date} to {exp.still_working ? 'Present' : exp.end_date}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Next of Kin */}
+                  <div className="border-l-4 border-yellow-500 pl-4">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Next of Kin</h3>
+                    <div className="space-y-4">
+                      <div>
+                        <div className="text-sm font-medium text-gray-700">Contact 1:</div>
+                        <div className="text-sm text-gray-600">{formData.next_of_kin_1_name} ({formData.next_of_kin_1_relationship})</div>
+                        <div className="text-sm text-gray-600">{formData.next_of_kin_1_phone}</div>
+                        <div className="text-sm text-gray-600">{formData.next_of_kin_1_location}</div>
+                      </div>
+                      <div>
+                        <div className="text-sm font-medium text-gray-700">Contact 2:</div>
+                        <div className="text-sm text-gray-600">{formData.next_of_kin_2_name} ({formData.next_of_kin_2_relationship})</div>
+                        <div className="text-sm text-gray-600">{formData.next_of_kin_2_phone}</div>
+                        <div className="text-sm text-gray-600">{formData.next_of_kin_2_location}</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* References */}
+                  <div className="border-l-4 border-red-500 pl-4">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">References</h3>
+                    <div className="space-y-3">
+                      {qualificationData.referee_1_name && (
+                        <div>
+                          <div className="text-sm font-medium text-gray-700">Referee 1:</div>
+                          <div className="text-sm text-gray-600">{qualificationData.referee_1_name}</div>
+                          <div className="text-sm text-gray-600">{qualificationData.referee_1_phone}</div>
+                        </div>
+                      )}
+                      {qualificationData.referee_2_name && (
+                        <div>
+                          <div className="text-sm font-medium text-gray-700">Referee 2:</div>
+                          <div className="text-sm text-gray-600">{qualificationData.referee_2_name}</div>
+                          <div className="text-sm text-gray-600">{qualificationData.referee_2_phone}</div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Registration Details */}
+                  <div className="border-l-4 border-indigo-500 pl-4">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Registration Details</h3>
+                    <div className="space-y-3">
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Preferred Interview Date:</span>
+                        <span className="font-medium">{formData.preferred_interview_date ? new Date(formData.preferred_interview_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : 'Not specified'}</span>
+                      </div>
+                      {console.log('Debug - preferred_interview_date:', formData.preferred_interview_date)}
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Source:</span>
+                        <span className="font-medium">{formData.source}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Additional Notes */}
+              {formData.notes && (
+                <div className="mt-6 p-4 bg-gray-50 rounded-lg">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">Additional Notes</h3>
+                  <p className="text-gray-600">{formData.notes}</p>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex gap-4 mt-8">
+                <button
+                  onClick={() => setShowConfirmation(false)}
+                  className="flex-1 px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                >
+                  Back to Edit
+                </button>
+                <button
+                  onClick={handleSubmit}
+                  disabled={loading}
+                  className="flex-1 px-6 py-3 text-white rounded-lg hover:opacity-90 disabled:opacity-50"
+                  style={{ backgroundColor: '#ae491e' }}
+                >
+                  {loading ? 'Submitting...' : 'Submit Application'}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -878,7 +1210,7 @@ export function CreateProfile() {
 
   // Full form cards for qualified candidates
   if (currentStep >= 6) {
-    const formStep = currentStep - 2 // Convert to form step (1, 2, 3, etc.)
+    const formStep = currentStep - 5 // Convert to form step (1, 2, 3, etc.)
     
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
@@ -899,14 +1231,15 @@ export function CreateProfile() {
           <div className="p-8">
             {formStep === 1 && (
               <div className="space-y-4">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Basic Information</h3>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Basic Information - {formData.name}</h3>
                 <input
                   type="text"
                   placeholder="Full Name *"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-gray-100"
                   required
+                  disabled
                 />
                 <input
                   type="email"
@@ -918,8 +1251,9 @@ export function CreateProfile() {
                 <select
                   value={formData.role}
                   onChange={(e) => setFormData({ ...formData, role: e.target.value })}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-gray-100"
                   required
+                  disabled
                 >
                   <option value="">Select Role *</option>
                   {roleOptions.map(role => <option key={role} value={role}>{role}</option>)}
@@ -929,8 +1263,9 @@ export function CreateProfile() {
                   placeholder="National ID Number *"
                   value={formData.id_number}
                   onChange={(e) => setFormData({ ...formData, id_number: e.target.value })}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-gray-100"
                   required
+                  disabled
                 />
                 <select
                   value={formData.live_arrangement}
@@ -941,6 +1276,25 @@ export function CreateProfile() {
                   <option value="">Live Arrangement *</option>
                   <option value="Live-In">Live-In</option>
                   <option value="Live-Out">Live-Out</option>
+                </select>
+                <select
+                  value={formData.work_schedule}
+                  onChange={(e) => setFormData({ ...formData, work_schedule: e.target.value })}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Work Schedule</option>
+                  <option value="Full Time">Full Time</option>
+                  <option value="Part Time">Part Time</option>
+                </select>
+                <select
+                  value={formData.employment_type}
+                  onChange={(e) => setFormData({ ...formData, employment_type: e.target.value })}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Employment Type</option>
+                  <option value="Permanent">Permanent</option>
+                  <option value="Contract">Contract</option>
+                  <option value="Temporary">Temporary</option>
                 </select>
               </div>
             )}
@@ -973,6 +1327,20 @@ export function CreateProfile() {
                   onChange={(e) => setFormData({ ...formData, estate: e.target.value })}
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 />
+                <input
+                  type="text"
+                  placeholder="Where do you stay (Address)"
+                  value={formData.address}
+                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                />
+                <input
+                  type="text"
+                  placeholder="Apartment/House Number"
+                  value={formData.apartment}
+                  onChange={(e) => setFormData({ ...formData, apartment: e.target.value })}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                />
                 <select
                   value={formData.marital_status}
                   onChange={(e) => setFormData({ ...formData, marital_status: e.target.value })}
@@ -980,6 +1348,34 @@ export function CreateProfile() {
                 >
                   <option value="">Marital Status</option>
                   {maritalOptions.map(status => <option key={status} value={status}>{status}</option>)}
+                </select>
+                <div className="flex items-center space-x-4">
+                  <label className="flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={formData.has_kids}
+                      onChange={(e) => setFormData({ ...formData, has_kids: e.target.checked })}
+                      className="mr-2"
+                    />
+                    Has Kids
+                  </label>
+                  {formData.has_kids && (
+                    <input
+                      type="number"
+                      placeholder="How many?"
+                      value={formData.kids_count}
+                      onChange={(e) => setFormData({ ...formData, kids_count: e.target.value })}
+                      className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    />
+                  )}
+                </div>
+                <select
+                  value={formData.has_parents}
+                  onChange={(e) => setFormData({ ...formData, has_parents: e.target.value })}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Parents Status</option>
+                  {parentOptions.map(option => <option key={option} value={option}>{option}</option>)}
                 </select>
                 <input
                   type="number"
@@ -989,12 +1385,52 @@ export function CreateProfile() {
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                   required
                 />
+                <select
+                  value={formData.off_day}
+                  onChange={(e) => setFormData({ ...formData, off_day: e.target.value })}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Preferred Day Off</option>
+                  <option value="Saturday">Saturday</option>
+                  <option value="Sunday">Sunday</option>
+                </select>
+                <div className="flex items-center space-x-4">
+                  <label className="flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={formData.has_siblings}
+                      onChange={(e) => setFormData({ ...formData, has_siblings: e.target.checked })}
+                      className="mr-2"
+                    />
+                    Has Siblings
+                  </label>
+                  {formData.has_siblings && (
+                    <input
+                      type="number"
+                      placeholder="How many depend on you?"
+                      value={formData.dependent_siblings}
+                      onChange={(e) => setFormData({ ...formData, dependent_siblings: e.target.value })}
+                      className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    />
+                  )}
+                </div>
+                <select
+                  value={formData.education_level}
+                  onChange={(e) => setFormData({ ...formData, education_level: e.target.value })}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Education Level</option>
+                  <option value="Primary">Primary</option>
+                  <option value="Secondary">Secondary</option>
+                  <option value="College">College</option>
+                  <option value="University">University</option>
+                </select>
               </div>
             )}
 
             {formStep === 3 && (
               <div className="space-y-4">
-
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Next of Kin Details</h3>
                 <div className="space-y-4">
                   <div className="border-l-4 border-blue-500 pl-4">
                     <h4 className="font-medium mb-2">Next of Kin 1 *</h4>
@@ -1011,6 +1447,14 @@ export function CreateProfile() {
                       placeholder="Phone Number *"
                       value={formData.next_of_kin_1_phone}
                       onChange={(e) => setFormData({ ...formData, next_of_kin_1_phone: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 mb-2"
+                      required
+                    />
+                    <input
+                      type="text"
+                      placeholder="Location (County/Town) *"
+                      value={formData.next_of_kin_1_location}
+                      onChange={(e) => setFormData({ ...formData, next_of_kin_1_location: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 mb-2"
                       required
                     />
@@ -1044,6 +1488,14 @@ export function CreateProfile() {
                     />
                     <input
                       type="text"
+                      placeholder="Location (County/Town) *"
+                      value={formData.next_of_kin_2_location}
+                      onChange={(e) => setFormData({ ...formData, next_of_kin_2_location: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 mb-2"
+                      required
+                    />
+                    <input
+                      type="text"
                       placeholder="Relationship (e.g., Father, Sister) *"
                       value={formData.next_of_kin_2_relationship}
                       onChange={(e) => setFormData({ ...formData, next_of_kin_2_relationship: e.target.value })}
@@ -1058,22 +1510,27 @@ export function CreateProfile() {
             {formStep === 4 && (
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Final Details</h3>
-                <input
-                  type="date"
-                  value={formData.preferred_interview_date}
-                  onChange={(e) => setFormData({ ...formData, preferred_interview_date: e.target.value })}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                  min={new Date().toISOString().split('T')[0]}
-                />
-                <label className="text-sm font-medium text-gray-700">Preferred Interview Date</label>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Preferred Interview Date</label>
+                  <input
+                    type="date"
+                    value={formData.preferred_interview_date}
+                    onChange={(e) => setFormData({ ...formData, preferred_interview_date: e.target.value })}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    min={new Date().toISOString().split('T')[0]}
+                  />
+                </div>
                 
-                <textarea
-                  rows={4}
-                  placeholder="Any questions or additional information..."
-                  value={formData.notes}
-                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                />
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Additional Notes or Questions</label>
+                  <textarea
+                    rows={4}
+                    placeholder="Any questions or additional information..."
+                    value={formData.notes}
+                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
               </div>
             )}
 
@@ -1097,7 +1554,8 @@ export function CreateProfile() {
               ) : (
                 <button
                   onClick={() => setShowConfirmation(true)}
-                  className="flex-1 px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                  className="flex-1 px-4 py-3 text-white rounded-lg hover:opacity-90"
+                  style={{ backgroundColor: '#ae491e' }}
                 >
                   Review & Submit
                 </button>

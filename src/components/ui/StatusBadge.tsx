@@ -12,12 +12,15 @@ export function StatusBadge({ status, type = 'candidate' }: StatusBadgeProps) {
     const candidateStatusColors: Record<string, string> = {
       'WON': 'bg-green-100 text-green-800',
       'LOST': 'bg-red-100 text-red-800',
-      'LOST, NO RESPONSE': 'bg-red-100 text-red-800',
+      'LOST, AGE': 'bg-red-100 text-red-800',
+      'LOST, NO REFERENCES': 'bg-red-100 text-red-800',
+      'LOST, NO RESPONSE': 'bg-red-100 text-red-800', // Legacy support
       'LOST, PERSONALITY': 'bg-red-100 text-red-800',
       'LOST, SALARY': 'bg-red-100 text-red-800',
       'LOST, EXPERIENCE': 'bg-red-100 text-red-800',
       'LOST, NO GOOD CONDUCT': 'bg-red-100 text-red-800',
       'PENDING': 'bg-yellow-100 text-yellow-800',
+      'PENDING, APPLYING GC': 'bg-orange-100 text-orange-800',
       'INTERVIEW_SCHEDULED': 'bg-blue-100 text-blue-800',
       'BLACKLISTED': 'bg-gray-800 text-white',
       'ARCHIVED': 'bg-gray-200 text-gray-700'
