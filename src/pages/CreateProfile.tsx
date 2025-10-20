@@ -28,6 +28,39 @@ export function CreateProfile() {
   const [showConfirmation, setShowConfirmation] = useState(false)
   const [isQualified, setIsQualified] = useState<boolean | null>(null)
   const [qualificationReasons, setQualificationReasons] = useState<string[]>([])
+  const [showContinueConfirm, setShowContinueConfirm] = useState(false)
+  
+  // Prevent accidental navigation on mobile
+  useEffect(() => {
+    const handlePopState = (e: PopStateEvent) => {
+      if (currentStep === 5) {
+        e.preventDefault()
+        window.history.pushState(null, '', window.location.href)
+      }
+    }
+    
+    // Save current step to prevent auto-navigation
+    sessionStorage.setItem('createProfileStep', currentStep.toString())
+    
+    window.addEventListener('popstate', handlePopState)
+    
+    if (currentStep === 5) {
+      window.history.pushState(null, '', window.location.href)
+    }
+    
+    return () => {
+      window.removeEventListener('popstate', handlePopState)
+    }
+  }, [currentStep])
+  
+  // Restore step on page load to prevent auto-navigation
+  useEffect(() => {
+    const savedStep = sessionStorage.getItem('createProfileStep')
+    if (savedStep && parseInt(savedStep) === 5) {
+      // If user was on congratulations page, keep them there
+      setCurrentStep(5)
+    }
+  }, [])
   
   const [qualificationData, setQualificationData] = useState({
     // Qualification screening
@@ -894,12 +927,9 @@ export function CreateProfile() {
                       if (!hasReferees) reasons.push('Professional references required')
                       if (!conductValid && kenyaYears < 7) reasons.push('Valid good conduct certificate or application receipt required (unless 7+ years experience)')
                       setQualificationReasons(reasons)
-                    }
-                    if (qualified) {
-                      handleSubmit() // Save qualified candidate as PENDING
-                      setCurrentStep(5) // Show congratulations for qualified
-                    } else {
                       handleSubmit() // Save unqualified candidate as LOST
+                    } else {
+                      setCurrentStep(5) // Show congratulations for qualified, don't save yet
                     }
                   }}
                   className="w-1/4 px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
@@ -911,15 +941,56 @@ export function CreateProfile() {
           )}
 
           {currentStep === 5 && (
-            <div className="bg-green-50 p-4 rounded text-center">
-              <p className="text-green-700 mb-4">You qualify to become a Nestara Professional! Your status is now PENDING, just one more step to go.</p>
+            <div className="bg-gradient-to-br from-green-50 to-blue-50 p-6 rounded-lg text-center border-2 border-green-200">
+              <div className="w-20 h-20 mx-auto mb-6 rounded-full flex items-center justify-center animate-pulse" style={{ backgroundColor: '#ae491e' }}>
+                <CheckCircle className="w-12 h-12 text-white" />
+              </div>
+              <h2 className="text-3xl font-bold text-gray-900 mb-4">Congratulations!</h2>
+              <div className="bg-white p-4 rounded-lg mb-6 shadow-sm">
+                <p className="text-green-700 font-medium text-lg mb-2">You qualify to become a Nestara Professional!</p>
+                <p className="text-gray-600">Your status is now PENDING - just one more step to complete your full profile.</p>
+              </div>
               <button
-                onClick={() => setCurrentStep(6)}
-                className="w-full py-3 text-white rounded-lg font-medium hover:opacity-90 transition-colors"
+                onClick={() => setShowContinueConfirm(true)}
+                className="w-full py-4 text-white rounded-lg font-bold text-lg hover:opacity-90 transition-all transform hover:scale-105 shadow-lg"
                 style={{ backgroundColor: '#ae491e' }}
               >
-                Let's Do This
+                Continue to Complete Profile
               </button>
+              <p className="text-sm text-gray-500 mt-4 bg-yellow-50 p-2 rounded">This will take about 3-4 minutes to complete</p>
+              
+              {showContinueConfirm && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                  <div className="bg-white rounded-lg p-6 max-w-sm w-full">
+                    <h3 className="text-lg font-semibold mb-4">Continue to Full Application?</h3>
+                    <p className="text-gray-600 mb-6">You'll need to complete your full profile with personal details, work experience, and references. This takes about 3-4 minutes.</p>
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => setShowContinueConfirm(false)}
+                        className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                      >
+                        Stay Here
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          setShowContinueConfirm(false)
+                          setTimeout(() => setCurrentStep(6), 200)
+                        }}
+                        onTouchEnd={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                        }}
+                        className="flex-1 px-4 py-2 text-white rounded-lg hover:opacity-90 touch-manipulation"
+                        style={{ backgroundColor: '#ae491e', touchAction: 'manipulation' }}
+                      >
+                        Continue
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -1553,9 +1624,17 @@ export function CreateProfile() {
                 </button>
               ) : (
                 <button
-                  onClick={() => setShowConfirmation(true)}
-                  className="flex-1 px-4 py-3 text-white rounded-lg hover:opacity-90"
-                  style={{ backgroundColor: '#ae491e' }}
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    setShowConfirmation(true)
+                  }}
+                  onTouchEnd={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                  }}
+                  className="flex-1 px-4 py-3 text-white rounded-lg hover:opacity-90 touch-manipulation"
+                  style={{ backgroundColor: '#ae491e', touchAction: 'manipulation' }}
                 >
                   Review & Submit
                 </button>
