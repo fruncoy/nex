@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-import { User, Phone, MapPin, Briefcase, Calendar, CheckCircle, AlertCircle, Search } from 'lucide-react'
+import { User, Phone, MapPin, Briefcase, Calendar, CheckCircle, AlertCircle, ArrowLeft } from 'lucide-react'
+import Logo from '../assets/Logo.png'
 
 interface ExistingCandidate {
   id: string
@@ -30,36 +31,51 @@ export function CreateProfile() {
   const [qualificationReasons, setQualificationReasons] = useState<string[]>([])
   const [showContinueConfirm, setShowContinueConfirm] = useState(false)
   
-  // Prevent accidental navigation on mobile
+  // Draft functionality
+  const saveDraft = () => {
+    const draftData = {
+      currentStep,
+      phoneCheck,
+      formData,
+      qualificationData,
+      workExperiences,
+      isQualified,
+      qualificationReasons,
+      timestamp: Date.now()
+    }
+    localStorage.setItem('createProfileDraft', JSON.stringify(draftData))
+  }
+
+  const loadDraft = () => {
+    const draft = localStorage.getItem('createProfileDraft')
+    if (draft) {
+      const draftData = JSON.parse(draft)
+      setCurrentStep(draftData.currentStep || 0)
+      setPhoneCheck(draftData.phoneCheck || '')
+      setFormData(draftData.formData || formData)
+      setQualificationData(draftData.qualificationData || qualificationData)
+      setWorkExperiences(draftData.workExperiences || workExperiences)
+      setIsQualified(draftData.isQualified)
+      setQualificationReasons(draftData.qualificationReasons || [])
+      return true
+    }
+    return false
+  }
+
+  const clearDraft = () => {
+    localStorage.removeItem('createProfileDraft')
+  }
+
+  // Auto-save draft when data changes
   useEffect(() => {
-    const handlePopState = (e: PopStateEvent) => {
-      if (currentStep === 5) {
-        e.preventDefault()
-        window.history.pushState(null, '', window.location.href)
-      }
+    if (currentStep > 0) {
+      saveDraft()
     }
-    
-    // Save current step to prevent auto-navigation
-    sessionStorage.setItem('createProfileStep', currentStep.toString())
-    
-    window.addEventListener('popstate', handlePopState)
-    
-    if (currentStep === 5) {
-      window.history.pushState(null, '', window.location.href)
-    }
-    
-    return () => {
-      window.removeEventListener('popstate', handlePopState)
-    }
-  }, [currentStep])
-  
-  // Restore step on page load to prevent auto-navigation
+  }, [currentStep, formData, qualificationData, workExperiences, isQualified])
+
+  // Load draft on page load
   useEffect(() => {
-    const savedStep = sessionStorage.getItem('createProfileStep')
-    if (savedStep && parseInt(savedStep) === 5) {
-      // If user was on congratulations page, keep them there
-      setCurrentStep(5)
-    }
+    loadDraft()
   }, [])
   
   const [qualificationData, setQualificationData] = useState({
@@ -274,6 +290,106 @@ export function CreateProfile() {
     }
   }
 
+  const handleQualifiedSubmit = async () => {
+    setLoading(true)
+    try {
+      // Check if phone already exists
+      const phoneToCheck = formData.phone || normalizePhone(phoneCheck)
+      const { data: existingCandidate } = await supabase
+        .from('candidates')
+        .select('id')
+        .eq('phone', phoneToCheck)
+        .single()
+      
+      const isUpdate = !!existingCandidate
+      
+      // Calculate qualification data
+      const kenyaYears = workExperiences
+        .filter(exp => exp.country === 'Kenya' && exp.employer_name && exp.start_date)
+        .reduce((total, exp) => {
+          const startYear = parseInt(exp.start_date.split('-')[0])
+          const endYear = exp.still_working ? new Date().getFullYear() : parseInt(exp.end_date.split('-')[0])
+          return total + Math.max(0, endYear - startYear)
+        }, 0)
+      
+      const totalYearsExperience = workExperiences
+        .filter(exp => exp.employer_name && exp.start_date)
+        .reduce((total, exp) => {
+          const startYear = parseInt(exp.start_date.split('-')[0])
+          const endYear = exp.still_working ? new Date().getFullYear() : parseInt(exp.end_date.split('-')[0])
+          return total + Math.max(0, endYear - startYear)
+        }, 0)
+      
+      const birthDate = new Date(formData.place_of_birth)
+      const today = new Date()
+      const age = today.getFullYear() - birthDate.getFullYear() - 
+        (today.getMonth() < birthDate.getMonth() || 
+         (today.getMonth() === birthDate.getMonth() && today.getDate() < birthDate.getDate()) ? 1 : 0)
+      
+      let score = 0
+      const hasGoodConduct = ['Valid Certificate', 'Application Receipt'].includes(formData.good_conduct_status)
+      const refereeCount = [qualificationData.referee_1_name, qualificationData.referee_2_name].filter(Boolean).length
+      
+      if (kenyaYears >= 10) score += 40
+      else if (kenyaYears >= 6) score += 35
+      else if (kenyaYears >= 5) score += 30
+      else if (kenyaYears >= 4) score += 25
+      
+      if (formData.good_conduct_status === 'Valid Certificate') score += 20
+      else if (formData.good_conduct_status === 'Application Receipt') score += 10
+      
+      if (refereeCount >= 2) score += 25
+      else if (refereeCount >= 1) score += 20
+      
+      const candidateData = {
+        name: formData.name,
+        phone: formData.phone || normalizePhone(phoneCheck),
+        id_number: formData.id_number,
+        role: formData.role,
+        county: formData.county,
+        town: formData.town,
+        place_of_birth: formData.place_of_birth,
+        age: age,
+        good_conduct_status: formData.good_conduct_status,
+        work_experiences: JSON.stringify(workExperiences.filter(exp => exp.employer_name)),
+        kenya_years: kenyaYears,
+        total_years_experience: totalYearsExperience,
+        qualification_score: score,
+        qualification_notes: 'Qualified candidate',
+        referee_1_name: qualificationData.referee_1_name || null,
+        referee_1_phone: qualificationData.referee_1_phone || null,
+        referee_2_name: qualificationData.referee_2_name || null,
+        referee_2_phone: qualificationData.referee_2_phone || null,
+        source: formData.source,
+        status: kenyaYears >= 7 && !hasGoodConduct ? 'Pending, applying GC' : 'PENDING',
+        inquiry_date: new Date().toISOString().split('T')[0],
+        added_by: 'self'
+      }
+      
+      let error
+      if (isUpdate) {
+        const { error: updateError } = await supabase
+          .from('candidates')
+          .update(candidateData)
+          .eq('id', existingCandidate.id)
+        error = updateError
+      } else {
+        const { error: insertError } = await supabase
+          .from('candidates')
+          .insert(candidateData)
+        error = insertError
+      }
+
+      if (error) throw error
+      
+    } catch (error: any) {
+      console.error('Error saving qualified candidate:', error)
+      alert(error?.message || 'Error saving profile. Please try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const handleSubmit = async () => {
     setLoading(true)
     try {
@@ -439,13 +555,9 @@ export function CreateProfile() {
 
       if (error) throw error
       
-      // Show success screen
+      // Clear draft and show success screen
+      clearDraft()
       setProfileSubmitted(true)
-      
-      if (!isQualified) {
-        // For unqualified candidates, they stay on the "Not a Good Fit" screen
-        // which is already handled by the isQualified === false check
-      }
     } catch (error: any) {
       console.error('Error submitting profile:', error)
       alert(error?.message || 'Error submitting profile. Please try again.')
@@ -474,9 +586,7 @@ export function CreateProfile() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full text-center">
-          <div className="w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center" style={{ backgroundColor: '#ae491e' }}>
-            <CheckCircle className="w-10 h-10 text-white" />
-          </div>
+          <img src={Logo} alt="Nestara Logo" className="w-16 h-16 mx-auto mb-4" />
           <h2 className="text-2xl font-bold text-gray-900 mb-4">Welcome to Nestara Family!</h2>
           <p className="text-gray-600 mb-6">You'll get a call from us in a moment. Thank you for your patience.</p>
           
@@ -499,7 +609,7 @@ export function CreateProfile() {
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full">
           <div className="text-center mb-6">
-            <AlertCircle className="w-16 h-16 text-blue-500 mx-auto mb-4" />
+            <img src={Logo} alt="Nestara Logo" className="w-16 h-16 mx-auto mb-4" />
             <h2 className="text-2xl font-bold text-gray-900 mb-2">Profile Found</h2>
           </div>
           
@@ -534,7 +644,7 @@ export function CreateProfile() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-red-50 to-orange-100 flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full text-center">
-          <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+          <img src={Logo} alt="Nestara Logo" className="w-16 h-16 mx-auto mb-4" />
           <h2 className="text-2xl font-bold text-gray-900 mb-4">Not a Good Fit</h2>
           <p className="text-gray-600 mb-4">Sorry, you don't currently meet our requirements:</p>
           
@@ -568,7 +678,7 @@ export function CreateProfile() {
         <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full">
             <div className="text-center mb-8">
-              <Search className="w-16 h-16 text-blue-500 mx-auto mb-4" />
+              <img src={Logo} alt="Nestara Logo" className="w-20 h-20 mx-auto mb-4" />
               <h1 className="text-3xl font-bold text-gray-900 mb-2">Join Our Team</h1>
               <p className="text-gray-600">Enter your phone number to check if you're already in our system</p>
             </div>
@@ -595,7 +705,8 @@ export function CreateProfile() {
                   }
                 }}
                 disabled={loading}
-                className="w-full bg-blue-600 text-white py-3 rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                className="w-full text-white py-3 rounded-lg font-medium hover:opacity-90 disabled:opacity-50 transition-colors"
+                style={{ backgroundColor: '#ae491e' }}
               >
                 {loading ? 'Checking...' : 'Continue'}
               </button>
@@ -610,14 +721,28 @@ export function CreateProfile() {
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full">
           <div className="mb-6">
+            <div className="text-center mb-4">
+              <img src={Logo} alt="Nestara Logo" className="w-16 h-16 mx-auto mb-2" />
+            </div>
             <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-bold text-gray-900">
-                {currentStep === 1 ? 'Initial Candidate Review' : 
-                 currentStep === 2 ? 'Work Experience' :
-                 currentStep === 3 ? 'References' :
-                 currentStep === 4 ? 'Confirm Details' :
-                 currentStep === 5 ? 'Congratulations' : 'Qualification Check'}
-              </h2>
+              <div className="flex items-center gap-2">
+                {currentStep > 1 && (
+                  <button
+                    onClick={() => setCurrentStep(0)}
+                    className="p-1 text-gray-500 hover:text-gray-700"
+                    title="Back to phone check"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                  </button>
+                )}
+                <h2 className="text-xl font-bold text-gray-900">
+                  {currentStep === 1 ? 'Initial Candidate Review' : 
+                   currentStep === 2 ? 'Work Experience' :
+                   currentStep === 3 ? 'References' :
+                   currentStep === 4 ? 'Confirm Details' :
+                   currentStep === 5 ? 'Congratulations' : 'Qualification Check'}
+                </h2>
+              </div>
               {currentStep !== 5 && <span className="text-sm text-gray-500">Step {currentStep} of 4</span>}
             </div>
             {currentStep !== 5 && (
@@ -893,7 +1018,7 @@ export function CreateProfile() {
                   Back
                 </button>
                 <button
-                  onClick={() => {
+                  onClick={async () => {
                     const hasReferees = !!(qualificationData.referee_1_name && qualificationData.referee_1_phone)
                     
                     // Calculate age from date of birth
@@ -927,9 +1052,11 @@ export function CreateProfile() {
                       if (!hasReferees) reasons.push('Professional references required')
                       if (!conductValid && kenyaYears < 7) reasons.push('Valid good conduct certificate or application receipt required (unless 7+ years experience)')
                       setQualificationReasons(reasons)
-                      handleSubmit() // Save unqualified candidate as LOST
+                      await handleSubmit() // Save unqualified candidate as LOST
                     } else {
-                      setCurrentStep(5) // Show congratulations for qualified, don't save yet
+                      // Save qualified candidate immediately as PENDING
+                      await handleQualifiedSubmit()
+                      setCurrentStep(5) // Show congratulations
                     }
                   }}
                   className="w-1/4 px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
@@ -1288,9 +1415,12 @@ export function CreateProfile() {
         <div className="max-w-2xl mx-auto bg-white rounded-2xl shadow-xl overflow-hidden">
           <div className="bg-blue-600 text-white p-6">
             <div className="flex justify-between items-center">
-              <div>
-                <h1 className="text-xl font-bold">Complete Your Profile</h1>
-                <p className="text-blue-100">Step {formStep} of 4</p>
+              <div className="flex items-center gap-3">
+                <img src={Logo} alt="Nestara Logo" className="w-12 h-12" />
+                <div>
+                  <h1 className="text-xl font-bold">Complete Your Profile</h1>
+                  <p className="text-blue-100">Step {formStep} of 4</p>
+                </div>
               </div>
               <div className="text-sm">{Math.round((formStep / 4) * 100)}% Complete</div>
             </div>
