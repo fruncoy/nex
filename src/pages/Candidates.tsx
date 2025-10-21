@@ -73,7 +73,6 @@ export function Candidates() {
   const [showModal, setShowModal] = useState(false)
   const [selectedCandidate, setSelectedCandidate] = useState<Candidate | null>(null)
   const [formData, setFormData] = useState({
-    profile_id: '',
     name: '',
     phone: '',
     source: '',
@@ -142,7 +141,7 @@ export function Candidates() {
   const statusOptions = ['PENDING', 'INTERVIEW_SCHEDULED', 'WON', 'Lost, Age', 'Lost, No References', 'Lost, No Response', 'Lost, Personality', 'Lost, Salary', 'Lost, Experience', 'Lost, No Good Conduct', 'Pending, applying GC', 'BLACKLISTED']
   const filterStatusOptions = ['Pending', 'Won', 'Lost', 'Blacklisted', 'Added by System', 'Self-Registered']
   const roleOptions = ['Nanny', 'House Manager', 'Chef', 'Driver', 'Night Nurse', 'Caregiver', 'Housekeeper']
-  const sourceOptions = ['TikTok', 'Facebook', 'Instagram', 'Google Search', 'Website', 'Referral', 'LinkedIn', 'Walk-in poster', 'Youtube']
+  const sourceOptions = ['TikTok', 'Facebook', 'Instagram', 'Google Search', 'Website', 'Referral', 'LinkedIn', 'Walk-in poster', 'Youtube', 'Referred By Church']
 
   useEffect(() => {
     loadCandidates()
@@ -292,7 +291,6 @@ export function Candidates() {
     setSubmitting(true)
     try {
       const payload: any = {
-        profile_id: formData.profile_id || null,
         name: formData.name.trim(),
         phone: formData.phone.trim(),
         source: formData.source || 'Referral',
@@ -649,7 +647,7 @@ export function Candidates() {
 
   const resetForm = () => {
     setFormData({
-      profile_id: '', name: '', phone: '', source: '', role: '', status: 'PENDING', scheduledDateOnly: '',
+      name: '', phone: '', source: '', role: '', status: 'PENDING', scheduledDateOnly: '',
       live_arrangement: '', work_schedule: '', employment_type: '', expected_salary: '',
       age: '', place_of_birth: '', next_of_kin_1_phone: '', next_of_kin_1_name: '',
       next_of_kin_1_location: '', next_of_kin_2_phone: '', next_of_kin_2_name: '',
@@ -885,7 +883,6 @@ export function Candidates() {
                           setShowModal(true)
                           setSelectedCandidate(candidate)
                           setFormData({
-                            profile_id: candidate.profile_id || '',
                             name: candidate.name,
                             phone: candidate.phone,
                             source: candidate.source || 'Referral',
@@ -1191,15 +1188,6 @@ export function Candidates() {
                     <div className="bg-yellow-50 p-4 rounded-lg space-y-4">
                       <h3 className="text-sm font-semibold text-gray-900 mb-3">Personal Details</h3>
                       <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">Profile ID</label>
-                          <input
-                            type="text"
-                            value={formData.profile_id}
-                            onChange={(e) => setFormData({ ...formData, profile_id: e.target.value })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
-                          />
-                        </div>
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">ID Number</label>
                           <input

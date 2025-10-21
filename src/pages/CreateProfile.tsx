@@ -128,7 +128,7 @@ export function CreateProfile() {
   const educationOptions = ['Primary', 'Secondary', 'College', 'University']
   const conductOptions = ['Valid Certificate', 'Applied (Receipt)', 'Expired', 'None']
   const countryOptions = ['Kenya', 'Saudi Arabia', 'Dubai', 'Qatar', 'UAE', 'Australia', 'Egypt', 'Other']
-  const sourceOptions = ['TikTok', 'Facebook', 'Instagram', 'Google Search', 'Website', 'Referral', 'LinkedIn', 'Walk-in poster', 'Youtube']
+  const sourceOptions = ['TikTok', 'Facebook', 'Instagram', 'Google Search', 'Website', 'Referral', 'LinkedIn', 'Walk-in poster', 'Youtube', 'Referred By Church']
 
   const normalizePhone = (phone: string): string => {
     const cleaned = phone.replace(/\D/g, '')
