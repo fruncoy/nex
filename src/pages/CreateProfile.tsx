@@ -31,53 +31,6 @@ export function CreateProfile() {
   const [qualificationReasons, setQualificationReasons] = useState<string[]>([])
   const [showContinueConfirm, setShowContinueConfirm] = useState(false)
   
-  // Draft functionality
-  const saveDraft = () => {
-    const draftData = {
-      currentStep,
-      phoneCheck,
-      formData,
-      qualificationData,
-      workExperiences,
-      isQualified,
-      qualificationReasons,
-      timestamp: Date.now()
-    }
-    localStorage.setItem('createProfileDraft', JSON.stringify(draftData))
-  }
-
-  const loadDraft = () => {
-    const draft = localStorage.getItem('createProfileDraft')
-    if (draft) {
-      const draftData = JSON.parse(draft)
-      setCurrentStep(draftData.currentStep || 0)
-      setPhoneCheck(draftData.phoneCheck || '')
-      setFormData(draftData.formData || formData)
-      setQualificationData(draftData.qualificationData || qualificationData)
-      setWorkExperiences(draftData.workExperiences || workExperiences)
-      setIsQualified(draftData.isQualified)
-      setQualificationReasons(draftData.qualificationReasons || [])
-      return true
-    }
-    return false
-  }
-
-  const clearDraft = () => {
-    localStorage.removeItem('createProfileDraft')
-  }
-
-  // Auto-save draft when data changes
-  useEffect(() => {
-    if (currentStep > 0) {
-      saveDraft()
-    }
-  }, [currentStep, formData, qualificationData, workExperiences, isQualified])
-
-  // Load draft on page load
-  useEffect(() => {
-    loadDraft()
-  }, [])
-  
   const [qualificationData, setQualificationData] = useState({
     // Qualification screening
     referee_1_name: '',
@@ -135,6 +88,51 @@ export function CreateProfile() {
     notes: '',
     preferred_interview_date: ''
   })
+
+  // Draft functionality
+  const saveDraft = () => {
+    const draftData = {
+      currentStep,
+      phoneCheck,
+      formData,
+      qualificationData,
+      workExperiences,
+      isQualified,
+      qualificationReasons,
+      timestamp: Date.now()
+    }
+    localStorage.setItem('createProfileDraft', JSON.stringify(draftData))
+  }
+
+  const clearDraft = () => {
+    localStorage.removeItem('createProfileDraft')
+  }
+
+  // Load draft on page load
+  useEffect(() => {
+    const draft = localStorage.getItem('createProfileDraft')
+    if (draft) {
+      try {
+        const draftData = JSON.parse(draft)
+        setCurrentStep(draftData.currentStep || 0)
+        setPhoneCheck(draftData.phoneCheck || '')
+        if (draftData.formData) setFormData(draftData.formData)
+        if (draftData.qualificationData) setQualificationData(draftData.qualificationData)
+        if (draftData.workExperiences) setWorkExperiences(draftData.workExperiences)
+        if (draftData.isQualified !== undefined) setIsQualified(draftData.isQualified)
+        if (draftData.qualificationReasons) setQualificationReasons(draftData.qualificationReasons)
+      } catch (error) {
+        console.error('Error loading draft:', error)
+      }
+    }
+  }, [])
+
+  // Auto-save draft when data changes
+  useEffect(() => {
+    if (currentStep > 0) {
+      saveDraft()
+    }
+  }, [currentStep, formData, qualificationData, workExperiences, isQualified])
   
 
 

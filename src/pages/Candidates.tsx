@@ -166,7 +166,7 @@ export function Candidates() {
         .from('candidates')
         .select('*')
         .neq('status', 'ARCHIVED')
-        .order('created_at', { ascending: false })
+        .order('inquiry_date', { ascending: false })
 
       if (error) throw error
       setCandidates(data || [])
