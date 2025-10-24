@@ -28,6 +28,42 @@ export function Dashboard() {
 
   useEffect(() => {
     loadDashboardData()
+    
+    // Set up real-time subscriptions
+    const candidatesSubscription = supabase
+      .channel('dashboard-candidates')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'candidates' }, () => {
+        loadDashboardData()
+      })
+      .subscribe()
+    
+    const clientsSubscription = supabase
+      .channel('dashboard-clients')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'clients' }, () => {
+        loadDashboardData()
+      })
+      .subscribe()
+    
+    const interviewsSubscription = supabase
+      .channel('dashboard-interviews')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'interviews' }, () => {
+        loadDashboardData()
+      })
+      .subscribe()
+    
+    const activitySubscription = supabase
+      .channel('dashboard-activity')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'activity_logs' }, () => {
+        loadDashboardData()
+      })
+      .subscribe()
+    
+    return () => {
+      candidatesSubscription.unsubscribe()
+      clientsSubscription.unsubscribe()
+      interviewsSubscription.unsubscribe()
+      activitySubscription.unsubscribe()
+    }
   }, [dateRange])
 
   const loadDashboardData = async () => {
@@ -107,9 +143,16 @@ export function Dashboard() {
 
       // Load placement follow-ups that are due or overdue
       const { data: followups } = await supabase
-        .from('placement_followup_dashboard')
-        .select('*')
-        .in('status', ['overdue', 'due_today'])
+        .from('placement_followups')
+        .select(`
+          *,
+          placements(
+            candidates(name),
+            clients(name)
+          )
+        `)
+        .is('completed_date', null)
+        .lte('due_date', new Date().toISOString().split('T')[0])
         .limit(5)
 
       setRecentActivity(activityLogs || [])
@@ -275,7 +318,7 @@ export function Dashboard() {
                 <MessageCircle className="w-5 h-5 text-red-400" />
                 <h2 className="ml-2 text-lg font-semibold text-gray-900">Placement Follow-ups Due</h2>
                 <button
-                  onClick={() => navigate('/converted-clients')}
+                  onClick={() => navigate('/placements')}
                   className="ml-auto text-sm text-nestalk-primary hover:text-nestalk-primary/80"
                 >
                   View All
@@ -284,28 +327,34 @@ export function Dashboard() {
             </div>
             <div className="p-6">
               <div className="space-y-4">
-                {placementFollowups.map((followup) => (
-                  <div key={followup.id} className={`flex items-start space-x-3 p-3 rounded-lg ${
-                    followup.status === 'overdue' ? 'bg-red-50 border border-red-200' : 'bg-yellow-50 border border-yellow-200'
-                  }`}>
-                    <div className="flex-shrink-0">
-                      <div className={`w-2 h-2 rounded-full mt-2 ${
-                        followup.status === 'overdue' ? 'bg-red-500' : 'bg-yellow-500'
-                      }`}></div>
+                {placementFollowups.map((followup) => {
+                  const isOverdue = new Date(followup.due_date) < new Date()
+                  const candidateName = followup.placements?.candidates?.name || 'Unknown'
+                  const clientName = followup.placements?.clients?.name || 'Unknown'
+                  
+                  return (
+                    <div key={followup.id} className={`flex items-start space-x-3 p-3 rounded-lg ${
+                      isOverdue ? 'bg-red-50 border border-red-200' : 'bg-yellow-50 border border-yellow-200'
+                    }`}>
+                      <div className="flex-shrink-0">
+                        <div className={`w-2 h-2 rounded-full mt-2 ${
+                          isOverdue ? 'bg-red-500' : 'bg-yellow-500'
+                        }`}></div>
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-gray-900">
+                          {clientName} - {candidateName}
+                        </p>
+                        <p className="text-xs text-gray-600">
+                          {followup.followup_type === '2_week' ? '2-week' : 'Monthly'} check - {isOverdue ? 'OVERDUE' : 'DUE TODAY'}
+                        </p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          Due: {new Date(followup.due_date).toLocaleDateString()}
+                        </p>
+                      </div>
                     </div>
-                    <div className="flex-1">
-                      <p className="text-sm font-medium text-gray-900">
-                        {followup.client_name} - {followup.candidate_name}
-                      </p>
-                      <p className="text-xs text-gray-600">
-                        {followup.followup_type.replace('_', ' ')} check - {followup.status === 'overdue' ? 'OVERDUE' : 'DUE TODAY'}
-                      </p>
-                      <p className="text-xs text-gray-500 mt-1">
-                        Scheduled: {new Date(followup.scheduled_date).toLocaleDateString()}
-                      </p>
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </div>
           </div>

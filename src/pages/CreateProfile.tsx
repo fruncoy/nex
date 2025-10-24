@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { User, Phone, MapPin, Briefcase, Calendar, CheckCircle, AlertCircle, ArrowLeft } from 'lucide-react'
 import Logo from '../assets/Logo.png'
+import { PhoneInput } from '../components/ui/PhoneInput'
 
 interface ExistingCandidate {
   id: string
@@ -586,7 +587,7 @@ export function CreateProfile() {
         <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full text-center">
           <img src={Logo} alt="Nestara Logo" className="w-16 h-16 mx-auto mb-4" />
           <h2 className="text-2xl font-bold text-gray-900 mb-4">Welcome to Nestara Family!</h2>
-          <p className="text-gray-600 mb-6">You'll get a call from us in a moment. Thank you for your patience.</p>
+          <p className="text-gray-600 mb-6">We'll call you after we check your application. Thank you for your patience.</p>
           
           <a
             href="https://linktr.ee/nestaralimited"
@@ -647,14 +648,22 @@ export function CreateProfile() {
           <p className="text-gray-600 mb-4">Sorry, you don't currently meet our requirements:</p>
           
           <div className="bg-red-50 p-4 rounded-lg mb-6">
-            <ul className="text-left text-sm text-red-700 space-y-1">
+            <ul className="text-left text-sm text-red-700 space-y-2">
               {qualificationReasons.map((reason, i) => (
-                <li key={i}>• {reason}</li>
+                <li key={i} className="flex items-start">
+                  <span className="text-red-500 mr-2">•</span>
+                  <span>{reason}</span>
+                </li>
               ))}
             </ul>
           </div>
           
-
+          <div className="bg-blue-50 p-4 rounded-lg mb-6">
+            <p className="text-sm text-blue-700">
+              <strong>Don't give up!</strong> You can reapply once you meet our requirements. 
+              We encourage you to gain more experience and try again in the future.
+            </p>
+          </div>
           
           <a
             href="https://linktr.ee/nestaralimited"
@@ -684,12 +693,11 @@ export function CreateProfile() {
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Phone Number</label>
-                <input
-                  type="tel"
+                <PhoneInput
                   value={phoneCheck}
-                  onChange={(e) => setPhoneCheck(e.target.value)}
+                  onChange={setPhoneCheck}
+                  placeholder="700123456"
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="07XXXXXXXX or +2547XXXXXXXX"
                 />
               </div>
               
@@ -723,24 +731,13 @@ export function CreateProfile() {
               <img src={Logo} alt="Nestara Logo" className="w-16 h-16 mx-auto mb-2" />
             </div>
             <div className="flex justify-between items-center mb-4">
-              <div className="flex items-center gap-2">
-                {currentStep > 1 && (
-                  <button
-                    onClick={() => setCurrentStep(0)}
-                    className="p-1 text-gray-500 hover:text-gray-700"
-                    title="Back to phone check"
-                  >
-                    <ArrowLeft className="w-4 h-4" />
-                  </button>
-                )}
-                <h2 className="text-xl font-bold text-gray-900">
-                  {currentStep === 1 ? 'Initial Candidate Review' : 
-                   currentStep === 2 ? 'Work Experience' :
-                   currentStep === 3 ? 'References' :
-                   currentStep === 4 ? 'Confirm Details' :
-                   currentStep === 5 ? 'Congratulations' : 'Qualification Check'}
-                </h2>
-              </div>
+              <h2 className="text-xl font-bold text-gray-900">
+                {currentStep === 1 ? 'Initial Candidate Review' : 
+                 currentStep === 2 ? 'Work Experience' :
+                 currentStep === 3 ? 'References' :
+                 currentStep === 4 ? 'Confirm Details' :
+                 currentStep === 5 ? 'Congratulations' : 'Qualification Check'}
+              </h2>
               {currentStep !== 5 && <span className="text-sm text-gray-500">Step {currentStep} of 4</span>}
             </div>
             {currentStep !== 5 && (
@@ -943,11 +940,10 @@ export function CreateProfile() {
                     onChange={(e) => setQualificationData({ ...qualificationData, referee_1_name: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 mb-2"
                   />
-                  <input
-                    type="tel"
-                    placeholder="Phone Number"
+                  <PhoneInput
                     value={qualificationData.referee_1_phone || ''}
-                    onChange={(e) => setQualificationData({ ...qualificationData, referee_1_phone: e.target.value })}
+                    onChange={(value) => setQualificationData({ ...qualificationData, referee_1_phone: value })}
+                    placeholder="700123456"
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
@@ -960,11 +956,10 @@ export function CreateProfile() {
                     onChange={(e) => setQualificationData({ ...qualificationData, referee_2_name: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 mb-2"
                   />
-                  <input
-                    type="tel"
-                    placeholder="Phone Number"
+                  <PhoneInput
                     value={qualificationData.referee_2_phone || ''}
-                    onChange={(e) => setQualificationData({ ...qualificationData, referee_2_phone: e.target.value })}
+                    onChange={(value) => setQualificationData({ ...qualificationData, referee_2_phone: value })}
+                    placeholder="700123456"
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
@@ -1042,7 +1037,7 @@ export function CreateProfile() {
                     // Special case: 7+ Kenya years but no good conduct = still qualified for "Pending, applying GC"
                     const qualified = ageValid && experienceValid && (conductValid || kenyaYears >= 7) && hasReferees
                     
-                    setIsQualified(qualified)
+                    // Save the candidate data first
                     if (!qualified) {
                       const reasons = []
                       if (!ageValid) reasons.push(`Age requirement not met (must be 24-45 years, you are ${age} years)`)
@@ -1051,6 +1046,10 @@ export function CreateProfile() {
                       if (!conductValid && kenyaYears < 7) reasons.push('Valid good conduct certificate or application receipt required (unless 7+ years experience)')
                       setQualificationReasons(reasons)
                       await handleSubmit() // Save unqualified candidate as LOST
+                      // Add a small delay to ensure data is saved before showing result
+                      setTimeout(() => {
+                        setIsQualified(qualified)
+                      }, 500)
                     } else {
                       // Save qualified candidate immediately as PENDING
                       await handleQualifiedSubmit()
@@ -1073,7 +1072,7 @@ export function CreateProfile() {
               <h2 className="text-3xl font-bold text-gray-900 mb-4">Congratulations!</h2>
               <div className="bg-white p-4 rounded-lg mb-6 shadow-sm">
                 <p className="text-green-700 font-medium text-lg mb-2">You qualify to become a Nestara Professional!</p>
-                <p className="text-gray-600">Your status is now PENDING - just one more step to complete your full profile.</p>
+                <p className="text-gray-600">You are just 1 step away from being called in for an interview - complete your full profile.</p>
               </div>
               <button
                 onClick={() => setShowContinueConfirm(true)}
@@ -1641,11 +1640,10 @@ export function CreateProfile() {
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 mb-2"
                       required
                     />
-                    <input
-                      type="tel"
-                      placeholder="Phone Number *"
+                    <PhoneInput
                       value={formData.next_of_kin_1_phone}
-                      onChange={(e) => setFormData({ ...formData, next_of_kin_1_phone: e.target.value })}
+                      onChange={(value) => setFormData({ ...formData, next_of_kin_1_phone: value })}
+                      placeholder="700123456"
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 mb-2"
                       required
                     />
@@ -1677,11 +1675,10 @@ export function CreateProfile() {
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 mb-2"
                       required
                     />
-                    <input
-                      type="tel"
-                      placeholder="Phone Number *"
+                    <PhoneInput
                       value={formData.next_of_kin_2_phone}
-                      onChange={(e) => setFormData({ ...formData, next_of_kin_2_phone: e.target.value })}
+                      onChange={(value) => setFormData({ ...formData, next_of_kin_2_phone: value })}
+                      placeholder="700123456"
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 mb-2"
                       required
                     />
@@ -2040,13 +2037,11 @@ export function CreateProfile() {
                     onChange={(e) => setFormData({ ...formData, next_of_kin_1_name: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                   />
-                  <input
-                    type="tel"
-                    required
-                    placeholder="Phone Number"
+                  <PhoneInput
                     value={formData.next_of_kin_1_phone}
-                    onChange={(e) => setFormData({ ...formData, next_of_kin_1_phone: e.target.value })}
+                    onChange={(value) => setFormData({ ...formData, next_of_kin_1_phone: value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    required
                   />
                   <input
                     type="text"
@@ -2069,13 +2064,11 @@ export function CreateProfile() {
                     onChange={(e) => setFormData({ ...formData, next_of_kin_2_name: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                   />
-                  <input
-                    type="tel"
-                    required
-                    placeholder="Phone Number"
+                  <PhoneInput
                     value={formData.next_of_kin_2_phone}
-                    onChange={(e) => setFormData({ ...formData, next_of_kin_2_phone: e.target.value })}
+                    onChange={(value) => setFormData({ ...formData, next_of_kin_2_phone: value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    required
                   />
                   <input
                     type="text"
@@ -2165,13 +2158,11 @@ export function CreateProfile() {
                     onChange={(e) => setFormData({ ...formData, referee_1_name: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                   />
-                  <input
-                    type="tel"
-                    required
-                    placeholder="Phone Number"
+                  <PhoneInput
                     value={formData.referee_1_phone}
-                    onChange={(e) => setFormData({ ...formData, referee_1_phone: e.target.value })}
+                    onChange={(value) => setFormData({ ...formData, referee_1_phone: value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    required
                   />
                 </div>
               </div>
@@ -2185,11 +2176,9 @@ export function CreateProfile() {
                     onChange={(e) => setFormData({ ...formData, referee_2_name: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                   />
-                  <input
-                    type="tel"
-                    placeholder="Phone Number"
+                  <PhoneInput
                     value={formData.referee_2_phone}
-                    onChange={(e) => setFormData({ ...formData, referee_2_phone: e.target.value })}
+                    onChange={(value) => setFormData({ ...formData, referee_2_phone: value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                   />
                 </div>

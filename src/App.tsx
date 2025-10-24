@@ -24,6 +24,7 @@ import { ConvertedClients } from './pages/ConvertedClients'
 import { Blacklisted } from './pages/Blacklisted'
 import { NestaraAI } from './pages/NestaraAI'
 import { CreateProfile } from './pages/CreateProfile'
+import { Placements } from './pages/Placements'
 
 function ProtectedLayout() {
   const { user, loading } = useAuth()
@@ -59,6 +60,7 @@ function AppRoutes() {
         <Route path="vetting" element={<Vetting />} />
         <Route path="clients" element={<Clients />} />
         <Route path="converted-clients" element={<ConvertedClients />} />
+        <Route path="placements" element={<Placements />} />
         <Route path="staff" element={<Staff />} />
         <Route path="blacklisted" element={<Blacklisted />} />
         <Route path="training" element={<TrainingLeads />} />

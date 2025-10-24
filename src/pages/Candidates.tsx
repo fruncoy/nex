@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { SearchFilter } from '../components/ui/SearchFilter'
 import { StatusBadge } from '../components/ui/StatusBadge'
+import { PhoneInput } from '../components/ui/PhoneInput'
 import { Plus, Users, Phone, Calendar, Edit, CheckCircle, Clock, Upload, Eye, Download } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
@@ -120,6 +121,15 @@ export function Candidates() {
   const [showBulkUpload, setShowBulkUpload] = useState(false)
   const [uploadFile, setUploadFile] = useState<File | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [showUploadResults, setShowUploadResults] = useState(false)
+  const [uploadResults, setUploadResults] = useState<{
+    total: number
+    added: number
+    updated: number
+    skipped: number
+    errors: string[]
+    details: Array<{type: 'added' | 'updated' | 'skipped' | 'error', name: string, message: string}>
+  }>({ total: 0, added: 0, updated: 0, skipped: 0, errors: [], details: [] })
   const [selectedCandidates, setSelectedCandidates] = useState<string[]>([])
   const [bulkStatus, setBulkStatus] = useState('')
   const [showNotesModal, setShowNotesModal] = useState(false)
@@ -131,6 +141,7 @@ export function Candidates() {
   const [showExtendedFields, setShowExtendedFields] = useState(false)
   const [addedByFilter, setAddedByFilter] = useState('all')
   const [addedByOptions, setAddedByOptions] = useState<string[]>([])
+  const [sourceFilter, setSourceFilter] = useState('all')
   const [scheduleModal, setScheduleModal] = useState<{ open: boolean; candidate: Candidate | null; dateOnly: string }>({ open: false, candidate: null, dateOnly: '' })
   const [showProfileModal, setShowProfileModal] = useState(false)
   const [selectedCandidateForProfile, setSelectedCandidateForProfile] = useState<Candidate | null>(null)
@@ -147,6 +158,23 @@ export function Candidates() {
     loadCandidates()
     loadNoteCounts()
     loadAddedByOptions()
+    
+    // Set up real-time subscription
+    const subscription = supabase
+      .channel('candidates-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'candidates' }, () => {
+        loadCandidates()
+        loadNoteCounts()
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'candidate_notes' }, () => {
+        loadNoteCounts()
+        loadUnreadCounts()
+      })
+      .subscribe()
+    
+    return () => {
+      subscription.unsubscribe()
+    }
   }, [])
 
   useEffect(() => {
@@ -157,7 +185,7 @@ export function Candidates() {
 
   useEffect(() => {
     filterCandidates()
-  }, [candidates, searchTerm, filterStatus, addedByFilter, dateRange])
+  }, [candidates, searchTerm, filterStatus, addedByFilter, sourceFilter, dateRange])
 
   const loadCandidates = async () => {
     setLoading(true)
@@ -242,16 +270,34 @@ export function Candidates() {
     let filtered = [...candidates]
 
     if (searchTerm) {
-      filtered = filtered.filter(candidate =>
-        candidate.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        candidate.phone.includes(searchTerm) ||
-        candidate.role.toLowerCase().includes(searchTerm.toLowerCase())
-      )
+      // Normalize phone number for search
+      const normalizePhone = (phone: string) => {
+        return phone.replace(/[^0-9]/g, '') // Remove all non-digits
+      }
+      
+      const searchPhone = normalizePhone(searchTerm)
+      
+      filtered = filtered.filter(candidate => {
+        const nameMatch = candidate.name.toLowerCase().includes(searchTerm.toLowerCase())
+        const roleMatch = candidate.role.toLowerCase().includes(searchTerm.toLowerCase())
+        
+        // Phone matching with normalization
+        let phoneMatch = false
+        if (searchPhone) {
+          const candidatePhone = normalizePhone(candidate.phone)
+          // Check if search term matches any part of the phone number
+          phoneMatch = candidatePhone.includes(searchPhone) ||
+                      candidatePhone.endsWith(searchPhone) ||
+                      (searchPhone.startsWith('0') && candidatePhone.endsWith(searchPhone.substring(1)))
+        }
+        
+        return nameMatch || phoneMatch || roleMatch
+      })
     }
 
     if (filterStatus !== 'all') {
       if (filterStatus === 'Pending') {
-        filtered = filtered.filter(candidate => candidate.status === 'PENDING' || candidate.status === 'INTERVIEW_SCHEDULED')
+        filtered = filtered.filter(candidate => candidate.status === 'PENDING')
       } else if (filterStatus === 'Won') {
         filtered = filtered.filter(candidate => candidate.status === 'WON')
       } else if (filterStatus === 'Lost') {
@@ -269,10 +315,21 @@ export function Candidates() {
       filtered = filtered.filter(candidate => candidate.added_by === addedByFilter)
     }
 
-    if (dateRange.start && dateRange.end) {
+    if (sourceFilter !== 'all') {
+      filtered = filtered.filter(candidate => candidate.source === sourceFilter)
+    }
+
+    if (dateRange.start || dateRange.end) {
       filtered = filtered.filter(c => {
-        const d = new Date(c.created_at).toISOString().split('T')[0]
-        return d >= dateRange.start && d <= dateRange.end
+        const d = c.inquiry_date
+        if (dateRange.start && dateRange.end) {
+          return d >= dateRange.start && d <= dateRange.end
+        } else if (dateRange.start) {
+          return d >= dateRange.start
+        } else if (dateRange.end) {
+          return d <= dateRange.end
+        }
+        return true
       })
     }
 
@@ -400,10 +457,10 @@ export function Candidates() {
       resetForm()
     } catch (error: any) {
       console.error('Error saving candidate:', error)
-      if (error?.code === '23505' || error?.message?.includes('duplicate key value violates unique constraint')) {
-        alert('A candidate with this phone number already exists')
+      if (error?.code === '23505' || error?.message?.includes('duplicate key value violates unique constraint') || error?.message?.includes('uq_candidates_phone')) {
+        showToast('Phone number already exists! Please check for duplicates.', 'error')
       } else {
-        alert(`Error saving candidate: ${error?.message || 'Unknown error'}`)
+        showToast(`Error saving candidate: ${error?.message || 'Unknown error'}`, 'error')
       }
     } finally {
       setSubmitting(false)
@@ -507,6 +564,16 @@ export function Candidates() {
       return
     }
 
+    setSubmitting(true)
+    const results = {
+      total: 0,
+      added: 0,
+      updated: 0,
+      skipped: 0,
+      errors: [] as string[],
+      details: [] as Array<{type: 'added' | 'updated' | 'skipped' | 'error', name: string, message: string}>
+    }
+
     try {
       const text = await uploadFile.text()
       const rows = text.split(/\r?\n/).filter(row => row.trim())
@@ -516,15 +583,18 @@ export function Candidates() {
         return
       }
 
-      const header = rows[0]
       const dataRows = rows.slice(1)
+      results.total = dataRows.length
       
       const inserts: any[] = []
-      const errors: string[] = []
+      const updates: any[] = []
       
       for (let i = 0; i < dataRows.length; i++) {
         const row = dataRows[i]
-        if (!row.trim()) continue
+        if (!row.trim()) {
+          results.total--
+          continue
+        }
         
         const parts = row.split(',')
         const name = parts[0]?.trim()
@@ -539,22 +609,23 @@ export function Candidates() {
         if (!status) status = 'PENDING'
 
         if (!name || !phone) {
-          errors.push(`Row ${i + 2}: Missing name or phone`)
+          results.errors.push(`Row ${i + 2}: Missing name or phone`)
+          results.details.push({type: 'error', name: name || 'Unknown', message: 'Missing name or phone'})
           continue
         }
         
-        // Check for duplicate phone number
+        // Check for existing candidate (normalize phone first)
+        const normalizedPhone = phone.replace(/[^0-9+]/g, '')
+          .replace(/^0/, '+254')
+          .replace(/^254/, '+254')
+          .replace(/^\+\+254/, '+254')
+        
         const { data: existingCandidate } = await supabase
           .from('candidates')
-          .select('id')
-          .eq('phone', phone)
+          .select('id, name, status')
+          .eq('phone', normalizedPhone)
           .single()
         
-        if (existingCandidate) {
-          errors.push(`Row ${i + 2}: Phone number ${phone} already exists`)
-          continue
-        }
-
         // Map and validate role (case-insensitive)
         const roleMap: Record<string, string> = {
           'chef': 'Chef',
@@ -572,11 +643,8 @@ export function Candidates() {
         if (mappedRole) {
           role = mappedRole
         } else if (!roleOptions.includes(role)) {
-          errors.push(`Row ${i + 2}: Invalid role '${role}'. Using 'Caregiver' instead.`)
           role = 'Caregiver'
         }
-        
-
 
         // Map and validate source (case-insensitive)
         const sourceMap: Record<string, string> = {
@@ -588,24 +656,23 @@ export function Candidates() {
           'referral': 'Referral',
           'linkedin': 'LinkedIn',
           'walk-in poster': 'Walk-in poster',
-          'youtube': 'Youtube'
+          'youtube': 'Youtube',
+          'referred by church': 'Referred By Church'
         }
         
         const mappedSource = sourceMap[source.toLowerCase()]
         if (mappedSource) {
           source = mappedSource
         } else if (!sourceOptions.includes(source)) {
-          errors.push(`Row ${i + 2}: Invalid source '${source}'. Using 'Referral' instead.`)
           source = 'Referral'
         }
 
-        // Validate and fix status
+        // Validate status
         if (!statusOptions.includes(status)) {
-          errors.push(`Row ${i + 2}: Invalid status '${status}'. Using 'PENDING' instead.`)
           status = 'PENDING'
         }
 
-        inserts.push({ 
+        const candidateData = { 
           name, 
           phone, 
           source,
@@ -614,34 +681,61 @@ export function Candidates() {
           assigned_to: user?.id, 
           inquiry_date: new Date().toISOString().split('T')[0],
           added_by: 'System'
-        })
+        }
+
+        if (existingCandidate) {
+          // Skip if status is WON or BLACKLISTED
+          if (existingCandidate.status === 'WON' || existingCandidate.status === 'BLACKLISTED') {
+            results.skipped++
+            results.details.push({type: 'skipped', name, message: `Status is ${existingCandidate.status} - not updated`})
+            continue
+          }
+          
+          // Update existing candidate
+          updates.push({ id: existingCandidate.id, data: candidateData, oldStatus: existingCandidate.status })
+          results.updated++
+          results.details.push({type: 'updated', name, message: `Updated from ${existingCandidate.status} to ${status}`})
+        } else {
+          // Add new candidate
+          inserts.push(candidateData)
+          results.added++
+          results.details.push({type: 'added', name, message: `Added as new candidate with status ${status}`})
+        }
       }
 
-      if (inserts.length === 0) {
-        alert('No valid rows to insert. Please check your CSV data.')
-        return
+      // Process inserts
+      if (inserts.length > 0) {
+        const { error } = await supabase.from('candidates').insert(inserts)
+        if (error) throw error
       }
 
-      if (errors.length > 0) {
-        const proceed = confirm(`Found ${errors.length} validation issues:\n\n${errors.slice(0, 5).join('\n')}${errors.length > 5 ? '\n...and more' : ''}\n\nProceed with corrected values?`)
-        if (!proceed) return
+      // Process updates
+      for (const update of updates) {
+        const { error } = await supabase
+          .from('candidates')
+          .update(update.data)
+          .eq('id', update.id)
+        if (error) {
+          console.error('Error updating candidate:', error)
+          results.errors.push(`Failed to update ${update.data.name}`)
+        }
       }
-
-      const { error } = await supabase.from('candidates').insert(inserts)
-      if (error) throw error
 
       // Log bulk upload activity
       if (user?.id && staff?.name) {
-        await ActivityLogger.logBulkUpload(user.id, 'candidate', inserts.length, staff.name)
+        await ActivityLogger.logBulkUpload(user.id, 'candidate', results.added + results.updated, staff.name)
       }
 
       await loadCandidates()
+      setUploadResults(results)
+      setShowUploadResults(true)
       setShowBulkUpload(false)
       setUploadFile(null)
-      alert(`Successfully uploaded ${inserts.length} candidates${errors.length > 0 ? ` with ${errors.length} corrections` : ''}`)
     } catch (error) {
       console.error('Error bulk uploading candidates:', error)
       alert(`Error uploading candidates: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    } finally {
+      setSubmitting(false)
     }
   }
 
@@ -713,6 +807,44 @@ export function Candidates() {
           statusOptions={filterStatusOptions}
           placeholder="Search by name, phone, or role..."
         />
+        
+        <div className="flex gap-3">
+          <select
+            value={sourceFilter}
+            onChange={(e) => setSourceFilter(e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
+          >
+            <option value="all">All Sources</option>
+            {sourceOptions.map(source => (
+              <option key={source} value={source}>{source}</option>
+            ))}
+          </select>
+          
+          <input
+            type="date"
+            value={dateRange.start}
+            onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+            placeholder="Start date"
+          />
+          
+          <input
+            type="date"
+            value={dateRange.end}
+            onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+            placeholder="End date"
+          />
+          
+          {(dateRange.start || dateRange.end) && (
+            <button
+              onClick={() => setDateRange({ start: '', end: '' })}
+              className="px-3 py-2 bg-gray-100 text-gray-600 rounded-lg text-sm hover:bg-gray-200"
+            >
+              Clear Dates
+            </button>
+          )}
+        </div>
         
         {selectedCandidates.length > 0 && (
           <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
@@ -807,7 +939,6 @@ export function Candidates() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Phone</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Source</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Added By</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Inquiry Date</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
@@ -864,7 +995,6 @@ export function Candidates() {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{candidate.source || 'N/A'}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{candidate.role}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{candidate.added_by || 'System'}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{formatDisplayDate(candidate.inquiry_date)}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     <div className="flex items-center gap-2">
@@ -944,6 +1074,15 @@ export function Candidates() {
                               return
                             }
                             
+                            // Confirmation for WON status
+                            if (newStatus === 'WON') {
+                              const confirmed = confirm(`Are you sure you want to mark ${candidate.name} as WON? This indicates they have been successfully placed.`)
+                              if (!confirmed) {
+                                e.target.selectedIndex = 0
+                                return
+                              }
+                            }
+                            
                             try {
                               const oldStatus = candidate.status
                               const { error } = await supabase
@@ -1020,7 +1159,7 @@ export function Candidates() {
 
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50" onClick={() => { setShowModal(false); resetForm() }}>
-          <div className="bg-white rounded-lg max-w-md w-full max-h-screen overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white rounded-lg max-w-md w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">
                 {selectedCandidate ? 'Edit Candidate' : 'Add New Candidate'}
@@ -1040,12 +1179,10 @@ export function Candidates() {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
-                  <input
-                    type="tel"
-                    required
+                  <PhoneInput
                     value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
+                    onChange={(value) => setFormData({ ...formData, phone: value })}
+                    required
                   />
                 </div>
 
@@ -1526,10 +1663,9 @@ export function Candidates() {
                         </div>
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">Next of Kin 1 Phone</label>
-                          <input
-                            type="tel"
+                          <PhoneInput
                             value={formData.next_of_kin_1_phone}
-                            onChange={(e) => setFormData({ ...formData, next_of_kin_1_phone: e.target.value })}
+                            onChange={(value) => setFormData({ ...formData, next_of_kin_1_phone: value })}
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
                           />
                         </div>
@@ -1556,10 +1692,9 @@ export function Candidates() {
                         </div>
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">Next of Kin 2 Phone</label>
-                          <input
-                            type="tel"
+                          <PhoneInput
                             value={formData.next_of_kin_2_phone}
-                            onChange={(e) => setFormData({ ...formData, next_of_kin_2_phone: e.target.value })}
+                            onChange={(value) => setFormData({ ...formData, next_of_kin_2_phone: value })}
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
                           />
                         </div>
@@ -1590,10 +1725,9 @@ export function Candidates() {
                         </div>
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">Referee 1 Phone</label>
-                          <input
-                            type="tel"
+                          <PhoneInput
                             value={formData.referee_1_phone}
-                            onChange={(e) => setFormData({ ...formData, referee_1_phone: e.target.value })}
+                            onChange={(value) => setFormData({ ...formData, referee_1_phone: value })}
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
                           />
                         </div>
@@ -1610,10 +1744,9 @@ export function Candidates() {
                         </div>
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">Referee 2 Phone</label>
-                          <input
-                            type="tel"
+                          <PhoneInput
                             value={formData.referee_2_phone}
-                            onChange={(e) => setFormData({ ...formData, referee_2_phone: e.target.value })}
+                            onChange={(value) => setFormData({ ...formData, referee_2_phone: value })}
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
                           />
                         </div>
@@ -1675,8 +1808,18 @@ export function Candidates() {
                     accept=".csv"
                     onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
+                    disabled={submitting}
                   />
                 </div>
+
+                {submitting && (
+                  <div className="bg-blue-50 p-4 rounded-lg">
+                    <div className="flex items-center">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-3"></div>
+                      <span className="text-blue-800">Processing upload...</span>
+                    </div>
+                  </div>
+                )}
 
                 <div className="flex gap-3">
                   <button
@@ -1685,15 +1828,17 @@ export function Candidates() {
                       setShowBulkUpload(false)
                       setUploadFile(null)
                     }}
-                    className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                    disabled={submitting}
+                    className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    className="flex-1 px-4 py-2 bg-nestalk-primary text-white rounded-lg hover:bg-nestalk-primary/90 transition-colors"
+                    disabled={submitting || !uploadFile}
+                    className="flex-1 px-4 py-2 bg-nestalk-primary text-white rounded-lg hover:bg-nestalk-primary/90 transition-colors disabled:opacity-50"
                   >
-                    Upload
+                    {submitting ? 'Uploading...' : 'Upload'}
                   </button>
                 </div>
               </form>
@@ -2166,6 +2311,97 @@ export function Candidates() {
                     setSelectedCandidateForProfile(null)
                   }}
                   className="px-6 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Upload Results Modal */}
+      {showUploadResults && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[80vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="text-center mb-6">
+                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-green-100 flex items-center justify-center">
+                  <CheckCircle className="w-8 h-8 text-green-600" />
+                </div>
+                <h2 className="text-2xl font-bold text-gray-900 mb-2">Upload Complete!</h2>
+              </div>
+
+              {/* Summary */}
+              <div className="bg-gray-50 p-4 rounded-lg mb-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-3">📊 Summary</h3>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div><span className="font-medium">Total Processed:</span> {uploadResults.total}</div>
+                  <div><span className="font-medium text-green-600">New Added:</span> {uploadResults.added}</div>
+                  <div><span className="font-medium text-blue-600">Updated:</span> {uploadResults.updated}</div>
+                  <div><span className="font-medium text-yellow-600">Skipped:</span> {uploadResults.skipped}</div>
+                </div>
+                {uploadResults.errors.length > 0 && (
+                  <div className="mt-2">
+                    <span className="font-medium text-red-600">Errors:</span> {uploadResults.errors.length}
+                  </div>
+                )}
+              </div>
+
+              {/* Details */}
+              <div className="mb-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-3">📋 Details</h3>
+                <div className="max-h-60 overflow-y-auto space-y-2">
+                  {uploadResults.details.map((detail, index) => (
+                    <div key={index} className={`flex items-start gap-3 p-3 rounded-lg text-sm ${
+                      detail.type === 'added' ? 'bg-green-50' :
+                      detail.type === 'updated' ? 'bg-blue-50' :
+                      detail.type === 'skipped' ? 'bg-yellow-50' :
+                      'bg-red-50'
+                    }`}>
+                      <span className="text-lg">
+                        {detail.type === 'added' ? '✅' :
+                         detail.type === 'updated' ? '🔄' :
+                         detail.type === 'skipped' ? '⏭️' :
+                         '❌'}
+                      </span>
+                      <div>
+                        <div className="font-medium">{detail.name}</div>
+                        <div className={`text-xs ${
+                          detail.type === 'added' ? 'text-green-700' :
+                          detail.type === 'updated' ? 'text-blue-700' :
+                          detail.type === 'skipped' ? 'text-yellow-700' :
+                          'text-red-700'
+                        }`}>
+                          {detail.message}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Errors */}
+              {uploadResults.errors.length > 0 && (
+                <div className="mb-6">
+                  <h3 className="text-lg font-semibold text-red-600 mb-3">❌ Errors</h3>
+                  <div className="bg-red-50 p-4 rounded-lg max-h-32 overflow-y-auto">
+                    {uploadResults.errors.map((error, index) => (
+                      <div key={index} className="text-sm text-red-700 mb-1">
+                        • {error}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex justify-end">
+                <button
+                  onClick={() => {
+                    setShowUploadResults(false)
+                    setUploadResults({ total: 0, added: 0, updated: 0, skipped: 0, errors: [], details: [] })
+                  }}
+                  className="px-6 py-2 bg-nestalk-primary text-white rounded-lg hover:bg-nestalk-primary/90"
                 >
                   Close
                 </button>

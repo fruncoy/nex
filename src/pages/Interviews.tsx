@@ -127,6 +127,38 @@ export function Interviews() {
     try {
       showToast('Loading interviews...', 'loading')
       
+      // First, check for candidates with INTERVIEW_SCHEDULED status but no interview record
+      const { data: scheduledCandidates } = await supabase
+        .from('candidates')
+        .select('id, name, scheduled_date')
+        .eq('status', 'INTERVIEW_SCHEDULED')
+      
+      if (scheduledCandidates) {
+        for (const candidate of scheduledCandidates) {
+          // Check if interview record exists
+          const { data: existingInterview } = await supabase
+            .from('interviews')
+            .select('id')
+            .eq('candidate_id', candidate.id)
+            .single()
+          
+          // If no interview record exists, create one
+          if (!existingInterview && candidate.scheduled_date) {
+            await supabase
+              .from('interviews')
+              .insert({
+                candidate_id: candidate.id,
+                date_time: candidate.scheduled_date,
+                location: 'Office',
+                assigned_staff: user?.id,
+                attended: false,
+                outcome: null,
+                status: 'scheduled'
+              })
+          }
+        }
+      }
+      
       const { data, error } = await supabase
         .from('interviews')
         .select(`
@@ -164,7 +196,7 @@ export function Interviews() {
       const { data, error } = await supabase
         .from('candidates')
         .select('id, name')
-        .eq('status', 'PENDING') // Only include PENDING candidates for scheduling
+        .in('status', ['PENDING', 'INTERVIEW_SCHEDULED']) // Include both PENDING and INTERVIEW_SCHEDULED candidates
         .order('name')
 
       if (error) throw error
@@ -180,12 +212,28 @@ export function Interviews() {
     let filtered = [...interviews]
 
     if (searchTerm) {
-      filtered = filtered.filter(interview =>
-        // Optimize search by phone number too
-        interview.candidates?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        interview.candidates?.phone.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (interview.outcome || '').toLowerCase().includes(searchTerm.toLowerCase())
-      )
+      // Normalize phone number for search
+      const normalizePhone = (phone: string) => {
+        return phone.replace(/[^0-9]/g, '') // Remove all non-digits
+      }
+      
+      const searchPhone = normalizePhone(searchTerm)
+      
+      filtered = filtered.filter(interview => {
+        const nameMatch = interview.candidates?.name.toLowerCase().includes(searchTerm.toLowerCase())
+        const outcomeMatch = (interview.outcome || '').toLowerCase().includes(searchTerm.toLowerCase())
+        
+        // Phone matching with normalization
+        let phoneMatch = false
+        if (searchPhone && interview.candidates?.phone) {
+          const candidatePhone = normalizePhone(interview.candidates.phone)
+          phoneMatch = candidatePhone.includes(searchPhone) ||
+                      candidatePhone.endsWith(searchPhone) ||
+                      (searchPhone.startsWith('0') && candidatePhone.endsWith(searchPhone.substring(1)))
+        }
+        
+        return nameMatch || phoneMatch || outcomeMatch
+      })
     }
 
     if (filterStatus !== 'all') {

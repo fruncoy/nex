@@ -4,6 +4,7 @@ import { SearchFilter } from '../components/ui/SearchFilter'
 import { StatusBadge } from '../components/ui/StatusBadge'
 import { CommunicationsModal } from '../components/ui/CommunicationsModal'
 import { Plus, Building2, Calendar, User, MessageSquare, Eye, Edit, AlertTriangle, ChevronDown, Clock, X, Pencil, Upload } from 'lucide-react'
+import { PhoneInput } from '../components/ui/PhoneInput'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
 import { ActivityLogger } from '../lib/activityLogger'
@@ -347,16 +348,13 @@ export function Clients() {
     loadClients()
     
     const subscription = supabase
-      .channel('clients-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'clients'
-        },
-        () => loadClients()
-      )
+      .channel('clients-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'clients' }, () => {
+        loadClients()
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'client_notes' }, () => {
+        loadUnreadCounts()
+      })
       .subscribe()
 
     return () => {
@@ -395,13 +393,30 @@ export function Clients() {
     let filtered = clients
 
     if (searchTerm) {
-      filtered = filtered.filter(client =>
-        client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        client.phone.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        client.gmail.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        client.source?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        client.want_to_hire.toLowerCase().includes(searchTerm.toLowerCase())
-      )
+      // Normalize phone number for search
+      const normalizePhone = (phone: string) => {
+        return phone.replace(/[^0-9]/g, '') // Remove all non-digits
+      }
+      
+      const searchPhone = normalizePhone(searchTerm)
+      
+      filtered = filtered.filter(client => {
+        const nameMatch = client.name.toLowerCase().includes(searchTerm.toLowerCase())
+        const gmailMatch = client.gmail.toLowerCase().includes(searchTerm.toLowerCase())
+        const sourceMatch = client.source?.toLowerCase().includes(searchTerm.toLowerCase())
+        const roleMatch = client.want_to_hire.toLowerCase().includes(searchTerm.toLowerCase())
+        
+        // Phone matching with normalization
+        let phoneMatch = false
+        if (searchPhone) {
+          const clientPhone = normalizePhone(client.phone)
+          phoneMatch = clientPhone.includes(searchPhone) ||
+                      clientPhone.endsWith(searchPhone) ||
+                      (searchPhone.startsWith('0') && clientPhone.endsWith(searchPhone.substring(1)))
+        }
+        
+        return nameMatch || phoneMatch || gmailMatch || sourceMatch || roleMatch
+      })
     }
 
     if (filterStatus !== 'all') {
@@ -1029,11 +1044,10 @@ export function Clients() {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
-                  <input
-                    type="tel"
-                    required
+                  <PhoneInput
                     value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                    onChange={(value) => setFormData({ ...formData, phone: value })}
+                    required
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
                   />
                 </div>

@@ -60,6 +60,21 @@ export function Updates() {
 
   useEffect(() => {
     loadAllActivities()
+    
+    // Set up real-time subscription
+    const subscription = supabase
+      .channel('updates-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'activity_logs' }, () => {
+        loadAllActivities()
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'updates' }, () => {
+        loadAllActivities()
+      })
+      .subscribe()
+    
+    return () => {
+      subscription.unsubscribe()
+    }
   }, [])
 
   const loadAllActivities = async () => {

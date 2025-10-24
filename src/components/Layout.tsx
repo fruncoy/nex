@@ -71,7 +71,8 @@ export function Layout() {
       href: '/clients', 
       icon: Building2,
       subItems: [
-        { name: 'Converted Clients', href: '/converted-clients', icon: CheckCircle }
+        { name: 'Converted Clients', href: '/converted-clients', icon: CheckCircle },
+        { name: 'Placements', href: '/placements', icon: Users }
       ]
     },
     { 
