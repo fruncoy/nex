@@ -451,8 +451,8 @@ export function Interviews() {
 
       // Update candidate status
       const candidateStatus = outcome === 'Interview_Won' ? 'WON' : 
-                             outcome === 'Interview_Lost' ? 'LOST' :
-                             outcome === 'Missed_Interview' ? 'LOST' : 'INTERVIEW_SCHEDULED'
+                             outcome === 'Interview_Lost' ? 'Lost - Interview Lost' :
+                             outcome === 'Missed_Interview' ? 'Lost - Missed Interview' : 'INTERVIEW_SCHEDULED'
       const { error: candidateError } = await supabase
         .from('candidates')
         .update({ status: candidateStatus })

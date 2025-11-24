@@ -1,7 +1,7 @@
 import React from 'react'
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { Users, Building2, GraduationCap, Calendar, Clock, MessageCircle } from 'lucide-react'
+import { Users, Building2, Calendar, Clock, MessageCircle } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useNavigate } from 'react-router-dom'
 
@@ -11,12 +11,16 @@ export function Dashboard() {
   const [stats, setStats] = useState({
     totalCandidates: 0,
     totalClients: 0,
-    totalTrainingLeads: 0,
+    activeClients: 0,
+    wonClients: 0,
+    lostClients: 0,
+    pendingClients: 0,
+    clientsThisMonth: 0,
+    activeCandidates: 0,
+    wonCandidates: 0,
+    lostCandidates: 0,
+    candidatesThisMonth: 0,
     todayInterviews: 0,
-    interviewsWon: 0,
-    interviewsLost: 0,
-    candidatesLost: 0,
-    clientsLost: 0,
   })
   const [dateRange, setDateRange] = useState({
     startDate: new Date().toISOString().split('T')[0],
@@ -72,63 +76,50 @@ export function Dashboard() {
       const startDate = dateRange.startDate + 'T00:00:00'
       const endDate = dateRange.endDate + 'T23:59:59'
 
+      const thisMonth = new Date().toISOString().slice(0, 7) + '-01T00:00:00'
+      
       // Load stats
       const [
-        candidatesCount, 
-        clientsCount, 
-        trainingCount,
-        todayInterviewsCount,
-        interviewsWonCount,
-        interviewsLostCount,
-        candidatesLostCount,
-        clientsLostCount
+        candidatesCount,
+        clientsCount,
+        activeClientsCount,
+        wonClientsCount,
+        lostClientsCount,
+        pendingClientsCount,
+        clientsThisMonthCount,
+        activeCandidatesCount,
+        wonCandidatesCount,
+        lostCandidatesCount,
+        candidatesThisMonthCount,
+        todayInterviewsCount
       ] = await Promise.all([
         supabase.from('candidates').select('id', { count: 'exact', head: true }),
         supabase.from('clients').select('id', { count: 'exact', head: true }),
-        supabase.from('training_leads').select('id', { count: 'exact', head: true }),
-        supabase.from('interviews')
-          .select('id', { count: 'exact', head: true })
-          .gte('date_time', today + 'T00:00:00')
-          .lt('date_time', today + 'T23:59:59')
-          .eq('attended', false),
-        supabase.from('interviews')
-          .select('id, outcome', { count: 'exact' })
-          .not('outcome', 'is', null)
-          .gte('date_time', startDate)
-          .lte('date_time', endDate),
-        supabase.from('interviews')
-          .select('id, outcome', { count: 'exact' })
-          .not('outcome', 'is', null)
-          .gte('date_time', startDate)
-          .lte('date_time', endDate),
-        supabase.from('candidates')
-          .select('id', { count: 'exact', head: true })
-          .eq('status', 'LOST')
-          .gte('created_at', startDate)
-          .lte('created_at', endDate),
-        supabase.from('clients')
-          .select('id', { count: 'exact', head: true })
-          .or('status.like.Lost/Cold%')
-          .gte('created_at', startDate)
-          .lte('created_at', endDate)
+        supabase.from('clients').select('id', { count: 'exact', head: true }).like('status', 'Active%'),
+        supabase.from('clients').select('id', { count: 'exact', head: true }).eq('status', 'Won'),
+        supabase.from('clients').select('id', { count: 'exact', head: true }).like('status', 'Lost%'),
+        supabase.from('clients').select('id', { count: 'exact', head: true }).like('status', 'Pending%'),
+        supabase.from('clients').select('id', { count: 'exact', head: true }).gte('created_at', thisMonth),
+        supabase.from('candidates').select('id', { count: 'exact', head: true }).in('status', ['Available', 'In Process', 'Interview Scheduled']),
+        supabase.from('candidates').select('id', { count: 'exact', head: true }).eq('status', 'WON'),
+        supabase.from('candidates').select('id', { count: 'exact', head: true }).like('status', 'Lost%'),
+        supabase.from('candidates').select('id', { count: 'exact', head: true }).gte('created_at', thisMonth),
+        supabase.from('interviews').select('id', { count: 'exact', head: true }).gte('date_time', today + 'T00:00:00').lt('date_time', today + 'T23:59:59')
       ])
-      
-      // Debug: Log the actual interview outcomes
-      console.log('Interview outcomes found:', interviewsWonCount.data?.map(i => i.outcome))
-
-      // Count won and lost interviews manually
-      const wonCount = interviewsWonCount.data?.filter(i => i.outcome === 'Interview_Won').length || 0
-      const lostCount = interviewsLostCount.data?.filter(i => i.outcome === 'Interview_Lost' || i.outcome === 'Missed_Interview').length || 0
       
       setStats({
         totalCandidates: candidatesCount.count || 0,
         totalClients: clientsCount.count || 0,
-        totalTrainingLeads: trainingCount.count || 0,
-        todayInterviews: todayInterviewsCount.count || 0,
-        interviewsWon: wonCount,
-        interviewsLost: lostCount,
-        candidatesLost: candidatesLostCount.count || 0,
-        clientsLost: clientsLostCount.count || 0
+        activeClients: activeClientsCount.count || 0,
+        wonClients: wonClientsCount.count || 0,
+        lostClients: lostClientsCount.count || 0,
+        pendingClients: pendingClientsCount.count || 0,
+        clientsThisMonth: clientsThisMonthCount.count || 0,
+        activeCandidates: activeCandidatesCount.count || 0,
+        wonCandidates: wonCandidatesCount.count || 0,
+        lostCandidates: lostCandidatesCount.count || 0,
+        candidatesThisMonth: candidatesThisMonthCount.count || 0,
+        todayInterviews: todayInterviewsCount.count || 0
       })
 
       // Load recent activity from activity_logs table
@@ -174,6 +165,50 @@ export function Dashboard() {
   }
 
   const statCards = [
+    // Client Cards (6)
+    {
+      name: 'Total Clients',
+      value: stats.totalClients,
+      icon: Building2,
+      color: 'bg-blue-500',
+      href: '/clients',
+    },
+    {
+      name: 'Active Clients',
+      value: stats.activeClients,
+      icon: Building2,
+      color: 'bg-green-500',
+      href: '/clients',
+    },
+    {
+      name: 'Won Clients',
+      value: stats.wonClients,
+      icon: Building2,
+      color: 'bg-emerald-500',
+      href: '/clients',
+    },
+    {
+      name: 'Lost Clients',
+      value: stats.lostClients,
+      icon: Building2,
+      color: 'bg-red-500',
+      href: '/clients',
+    },
+    {
+      name: 'Pending Clients',
+      value: stats.pendingClients,
+      icon: Building2,
+      color: 'bg-yellow-500',
+      href: '/clients',
+    },
+    {
+      name: 'Clients This Month',
+      value: stats.clientsThisMonth,
+      icon: Building2,
+      color: 'bg-purple-500',
+      href: '/clients',
+    },
+    // Candidate Cards (6)
     {
       name: 'Total Candidates',
       value: stats.totalCandidates,
@@ -182,18 +217,32 @@ export function Dashboard() {
       href: '/candidates',
     },
     {
-      name: 'Total Clients',
-      value: stats.totalClients,
-      icon: Building2,
+      name: 'Active Candidates',
+      value: stats.activeCandidates,
+      icon: Users,
       color: 'bg-green-500',
-      href: '/clients',
+      href: '/candidates',
     },
     {
-      name: 'Training Leads',
-      value: stats.totalTrainingLeads,
-      icon: GraduationCap,
+      name: 'Won Candidates',
+      value: stats.wonCandidates,
+      icon: Users,
+      color: 'bg-emerald-500',
+      href: '/candidates',
+    },
+    {
+      name: 'Lost Candidates',
+      value: stats.lostCandidates,
+      icon: Users,
+      color: 'bg-red-500',
+      href: '/candidates',
+    },
+    {
+      name: 'Candidates This Month',
+      value: stats.candidatesThisMonth,
+      icon: Users,
       color: 'bg-purple-500',
-      href: '/training',
+      href: '/candidates',
     },
     {
       name: "Today's Interviews",
@@ -201,34 +250,6 @@ export function Dashboard() {
       icon: Calendar,
       color: 'bg-orange-500',
       href: '/interviews',
-    },
-    {
-      name: 'Interviews Won',
-      value: stats.interviewsWon,
-      icon: Calendar,
-      color: 'bg-green-500',
-      href: '/interviews',
-    },
-    {
-      name: 'Interviews Lost',
-      value: stats.interviewsLost,
-      icon: Calendar,
-      color: 'bg-red-500',
-      href: '/interviews',
-    },
-    {
-      name: 'Candidates Lost',
-      value: stats.candidatesLost,
-      icon: Users,
-      color: 'bg-red-500',
-      href: '/candidates',
-    },
-    {
-      name: 'Clients Lost',
-      value: stats.clientsLost,
-      icon: Building2,
-      color: 'bg-red-500',
-      href: '/clients',
     },
   ]
 

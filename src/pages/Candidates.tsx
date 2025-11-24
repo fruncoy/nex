@@ -78,7 +78,8 @@ export function Candidates() {
     phone: '',
     source: '',
     role: '',
-    status: 'PENDING' as 'PENDING' | 'INTERVIEW_SCHEDULED' | 'Lost, Age' | 'Lost, No References' | 'Lost, No Response' | 'Lost, Personality' | 'Lost, Salary' | 'Lost, Experience' | 'Lost, No Good Conduct' | 'Pending, applying GC',
+    inquiry_date: '',
+    status: 'PENDING' as 'PENDING' | 'INTERVIEW_SCHEDULED' | 'Lost - Interview Lost' | 'Lost - Missed Interview' | 'Lost, Age' | 'Lost, No References' | 'Lost, No Response' | 'Lost, Personality' | 'Lost, Salary' | 'Lost, Experience' | 'Lost, No Good Conduct' | 'Pending, applying GC',
     scheduledDateOnly: '',
     live_arrangement: '',
     work_schedule: '',
@@ -122,6 +123,8 @@ export function Candidates() {
   const [uploadFile, setUploadFile] = useState<File | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [showUploadResults, setShowUploadResults] = useState(false)
+  const [showPreview, setShowPreview] = useState(false)
+  const [previewData, setPreviewData] = useState<Array<{type: 'add' | 'skip' | 'exists' | 'error', name: string, phone: string, message: string, data?: any}>>([])
   const [uploadResults, setUploadResults] = useState<{
     total: number
     added: number
@@ -149,7 +152,7 @@ export function Candidates() {
   const { user, staff } = useAuth()
   const { showToast } = useToast()
 
-  const statusOptions = ['PENDING', 'INTERVIEW_SCHEDULED', 'WON', 'Lost, Age', 'Lost, No References', 'Lost, No Response', 'Lost, Personality', 'Lost, Salary', 'Lost, Experience', 'Lost, No Good Conduct', 'Pending, applying GC', 'BLACKLISTED']
+  const statusOptions = ['PENDING', 'INTERVIEW_SCHEDULED', 'WON', 'Lost - Interview Lost', 'Lost - Missed Interview', 'Lost, Age', 'Lost, No References', 'Lost, No Response', 'Lost, Personality', 'Lost, Salary', 'Lost, Experience', 'Lost, No Good Conduct', 'Pending, applying GC', 'BLACKLISTED']
   const filterStatusOptions = ['Pending', 'Won', 'Lost', 'Blacklisted', 'Added by System', 'Self-Registered']
   const roleOptions = ['Nanny', 'House Manager', 'Chef', 'Driver', 'Night Nurse', 'Caregiver', 'Housekeeper']
   const sourceOptions = ['TikTok', 'Facebook', 'Instagram', 'Google Search', 'Website', 'Referral', 'LinkedIn', 'Walk-in poster', 'Youtube', 'Referred By Church']
@@ -301,7 +304,7 @@ export function Candidates() {
       } else if (filterStatus === 'Won') {
         filtered = filtered.filter(candidate => candidate.status === 'WON')
       } else if (filterStatus === 'Lost') {
-        filtered = filtered.filter(candidate => candidate.status.startsWith('Lost,'))
+        filtered = filtered.filter(candidate => candidate.status.startsWith('Lost,') || candidate.status.startsWith('Lost -'))
       } else if (filterStatus === 'Blacklisted') {
         filtered = filtered.filter(candidate => candidate.status === 'BLACKLISTED')
       } else if (filterStatus === 'Added by System') {
@@ -437,7 +440,7 @@ export function Candidates() {
         // Add new candidate
         const insertPayload = {
           ...payload,
-          inquiry_date: new Date().toISOString().split('T')[0],
+          inquiry_date: formData.inquiry_date || new Date().toISOString().split('T')[0],
           assigned_to: user?.id,
           added_by: 'System'
         }
@@ -535,19 +538,9 @@ export function Candidates() {
   }
 
   const downloadTemplate = () => {
-    const headers = ['name', 'phone', 'source', 'role', 'status']
-    const sampleData = [
-      'Jane Doe,+254712345678,TikTok,Nanny,PENDING',
-      'John Smith,+254723456789,Facebook,Driver,PENDING'
-    ]
-    
-    const validValues = [
-      '# Valid roles: ' + roleOptions.join(', '),
-      '# Valid sources: ' + sourceOptions.join(', '),
-      '# Valid statuses: ' + statusOptions.join(', ')
-    ]
-    
-    const csvContent = [validValues.join('\n'), headers.join(','), ...sampleData].join('\n')
+    const csvContent = `Name,Phone,Source,Role,Status,Inquiry Date (YYYY-MM-DD)
+Jane Doe,0712345678,TikTok,Nanny,PENDING,2025-01-15
+John Smith,0723456789,Facebook,Driver,PENDING,2025-01-14`
     const blob = new Blob([csvContent], { type: 'text/csv' })
     const url = window.URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -557,7 +550,7 @@ export function Candidates() {
     window.URL.revokeObjectURL(url)
   }
 
-  const handleBulkUpload = async (e: React.FormEvent) => {
+  const handlePreview = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!uploadFile) {
       alert('Please select a CSV file to upload')
@@ -565,6 +558,7 @@ export function Candidates() {
     }
 
     setSubmitting(true)
+    const preview: Array<{type: 'add' | 'skip' | 'exists' | 'error', name: string, phone: string, message: string, data?: any}> = []
     const results = {
       total: 0,
       added: 0,
@@ -583,18 +577,17 @@ export function Candidates() {
         return
       }
 
-      const dataRows = rows.slice(1)
-      results.total = dataRows.length
+      const dataRows = rows.slice(1).filter(row => row.trim())
       
-      const inserts: any[] = []
-      const updates: any[] = []
+      // Get all existing candidates once
+      const { data: existingCandidates } = await supabase
+        .from('candidates')
+        .select('id, name, phone, status')
+      
+      const seenPhones = new Set()
       
       for (let i = 0; i < dataRows.length; i++) {
         const row = dataRows[i]
-        if (!row.trim()) {
-          results.total--
-          continue
-        }
         
         const parts = row.split(',')
         const name = parts[0]?.trim()
@@ -602,29 +595,33 @@ export function Candidates() {
         let source = (parts[2]?.trim() || 'Referral')
         let role = (parts[3]?.trim() || 'Caregiver')
         let status = (parts[4]?.trim() || 'PENDING')
+        const inquiry_date = parts[5]?.trim() || new Date().toISOString().split('T')[0]
         
-        // Ensure no empty strings
-        if (!source) source = 'Referral'
-        if (!role) role = 'Caregiver'
-        if (!status) status = 'PENDING'
+        console.log(`Processing row ${i + 1}:`, { name, phone, source, role, status, inquiry_date })
 
         if (!name || !phone) {
-          results.errors.push(`Row ${i + 2}: Missing name or phone`)
-          results.details.push({type: 'error', name: name || 'Unknown', message: 'Missing name or phone'})
+          preview.push({type: 'error', name: name || 'Unknown', phone: phone || '', message: `Row ${i + 2}: Missing name or phone`})
           continue
         }
         
-        // Check for existing candidate (normalize phone first)
-        const normalizedPhone = phone.replace(/[^0-9+]/g, '')
-          .replace(/^0/, '+254')
-          .replace(/^254/, '+254')
-          .replace(/^\+\+254/, '+254')
+        // Normalize phone (remove spaces and non-digits except +)
+        let normalizedPhone = phone.replace(/[^0-9+]/g, '')
+        if (normalizedPhone.startsWith('0')) {
+          normalizedPhone = '+254' + normalizedPhone.substring(1)
+        } else if (normalizedPhone.startsWith('254')) {
+          normalizedPhone = '+' + normalizedPhone
+        } else if (!normalizedPhone.startsWith('+254')) {
+          normalizedPhone = '+254' + normalizedPhone
+        }
         
-        const { data: existingCandidate } = await supabase
-          .from('candidates')
-          .select('id, name, status')
-          .eq('phone', normalizedPhone)
-          .single()
+        // Check for duplicates within CSV
+        if (seenPhones.has(normalizedPhone)) {
+          preview.push({type: 'skip', name, phone: normalizedPhone, message: `Duplicate phone in CSV - skipped`})
+          continue
+        }
+        seenPhones.add(normalizedPhone)
+        
+        const existingCandidate = existingCandidates?.find(c => c.phone === normalizedPhone)
         
         // Map and validate role (case-insensitive)
         const roleMap: Record<string, string> = {
@@ -667,73 +664,104 @@ export function Candidates() {
           source = 'Referral'
         }
 
-        // Validate status
+        // Validate inputs
+        if (!roleOptions.includes(role)) {
+          preview.push({type: 'error', name: name || 'Unknown', phone: phone || '', message: `Invalid role: ${role}`})
+          continue
+        }
+        
+        if (!sourceOptions.includes(source)) {
+          preview.push({type: 'error', name: name || 'Unknown', phone: phone || '', message: `Invalid source: ${source}`})
+          continue
+        }
+        
         if (!statusOptions.includes(status)) {
-          status = 'PENDING'
+          preview.push({type: 'error', name: name || 'Unknown', phone: phone || '', message: `Invalid status: ${status}`})
+          continue
         }
 
         const candidateData = { 
           name, 
-          phone, 
+          phone: normalizedPhone, 
           source,
           role, 
           status, 
           assigned_to: user?.id, 
-          inquiry_date: new Date().toISOString().split('T')[0],
+          inquiry_date,
           added_by: 'System'
         }
+        
+        console.log('Candidate data prepared:', candidateData)
 
         if (existingCandidate) {
-          // Skip if status is WON or BLACKLISTED
-          if (existingCandidate.status === 'WON' || existingCandidate.status === 'BLACKLISTED') {
-            results.skipped++
-            results.details.push({type: 'skipped', name, message: `Status is ${existingCandidate.status} - not updated`})
-            continue
-          }
+          // Check if status update is meaningful
+          const shouldUpdate = (
+            (existingCandidate.status === 'PENDING' && ['WON', 'INTERVIEW_SCHEDULED', 'BLACKLISTED'].includes(status)) ||
+            (existingCandidate.status === 'INTERVIEW_SCHEDULED' && ['WON', 'BLACKLISTED'].includes(status)) ||
+            (existingCandidate.status.startsWith('Lost') && status === 'BLACKLISTED')
+          )
           
-          // Update existing candidate
-          updates.push({ id: existingCandidate.id, data: candidateData, oldStatus: existingCandidate.status })
-          results.updated++
-          results.details.push({type: 'updated', name, message: `Updated from ${existingCandidate.status} to ${status}`})
+          if (shouldUpdate) {
+            preview.push({type: 'add', name, phone: normalizedPhone, message: `Will update ${existingCandidate.status} → ${status}`, data: {...candidateData, id: existingCandidate.id, isUpdate: true}})
+          } else {
+            results.skipped++
+            results.details.push({type: 'skipped', name, message: `No meaningful update: ${existingCandidate.status} → ${status}`})
+            preview.push({type: 'exists', name, phone: normalizedPhone, message: `Already exists - ${existingCandidate.name} (${existingCandidate.status})`})
+          }
+          continue
         } else {
-          // Add new candidate
-          inserts.push(candidateData)
-          results.added++
-          results.details.push({type: 'added', name, message: `Added as new candidate with status ${status}`})
+          // Will be added
+          preview.push({type: 'add', name, phone: normalizedPhone, message: `Will be added as ${status}`, data: candidateData})
         }
       }
 
-      // Process inserts
-      if (inserts.length > 0) {
-        const { error } = await supabase.from('candidates').insert(inserts)
+      console.log('Final preview data:', preview)
+      setPreviewData(preview)
+      setShowPreview(true)
+      setShowBulkUpload(false)
+    } catch (error) {
+      console.error('Error previewing candidates:', error)
+      alert(`Error previewing candidates: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const confirmUpload = async () => {
+    const toAdd = previewData.filter(item => item.type === 'add')
+    if (toAdd.length === 0) {
+      showToast('No candidates to upload', 'error')
+      return
+    }
+
+    setSubmitting(true)
+    try {
+      const toInsert = toAdd.filter(item => !item.data.isUpdate).map(item => item.data)
+      const toUpdate = toAdd.filter(item => item.data.isUpdate)
+      
+      if (toInsert.length > 0) {
+        const { error } = await supabase.from('candidates').insert(toInsert)
+        if (error) throw error
+      }
+      
+      for (const item of toUpdate) {
+        const { id, isUpdate, ...updateData } = item.data
+        const { error } = await supabase.from('candidates').update(updateData).eq('id', id)
         if (error) throw error
       }
 
-      // Process updates
-      for (const update of updates) {
-        const { error } = await supabase
-          .from('candidates')
-          .update(update.data)
-          .eq('id', update.id)
-        if (error) {
-          console.error('Error updating candidate:', error)
-          results.errors.push(`Failed to update ${update.data.name}`)
-        }
-      }
-
-      // Log bulk upload activity
       if (user?.id && staff?.name) {
-        await ActivityLogger.logBulkUpload(user.id, 'candidate', results.added + results.updated, staff.name)
+        await ActivityLogger.logBulkUpload(user.id, 'candidate', toAdd.length, staff.name)
       }
 
       await loadCandidates()
-      setUploadResults(results)
-      setShowUploadResults(true)
-      setShowBulkUpload(false)
+      setShowPreview(false)
+      setPreviewData([])
       setUploadFile(null)
+      showToast(`Successfully processed ${toAdd.length} candidates (${toInsert.length} new, ${toUpdate.length} updated)`, 'success')
     } catch (error) {
-      console.error('Error bulk uploading candidates:', error)
-      alert(`Error uploading candidates: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      console.error('Error uploading candidates:', error)
+      showToast(`Error uploading candidates: ${error instanceof Error ? error.message : 'Unknown error'}`, 'error')
     } finally {
       setSubmitting(false)
     }
@@ -741,7 +769,7 @@ export function Candidates() {
 
   const resetForm = () => {
     setFormData({
-      name: '', phone: '', source: '', role: '', status: 'PENDING', scheduledDateOnly: '',
+      name: '', phone: '', source: '', role: '', inquiry_date: '', status: 'PENDING', scheduledDateOnly: '',
       live_arrangement: '', work_schedule: '', employment_type: '', expected_salary: '',
       age: '', place_of_birth: '', next_of_kin_1_phone: '', next_of_kin_1_name: '',
       next_of_kin_1_location: '', next_of_kin_2_phone: '', next_of_kin_2_name: '',
@@ -1017,6 +1045,7 @@ export function Candidates() {
                             phone: candidate.phone,
                             source: candidate.source || 'Referral',
                             role: candidate.role,
+                            inquiry_date: candidate.inquiry_date,
                             status: candidate.status as any,
                             scheduledDateOnly: candidate.scheduled_date ? new Date(candidate.scheduled_date).toISOString().split('T')[0] : '',
                             live_arrangement: candidate.live_arrangement || '',
@@ -1214,6 +1243,16 @@ export function Candidates() {
                       <option key={role} value={role}>{role}</option>
                     ))}
                   </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Inquiry Date (leave blank for today)</label>
+                  <input
+                    type="date"
+                    value={formData.inquiry_date || ''}
+                    onChange={(e) => setFormData({ ...formData, inquiry_date: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
+                  />
                 </div>
 
                 <div>
@@ -1798,7 +1837,7 @@ export function Candidates() {
                 </button>
               </div>
 
-              <form onSubmit={handleBulkUpload} className="space-y-4">
+              <form onSubmit={handlePreview} className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Upload CSV File
@@ -1838,7 +1877,7 @@ export function Candidates() {
                     disabled={submitting || !uploadFile}
                     className="flex-1 px-4 py-2 bg-nestalk-primary text-white rounded-lg hover:bg-nestalk-primary/90 transition-colors disabled:opacity-50"
                   >
-                    {submitting ? 'Uploading...' : 'Upload'}
+                    {submitting ? 'Processing...' : 'Preview'}
                   </button>
                 </div>
               </form>
@@ -2404,6 +2443,70 @@ export function Candidates() {
                   className="px-6 py-2 bg-nestalk-primary text-white rounded-lg hover:bg-nestalk-primary/90"
                 >
                   Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Preview Modal */}
+      {showPreview && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[80vh] overflow-y-auto">
+            <div className="p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">Upload Preview</h2>
+              
+              <div className="mb-4 flex gap-4 text-sm">
+                <span className="text-green-600">✅ To Add: {previewData.filter(p => p.type === 'add').length}</span>
+                <span className="text-blue-600">📋 Exists: {previewData.filter(p => p.type === 'exists').length}</span>
+                <span className="text-yellow-600">⚠️ To Skip: {previewData.filter(p => p.type === 'skip').length}</span>
+                <span className="text-red-600">❌ Errors: {previewData.filter(p => p.type === 'error').length}</span>
+              </div>
+
+              <div className="max-h-96 overflow-y-auto space-y-2">
+                {previewData.map((item, index) => (
+                  <div key={index} className={`p-3 rounded-lg border ${
+                    item.type === 'add' ? 'bg-green-50 border-green-200' :
+                    item.type === 'exists' ? 'bg-blue-50 border-blue-200' :
+                    item.type === 'skip' ? 'bg-yellow-50 border-yellow-200' :
+                    'bg-red-50 border-red-200'
+                  }`}>
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <div className="font-medium">{item.name}</div>
+                        <div className="text-sm text-gray-600">{item.phone}</div>
+                      </div>
+                      <div className={`text-sm ${
+                        item.type === 'add' ? 'text-green-700' :
+                        item.type === 'exists' ? 'text-blue-700' :
+                        item.type === 'skip' ? 'text-yellow-700' :
+                        'text-red-700'
+                      }`}>
+                        {item.message}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <button
+                  onClick={() => {
+                    setShowPreview(false)
+                    setPreviewData([])
+                    setShowBulkUpload(true)
+                  }}
+                  className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
+                >
+                  Back to Upload
+                </button>
+                <button
+                  onClick={confirmUpload}
+                  disabled={submitting || previewData.filter(p => p.type === 'add').length === 0}
+                  className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+                >
+                  {submitting ? 'Uploading...' : `Confirm Upload (${previewData.filter(p => p.type === 'add').length})`}
                 </button>
               </div>
             </div>

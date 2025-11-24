@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-import { CheckCircle, XCircle, Plus, User, DollarSign, Calendar, Search, Filter, Grid3X3, List, Clock, AlertTriangle, Eye, Edit } from 'lucide-react'
+import { CheckCircle, XCircle, Plus, User, DollarSign, Calendar, Search, Filter, Grid3X3, List, Clock, AlertTriangle, Eye, Edit, Trash2 } from 'lucide-react'
 import { useToast } from '../contexts/ToastContext'
 import { useAuth } from '../contexts/AuthContext'
 import { formatDateTime } from '../utils/dateFormat'
@@ -43,11 +43,14 @@ export function ConvertedClients() {
   const [selectedCandidate, setSelectedCandidate] = useState('')
   const [placementNotes, setPlacementNotes] = useState('')
   const [salaryAmount, setSalaryAmount] = useState('')
-  const [viewMode, setViewMode] = useState<'card' | 'table'>('card')
+  const [placementDate, setPlacementDate] = useState('')
+  const [viewMode, setViewMode] = useState<'card' | 'table'>('table')
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('All')
   const [showEditPlacement, setShowEditPlacement] = useState(false)
   const [editingPlacement, setEditingPlacement] = useState<Placement | null>(null)
+  const [candidateSearch, setCandidateSearch] = useState('')
+  const [showDropdown, setShowDropdown] = useState(false)
 
   const { showToast } = useToast()
   const { staff } = useAuth()
@@ -152,12 +155,12 @@ export function ConvertedClients() {
         .insert({
           client_id: selectedClient.id,
           candidate_id: selectedCandidate,
-          placement_date: new Date().toISOString().split('T')[0],
+          placement_date: placementDate || new Date().toISOString().split('T')[0],
           salary_amount: parseFloat(salaryAmount) || null,
+          notes: placementNotes || null,
           status: 'ACTIVE',
           replacement_number: 0,
-          notes: placementNotes,
-          created_by: staff?.id
+          created_by: staff?.id || null
         })
         .select()
         .single()
@@ -179,6 +182,7 @@ export function ConvertedClients() {
       setSelectedCandidate('')
       setPlacementNotes('')
       setSalaryAmount('')
+      setPlacementDate('')
       showToast('Placement added successfully', 'success')
     } catch (error) {
       console.error('Error adding placement:', error)
@@ -206,13 +210,12 @@ export function ConvertedClients() {
         .insert({
           client_id: selectedClient.id,
           candidate_id: selectedCandidate,
-          placement_date: new Date().toISOString().split('T')[0],
+          placement_date: placementDate || new Date().toISOString().split('T')[0],
           salary_amount: parseFloat(salaryAmount) || null,
           status: 'ACTIVE',
           original_placement_id: originalPlacement?.id || null,
           replacement_number: replacementNumber,
-          notes: placementNotes,
-          created_by: staff?.id
+          notes: placementNotes
         })
         .select()
         .single()
@@ -234,6 +237,7 @@ export function ConvertedClients() {
       setSelectedCandidate('')
       setPlacementNotes('')
       setSalaryAmount('')
+      setPlacementDate('')
       showToast('Replacement added successfully', 'success')
     } catch (error) {
       console.error('Error adding replacement:', error)
@@ -266,11 +270,11 @@ export function ConvertedClients() {
         entityName: placement.candidate_name || '',
         oldValue: placement.status,
         newValue: status,
-        description: `Placement status for ${placement.candidate_name} changed to ${status}`
+        description: `Placement status for ${placement.candidate_name} changed to ${status}${status === 'SUCCESS' ? ' - All followups auto-completed' : ''}`
       })
 
       await loadData()
-      showToast(`Placement marked as ${status}`, 'success')
+      showToast(`Placement marked as ${status}${status === 'SUCCESS' ? ' - All followups completed automatically' : ''}`, 'success')
     } catch (error) {
       console.error('Error updating status:', error)
       showToast('Failed to update status', 'error')
@@ -281,6 +285,30 @@ export function ConvertedClients() {
 
   const getClientPlacements = (clientId: string) => {
     return placements.filter(p => p.client_id === clientId).sort((a, b) => a.replacement_number - b.replacement_number)
+  }
+
+  const handleDeletePlacement = async (placementId: string) => {
+    const placement = placements.find(p => p.id === placementId)
+    if (!placement) return
+    
+    if (!confirm(`Are you sure you want to delete the placement for ${placement.candidate_name}? This will also delete all related follow-ups.`)) {
+      return
+    }
+    
+    try {
+      // Delete placement follow-ups first
+      await supabase.from('placement_followups').delete().eq('placement_id', placementId)
+      
+      // Delete the placement
+      const { error } = await supabase.from('placements').delete().eq('id', placementId)
+      if (error) throw error
+      
+      await loadData()
+      showToast('Placement deleted successfully', 'success')
+    } catch (error) {
+      console.error('Error deleting placement:', error)
+      showToast('Failed to delete placement', 'error')
+    }
   }
 
 
@@ -518,6 +546,7 @@ export function ConvertedClients() {
                 setShowAddReplacement(false)
                 setSelectedCandidate('')
                 setPlacementNotes('')
+                setCandidateSearch('')
               }}
               className="absolute top-4 right-4 p-2 text-gray-400 hover:text-gray-600 transition-colors z-10"
               title="Close"
@@ -529,59 +558,44 @@ export function ConvertedClients() {
                 Placement Management - {selectedClient.name}
               </h2>
 
-              {/* Placement Fee & Status */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Placement Fee</label>
-                  <input
-                    type="number"
-                    value={placementFee}
-                    onChange={(e) => {
-                      setPlacementFee(e.target.value)
-                      handleSavePlacement(parseFloat(e.target.value) || null)
-                    }}
-                    placeholder="0.00"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Placement Status</label>
+              {/* Placement Status & Add Button */}
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Placement Status</label>
+                <div className="flex gap-4">
                   <select
                     value={placementStatus}
                     onChange={(e) => {
                       setPlacementStatus(e.target.value)
                       handleSavePlacement(undefined, e.target.value)
                     }}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
                   >
                     {placementStatuses.map(status => (
                       <option key={status} value={status}>{status}</option>
                     ))}
                   </select>
-                </div>
-              </div>
-
-              {/* Placements Section */}
-              <div className="mb-6">
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-md font-semibold text-gray-900">Placements</h3>
                   {getClientPlacements(selectedClient.id).length === 0 ? (
                     <button
                       onClick={() => setShowAddPlacement(true)}
-                      className="flex items-center px-3 py-1 bg-nestalk-primary text-white rounded-lg hover:bg-nestalk-primary/90 text-sm"
+                      className="flex-1 px-3 py-2 bg-nestalk-primary text-white rounded-lg hover:bg-nestalk-primary/90"
                     >
-                      <Plus className="w-4 h-4 mr-1" />
                       Add Placement
                     </button>
                   ) : getClientPlacements(selectedClient.id).length < 3 && (
                     <button
                       onClick={() => setShowAddReplacement(true)}
-                      className="flex items-center px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
+                      className="flex-1 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
                     >
-                      <Plus className="w-4 h-4 mr-1" />
                       Add Replacement
                     </button>
                   )}
+                </div>
+              </div>
+
+              {/* Placements Section */}
+              <div className="mb-6">
+                <div className="mb-4">
+                  <h3 className="text-md font-semibold text-gray-900">Placements</h3>
                 </div>
 
                 <div className="space-y-4">
@@ -626,7 +640,13 @@ export function ConvertedClients() {
                         >
                           <Edit className="w-4 h-4" />
                         </button>
-
+                        <button
+                          onClick={() => handleDeletePlacement(placement.id)}
+                          className="p-2 rounded bg-red-200 text-red-600 hover:bg-red-300"
+                          title="Delete Placement"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                         <button
                           onClick={() => updatePlacementStatus(placement.id, 'SUCCESS')}
                           className={`p-2 rounded ${placement.status === 'SUCCESS' ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-600'}`}
@@ -641,7 +661,6 @@ export function ConvertedClients() {
                         >
                           <XCircle className="w-4 h-4" />
                         </button>
-
                       </div>
                     </div>
                   ))}
@@ -653,17 +672,48 @@ export function ConvertedClients() {
                     <h4 className="text-sm font-medium text-gray-900 mb-3">Add Initial Placement</h4>
                     <div className="space-y-4">
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Select Candidate</label>
-                        <select
-                          value={selectedCandidate}
-                          onChange={(e) => setSelectedCandidate(e.target.value)}
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Placement Date (leave blank for today)</label>
+                        <input
+                          type="date"
+                          value={placementDate}
+                          onChange={(e) => setPlacementDate(e.target.value)}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
-                        >
-                          <option value="">Choose candidate...</option>
-                          {candidates.map(candidate => (
-                            <option key={candidate.id} value={candidate.id}>{candidate.name}</option>
-                          ))}
-                        </select>
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Select Candidate</label>
+                        <div className="relative">
+                          <input
+                            type="text"
+                            placeholder="Search and select candidate..."
+                            value={candidateSearch}
+                            onChange={(e) => {
+                              setCandidateSearch(e.target.value)
+                              setSelectedCandidate('')
+                              setShowDropdown(true)
+                            }}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
+                          />
+                          {candidateSearch && showDropdown && (
+                            <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-40 overflow-y-auto">
+                              {candidates
+                                .filter(candidate => candidate.name.toLowerCase().includes(candidateSearch.toLowerCase()))
+                                .map(candidate => (
+                                  <div
+                                    key={candidate.id}
+                                    onClick={() => {
+                                      setSelectedCandidate(candidate.id)
+                                      setCandidateSearch(candidate.name)
+                                      setShowDropdown(false)
+                                    }}
+                                    className="px-3 py-2 hover:bg-gray-100 cursor-pointer"
+                                  >
+                                    {candidate.name}
+                                  </div>
+                                ))}
+                            </div>
+                          )}
+                        </div>
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Salary Amount</label>
@@ -671,6 +721,16 @@ export function ConvertedClients() {
                           type="number"
                           value={salaryAmount}
                           onChange={(e) => setSalaryAmount(e.target.value)}
+                          placeholder="0.00"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Placement Fee</label>
+                        <input
+                          type="number"
+                          value={placementFee}
+                          onChange={(e) => setPlacementFee(e.target.value)}
                           placeholder="0.00"
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
                         />
@@ -715,17 +775,46 @@ export function ConvertedClients() {
                     <h4 className="text-sm font-medium text-gray-900 mb-3">Add Replacement</h4>
                     <div className="space-y-4">
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Select Candidate</label>
-                        <select
-                          value={selectedCandidate}
-                          onChange={(e) => setSelectedCandidate(e.target.value)}
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Placement Date (leave blank for today)</label>
+                        <input
+                          type="date"
+                          value={placementDate}
+                          onChange={(e) => setPlacementDate(e.target.value)}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
-                        >
-                          <option value="">Choose candidate...</option>
-                          {candidates.map(candidate => (
-                            <option key={candidate.id} value={candidate.id}>{candidate.name}</option>
-                          ))}
-                        </select>
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Select Candidate</label>
+                        <div className="relative">
+                          <input
+                            type="text"
+                            placeholder="Search and select candidate..."
+                            value={candidateSearch}
+                            onChange={(e) => {
+                              setCandidateSearch(e.target.value)
+                              setSelectedCandidate('')
+                            }}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
+                          />
+                          {candidateSearch && (
+                            <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-40 overflow-y-auto">
+                              {candidates
+                                .filter(candidate => candidate.name.toLowerCase().includes(candidateSearch.toLowerCase()))
+                                .map(candidate => (
+                                  <div
+                                    key={candidate.id}
+                                    onClick={() => {
+                                      setSelectedCandidate(candidate.id)
+                                      setCandidateSearch(candidate.name)
+                                    }}
+                                    className="px-3 py-2 hover:bg-gray-100 cursor-pointer"
+                                  >
+                                    {candidate.name}
+                                  </div>
+                                ))}
+                            </div>
+                          )}
+                        </div>
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Salary Amount</label>
@@ -733,6 +822,16 @@ export function ConvertedClients() {
                           type="number"
                           value={salaryAmount}
                           onChange={(e) => setSalaryAmount(e.target.value)}
+                          placeholder="0.00"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Placement Fee</label>
+                        <input
+                          type="number"
+                          value={placementFee}
+                          onChange={(e) => setPlacementFee(e.target.value)}
                           placeholder="0.00"
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
                         />
@@ -793,16 +892,38 @@ export function ConvertedClients() {
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Select New Candidate</label>
-                  <select
-                    value={selectedCandidate}
-                    onChange={(e) => setSelectedCandidate(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
-                  >
-                    <option value="">Choose candidate...</option>
-                    {candidates.map(candidate => (
-                      <option key={candidate.id} value={candidate.id}>{candidate.name}</option>
-                    ))}
-                  </select>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder="Search and select candidate..."
+                      value={selectedCandidate ? candidates.find(c => c.id === selectedCandidate)?.name || '' : candidateSearch}
+                      onChange={(e) => {
+                        setCandidateSearch(e.target.value)
+                        setSelectedCandidate('')
+                        setShowDropdown(true)
+                      }}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
+                    />
+                    {candidateSearch && showDropdown && !selectedCandidate && (
+                      <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-40 overflow-y-auto">
+                        {candidates
+                          .filter(candidate => candidate.name.toLowerCase().includes(candidateSearch.toLowerCase()))
+                          .map(candidate => (
+                            <div
+                              key={candidate.id}
+                              onClick={() => {
+                                setSelectedCandidate(candidate.id)
+                                setCandidateSearch('')
+                                setShowDropdown(false)
+                              }}
+                              className="px-3 py-2 hover:bg-gray-100 cursor-pointer"
+                            >
+                              {candidate.name}
+                            </div>
+                          ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Salary Amount</label>

@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { SearchFilter } from '../components/ui/SearchFilter'
 import { StatusBadge } from '../components/ui/StatusBadge'
-import { Plus, Building2, Eye, Edit, AlertTriangle, X, Pencil, Upload } from 'lucide-react'
+import { CommunicationsModal } from '../components/ui/CommunicationsModal'
+import { Plus, Building2, Calendar, User, MessageSquare, Eye, Edit, AlertTriangle, ChevronDown, Clock, X, Pencil, Upload } from 'lucide-react'
 import { PhoneInput } from '../components/ui/PhoneInput'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
@@ -10,7 +11,7 @@ import { ActivityLogger } from '../lib/activityLogger'
 import { formatDateTime } from '../utils/dateFormat'
 import { StatusHistoryLogger } from '../lib/statusHistory'
 
-interface Lead {
+interface Client {
   id: string
   name: string
   phone: string
@@ -26,25 +27,26 @@ interface Lead {
   updated_at: string
 }
 
-export function Clients() {
-  const [leads, setLeads] = useState<Lead[]>([])
-  const [filteredLeads, setFilteredLeads] = useState<Lead[]>([])
+export function Leads() {
+  const [clients, setClients] = useState<Client[]>([])
+  const [filteredClients, setFilteredClients] = useState<Client[]>([])
   const [searchTerm, setSearchTerm] = useState('')
   const [filterStatus, setFilterStatus] = useState('all')
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
+  const [showCommsModal, setShowCommsModal] = useState(false)
   const [showBulkUpload, setShowBulkUpload] = useState(false)
   const [showReminderModal, setShowReminderModal] = useState(false)
-  const [selectedLeadForReminder, setSelectedLeadForReminder] = useState<Lead | null>(null)
+  const [selectedClientForReminder, setSelectedClientForReminder] = useState<Client | null>(null)
   const [reminderForm, setReminderForm] = useState({ date: '', time: '' })
   const [uploadFile, setUploadFile] = useState<File | null>(null)
   const [submitting, setSubmitting] = useState(false)
-  const [selectedLead, setSelectedLead] = useState<Lead | null>(null)
-  const [selectedLeads, setSelectedLeads] = useState<string[]>([])
+  const [selectedClient, setSelectedClient] = useState<Client | null>(null)
+  const [selectedClients, setSelectedClients] = useState<string[]>([])
   const [bulkStatus, setBulkStatus] = useState('')
   const [showNotesModal, setShowNotesModal] = useState(false)
-  const [selectedLeadForNotes, setSelectedLeadForNotes] = useState<Lead | null>(null)
-  const [leadNotes, setLeadNotes] = useState<any[]>([])
+  const [selectedClientForNotes, setSelectedClientForNotes] = useState<Client | null>(null)
+  const [clientNotes, setClientNotes] = useState<any[]>([])
   const [newNote, setNewNote] = useState('')
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({})
   const [noteCounts, setNoteCounts] = useState<Record<string, number>>({})
@@ -54,17 +56,26 @@ export function Clients() {
     gmail: '',
     source: '',
     want_to_hire: '',
-    status: 'Active - Reviewing Profiles',
+    status: 'Pending - No communication',
     inquiry_date: ''
   })
 
   const { user, staff } = useAuth()
   const { showToast } = useToast()
 
-  // Client status options only
-  const clientStatusOptions = [
+  // All status options for leads and clients
+  const allStatusOptions = [
+    // Lead statuses
+    'Pending - No communication',
+    'Pending - Form not filled',
+    'Pending - PAF not paid',
+    'Pending - Lead Status: Lost',
+    'Lost - Budget',
+    'Lost - Competition',
+    'Lost - Ghosted',
+    // Client and Lead statuses
     'Active - Reviewing Profiles',
-    'Active - Conducting Trials', 
+    'Active - Conducting Trials',
     'Active - Payment Pending',
     'Active - But Dormant',
     'Won',
@@ -73,13 +84,11 @@ export function Clients() {
     'Lost - Ghosted',
     'Lost - Competition'
   ]
-  // Lost reasons for leads
-  const lostReasons = ['Budget', 'Competition', 'Ghosted', 'Other reason']
   
-  // Source options
+  // Source options (same as candidates table)
   const sourceOptions = ['TikTok', 'Facebook', 'Instagram', 'Google Search', 'Website', 'Referral', 'LinkedIn', 'Walk-in poster', 'Youtube']
   
-  // Role options
+  // Role options (updated as requested)  
   const roleOptions = ['Nanny', 'House Manager', 'Chef', 'Driver', 'Night Nurse', 'Caregiver', 'Housekeeper', 'Uniforms']
 
   // Load unread notes counts
@@ -89,22 +98,22 @@ export function Clients() {
     const counts: Record<string, number> = {}
     const totalCounts: Record<string, number> = {}
     
-    for (const lead of leads) {
+    for (const client of clients) {
       // Get unread count
       const { data: unreadData } = await supabase.rpc('get_unread_notes_count', {
         entity_type: 'client',
-        entity_id: lead.id,
+        entity_id: client.id,
         user_name: staff.name
       })
-      counts[lead.id] = unreadData || 0
+      counts[client.id] = unreadData || 0
       
       // Get total note count
       const { data: totalData } = await supabase
         .from('client_notes')
         .select('id', { count: 'exact' })
-        .eq('client_id', lead.id)
+        .eq('client_id', client.id)
       
-      totalCounts[lead.id] = totalData?.length || 0
+      totalCounts[client.id] = totalData?.length || 0
     }
     
     setUnreadCounts(counts)
@@ -133,69 +142,26 @@ export function Clients() {
     }
   }
 
-  // Helper function to check if lead needs attention
-  const needsAttention = (lead: Lead): boolean => {
-    if (lead.custom_reminder_datetime) {
+  // Helper function to check if client needs attention - ONLY for reminders
+  const needsAttention = (client: Client): boolean => {
+    if (client.custom_reminder_datetime) {
       const now = new Date()
-      const reminderTime = new Date(lead.custom_reminder_datetime)
+      const reminderTime = new Date(client.custom_reminder_datetime)
       if (now >= reminderTime) return true
     }
     return false
   }
 
-  // Convert lead to client
-  const convertToClient = async (lead: Lead) => {
-    try {
-      // Update status to convert lead to client
-      const { error: updateError } = await supabase
-        .from('clients')
-        .update({
-          status: 'Active'
-        })
-        .eq('id', lead.id)
-
-      if (updateError) throw updateError
-
-      // Log activity
-      if (staff?.id && staff?.name) {
-        await ActivityLogger.logEdit(
-          staff.id,
-          'client',
-          lead.id,
-          lead.name,
-          staff.name
-        )
-        
-        await StatusHistoryLogger.logStatusChange(
-          'client',
-          lead.id,
-          lead.name,
-          lead.status,
-          'Active',
-          staff.id,
-          staff.name,
-          'Converted from lead to client'
-        )
-      }
-
-      await loadLeads()
-      showToast(`${lead.name} converted to client successfully`, 'success')
-    } catch (error) {
-      console.error('Error converting lead to client:', error)
-      showToast('Failed to convert lead to client', 'error')
-    }
-  }
-
   // Bulk upload functionality
   const downloadTemplate = () => {
     const csvContent = `Name,Phone,Gmail,Source,Want to Hire,Status,Inquiry Date (YYYY-MM-DD)
-John Doe,0712345678,john@example.com,Referral,Nanny,Active - Reviewing Profiles,2025-01-15
-Jane Smith,0723456789,jane@example.com,TikTok,Chef,Active - Reviewing Profiles,2025-01-14`
+John Doe,0712345678,john@example.com,Referral,Nanny,Active - Reviewing Profiles,2025-01-10
+Jane Smith,0723456789,jane@example.com,TikTok,Chef,Pending - No communication,2025-01-12`
     const blob = new Blob([csvContent], { type: 'text/csv' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = 'leads_upload_template.csv'
+    a.download = 'client_upload_template.csv'
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
@@ -269,8 +235,9 @@ Jane Smith,0723456789,jane@example.com,TikTok,Chef,Active - Reviewing Profiles,2
       const { data: existing, error: fetchError } = await supabase
         .from('clients')
         .select('phone')
+        .in('status', ['Active', 'Reviewing Profiles', 'Profile Sent but no response', 'Conducting Trials', 'Payment Pending', 'Won', 'Lost', 'Active - Form filled, no response yet', 'Active - Communication ongoing', 'Active - Payment pending'])
       if (fetchError) {
-        console.error('Error fetching existing leads:', fetchError)
+        console.error('Error fetching existing clients:', fetchError)
         showToast('Error checking for duplicates. Please try again.', 'error')
         setSubmitting(false)
         return
@@ -331,8 +298,8 @@ Jane Smith,0723456789,jane@example.com,TikTok,Chef,Active - Reviewing Profiles,2
             continue
           }
 
-          if (!clientStatusOptions.includes(status)) {
-            errors.push(`Row ${i + 2}: Invalid status '${status}'. Must be one of: ${clientStatusOptions.join(', ')}`)
+          if (!allStatusOptions.includes(status)) {
+            errors.push(`Row ${i + 2}: Invalid status '${status}'. Must be one of: ${allStatusOptions.join(', ')}`)
             continue
           }
 
@@ -342,7 +309,7 @@ Jane Smith,0723456789,jane@example.com,TikTok,Chef,Active - Reviewing Profiles,2
             gmail,
             source,
             want_to_hire, 
-            status,
+            status, 
             inquiry_date,
             created_at: new Date().toISOString()
           })
@@ -375,31 +342,31 @@ Jane Smith,0723456789,jane@example.com,TikTok,Chef,Active - Reviewing Profiles,2
       if (staff?.id && staff?.name) {
         await ActivityLogger.logBulkUpload(
           staff.id,
-          'lead',
+          'client',
           inserts.length,
           staff.name
         )
       }
 
-      await loadLeads()
+      await loadClients()
       setShowBulkUpload(false)
       setUploadFile(null)
-      showToast(`Successfully uploaded ${inserts.length} leads`, 'success')
+      showToast(`Successfully uploaded ${inserts.length} clients`, 'success')
     } catch (error) {
-      console.error('Error bulk uploading leads:', error)
-      showToast(`Error uploading leads: ${error instanceof Error ? error.message : 'Unknown error'}`, 'error')
+      console.error('Error bulk uploading clients:', error)
+      showToast(`Error uploading clients: ${error instanceof Error ? error.message : 'Unknown error'}`, 'error')
     } finally {
       setSubmitting(false)
     }
   }
 
   useEffect(() => {
-    loadLeads()
+    loadClients()
     
     const subscription = supabase
-      .channel('leads-realtime')
+      .channel('clients-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'clients' }, () => {
-        loadLeads()
+        loadClients()
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'client_notes' }, () => {
         loadUnreadCounts()
@@ -412,55 +379,56 @@ Jane Smith,0723456789,jane@example.com,TikTok,Chef,Active - Reviewing Profiles,2
   }, [])
 
   useEffect(() => {
-    if (leads.length > 0) {
+    if (clients.length > 0) {
       loadUnreadCounts()
     }
-  }, [leads, staff?.name])
+  }, [clients, staff?.name])
 
   useEffect(() => {
-    filterLeads()
-  }, [leads, searchTerm, filterStatus])
+    filterClients()
+  }, [clients, searchTerm, filterStatus])
 
-  const loadLeads = async () => {
+  const loadClients = async () => {
     try {
       const { data, error } = await supabase
         .from('clients')
         .select('*')
-        .in('status', clientStatusOptions)
-        .order('created_at', { ascending: false})
+        .order('created_at', { ascending: false })
 
       if (error) throw error
-      setLeads(data || [])
+      setClients(data || [])
     } catch (error) {
-      console.error('Error loading leads:', error)
-      showToast('Failed to load leads', 'error')
+      console.error('Error loading clients:', error)
+      showToast('Failed to load clients', 'error')
     } finally {
       setLoading(false)
     }
   }
 
-  const filterLeads = () => {
-    let filtered = leads
+  const filterClients = () => {
+    let filtered = clients
 
     if (searchTerm) {
+      // Normalize phone number for search
       const normalizePhone = (phone: string) => {
-        return phone.replace(/[^0-9]/g, '')
+        return phone.replace(/[^0-9]/g, '') // Remove all non-digits
       }
       
       const searchPhone = normalizePhone(searchTerm)
       
-      filtered = filtered.filter(lead => {
-        const nameMatch = lead.name.toLowerCase().includes(searchTerm.toLowerCase())
-        const gmailMatch = lead.gmail.toLowerCase().includes(searchTerm.toLowerCase())
-        const sourceMatch = lead.source?.toLowerCase().includes(searchTerm.toLowerCase())
-        const roleMatch = lead.want_to_hire.toLowerCase().includes(searchTerm.toLowerCase())
+      filtered = filtered.filter(client => {
+        const nameMatch = client.name.toLowerCase().includes(searchTerm.toLowerCase())
+        const gmailMatch = client.gmail.toLowerCase().includes(searchTerm.toLowerCase())
+        const sourceMatch = client.source?.toLowerCase().includes(searchTerm.toLowerCase())
+        const roleMatch = client.want_to_hire.toLowerCase().includes(searchTerm.toLowerCase())
         
+        // Phone matching with normalization
         let phoneMatch = false
         if (searchPhone) {
-          const leadPhone = normalizePhone(lead.phone)
-          phoneMatch = leadPhone.includes(searchPhone) ||
-                      leadPhone.endsWith(searchPhone) ||
-                      (searchPhone.startsWith('0') && leadPhone.endsWith(searchPhone.substring(1)))
+          const clientPhone = normalizePhone(client.phone)
+          phoneMatch = clientPhone.includes(searchPhone) ||
+                      clientPhone.endsWith(searchPhone) ||
+                      (searchPhone.startsWith('0') && clientPhone.endsWith(searchPhone.substring(1)))
         }
         
         return nameMatch || phoneMatch || gmailMatch || sourceMatch || roleMatch
@@ -468,17 +436,28 @@ Jane Smith,0723456789,jane@example.com,TikTok,Chef,Active - Reviewing Profiles,2
     }
 
     if (filterStatus !== 'all') {
-      filtered = filtered.filter(lead => lead.status === filterStatus)
+      filtered = filtered.filter(client => {
+        if (filterStatus === 'Pending') {
+          return client.status.startsWith('Pending -')
+        }
+        if (filterStatus === 'Active') {
+          return client.status.startsWith('Active -')
+        }
+        if (filterStatus === 'Lost/Cold') {
+          return client.status.startsWith('Lost/Cold -')
+        }
+        return client.status === filterStatus
+      })
     }
 
-    setFilteredLeads(filtered)
+    setFilteredClients(filtered)
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
     try {
-      if (selectedLead) {
+      if (selectedClient) {
         const { error } = await supabase
           .from('clients')
           .update({
@@ -490,18 +469,19 @@ Jane Smith,0723456789,jane@example.com,TikTok,Chef,Active - Reviewing Profiles,2
             status: formData.status,
             inquiry_date: formData.inquiry_date || new Date().toISOString().split('T')[0]
           })
-          .eq('id', selectedLead.id)
+          .eq('id', selectedClient.id)
 
         if (error) throw error
 
         if (staff?.id && staff?.name) {
-          const oldStatus = selectedLead.status
+          const oldStatus = selectedClient.status
           const newStatus = formData.status
           
           if (oldStatus !== newStatus) {
+            // Log status change to history
             await StatusHistoryLogger.logStatusChange(
-              'lead',
-              selectedLead.id,
+              'client',
+              selectedClient.id,
               formData.name,
               oldStatus,
               newStatus,
@@ -512,8 +492,8 @@ Jane Smith,0723456789,jane@example.com,TikTok,Chef,Active - Reviewing Profiles,2
           
           await ActivityLogger.logEdit(
             staff.id,
-            'lead',
-            selectedLead.id,
+            'client',
+            selectedClient.id,
             formData.name,
             staff.name
           )
@@ -545,6 +525,7 @@ Jane Smith,0723456789,jane@example.com,TikTok,Chef,Active - Reviewing Profiles,2
             formData.name,
             staff.name
           )
+          // Log initial status to history
           await StatusHistoryLogger.logStatusChange(
             'client',
             data.id,
@@ -560,12 +541,12 @@ Jane Smith,0723456789,jane@example.com,TikTok,Chef,Active - Reviewing Profiles,2
         showToast(`Client added successfully`, 'success')
       }
 
-      await loadLeads()
+      await loadClients()
       setShowModal(false)
       resetForm()
     } catch (error) {
-      console.error('Error saving lead:', error)
-      showToast('Failed to save lead', 'error')
+      console.error('Error saving client:', error)
+      showToast('Failed to save client', 'error')
     }
   }
 
@@ -576,30 +557,29 @@ Jane Smith,0723456789,jane@example.com,TikTok,Chef,Active - Reviewing Profiles,2
       gmail: '',
       source: '',
       want_to_hire: '',
-      status: 'Active - Reviewing Profiles',
+      status: 'Pending - No communication',
       inquiry_date: ''
     })
-    setSelectedLead(null)
+    setSelectedClient(null)
   }
 
-  const handleEdit = (lead: Lead) => {
-    setSelectedLead(lead)
+  const handleEdit = (client: Client) => {
+    setSelectedClient(client)
     setFormData({
-      name: lead.name,
-      phone: lead.phone,
-      gmail: lead.gmail,
-      source: lead.source || 'Referral',
-      want_to_hire: lead.want_to_hire,
-      status: lead.status,
-      inquiry_date: lead.inquiry_date
+      name: client.name,
+      phone: client.phone,
+      gmail: client.gmail,
+      source: client.source || 'Referral',
+      want_to_hire: client.want_to_hire,
+      status: client.status,
     })
     setShowModal(true)
   }
 
-  const handleReminderEdit = (lead: Lead) => {
-    setSelectedLeadForReminder(lead)
-    if (lead.custom_reminder_datetime) {
-      const reminderDate = new Date(lead.custom_reminder_datetime)
+  const handleReminderEdit = (client: Client) => {
+    setSelectedClientForReminder(client)
+    if (client.custom_reminder_datetime) {
+      const reminderDate = new Date(client.custom_reminder_datetime)
       setReminderForm({
         date: reminderDate.toISOString().split('T')[0],
         time: reminderDate.toTimeString().slice(0, 5)
@@ -611,7 +591,7 @@ Jane Smith,0723456789,jane@example.com,TikTok,Chef,Active - Reviewing Profiles,2
   }
 
   const handleReminderSave = async () => {
-    if (!selectedLeadForReminder) return
+    if (!selectedClientForReminder) return
     
     try {
       let custom_reminder_datetime = null
@@ -622,13 +602,13 @@ Jane Smith,0723456789,jane@example.com,TikTok,Chef,Active - Reviewing Profiles,2
       const { error } = await supabase
         .from('clients')
         .update({ custom_reminder_datetime })
-        .eq('id', selectedLeadForReminder.id)
+        .eq('id', selectedClientForReminder.id)
 
       if (error) throw error
 
-      await loadLeads()
+      await loadClients()
       setShowReminderModal(false)
-      setSelectedLeadForReminder(null)
+      setSelectedClientForReminder(null)
       setReminderForm({ date: '', time: '' })
       showToast('Reminder updated successfully', 'success')
     } catch (error) {
@@ -637,16 +617,16 @@ Jane Smith,0723456789,jane@example.com,TikTok,Chef,Active - Reviewing Profiles,2
     }
   }
 
-  const handleReminderDelete = async (leadId: string) => {
+  const handleReminderDelete = async (clientId: string) => {
     try {
       const { error } = await supabase
         .from('clients')
         .update({ custom_reminder_datetime: null })
-        .eq('id', leadId)
+        .eq('id', clientId)
 
       if (error) throw error
 
-      await loadLeads()
+      await loadClients()
       showToast('Reminder cancelled successfully', 'success')
     } catch (error) {
       console.error('Error cancelling reminder:', error)
@@ -655,44 +635,44 @@ Jane Smith,0723456789,jane@example.com,TikTok,Chef,Active - Reviewing Profiles,2
   }
 
   const handleBulkStatusChange = async () => {
-    if (!bulkStatus || selectedLeads.length === 0) return
+    if (!bulkStatus || selectedClients.length === 0) return
     
     try {
       const { error } = await supabase
         .from('clients')
         .update({ status: bulkStatus })
-        .in('id', selectedLeads)
+        .in('id', selectedClients)
       
       if (error) throw error
       
-      await loadLeads()
-      setSelectedLeads([])
+      await loadClients()
+      setSelectedClients([])
       setBulkStatus('')
-      showToast(`Updated ${selectedLeads.length} leads to ${bulkStatus}`, 'success')
+      showToast(`Updated ${selectedClients.length} clients to ${bulkStatus}`, 'success')
     } catch (error) {
       console.error('Error updating bulk status:', error)
-      showToast('Failed to update leads', 'error')
+      showToast('Failed to update clients', 'error')
     }
   }
 
   const toggleSelectAll = () => {
-    if (selectedLeads.length === filteredLeads.length) {
-      setSelectedLeads([])
+    if (selectedClients.length === filteredClients.length) {
+      setSelectedClients([])
     } else {
-      setSelectedLeads(filteredLeads.map(l => l.id))
+      setSelectedClients(filteredClients.map(c => c.id))
     }
   }
 
-  const handleViewNotes = async (lead: Lead) => {
-    setSelectedLeadForNotes(lead)
+  const handleViewNotes = async (client: Client) => {
+    setSelectedClientForNotes(client)
     setShowNotesModal(true)
-    setLeadNotes([])
+    setClientNotes([]) // Clear previous notes
     
     try {
       const { data, error } = await supabase
         .from('client_notes')
         .select('*')
-        .eq('client_id', lead.id)
+        .eq('client_id', client.id)
         .order('created_at', { ascending: false })
       
       if (error) {
@@ -700,8 +680,10 @@ Jane Smith,0723456789,jane@example.com,TikTok,Chef,Active - Reviewing Profiles,2
         return
       }
       
-      setLeadNotes(data || [])
+      console.log('Loaded client notes:', data) // Debug log
+      setClientNotes(data || [])
       
+      // Mark all notes as read for current user
       if (staff?.name && data?.length > 0) {
         for (const note of data) {
           const currentReadBy = note.read_by || {}
@@ -713,22 +695,23 @@ Jane Smith,0723456789,jane@example.com,TikTok,Chef,Active - Reviewing Profiles,2
             .eq('id', note.id)
         }
         
-        setUnreadCounts(prev => ({ ...prev, [lead.id]: 0 }))
+        // Update unread count immediately
+        setUnreadCounts(prev => ({ ...prev, [client.id]: 0 }))
       }
     } catch (error) {
       console.error('Error in handleViewNotes:', error)
-      setLeadNotes([])
+      setClientNotes([])
     }
   }
 
   const handleAddNote = async () => {
-    if (!newNote.trim() || !selectedLeadForNotes) return
+    if (!newNote.trim() || !selectedClientForNotes) return
     
     try {
       const { error } = await supabase
         .from('client_notes')
         .insert({
-          client_id: selectedLeadForNotes.id,
+          client_id: selectedClientForNotes.id,
           note: newNote.trim(),
           created_by: staff?.name || user?.email || 'Unknown'
         })
@@ -736,8 +719,8 @@ Jane Smith,0723456789,jane@example.com,TikTok,Chef,Active - Reviewing Profiles,2
       if (error) throw error
       
       setNewNote('')
-      await handleViewNotes(selectedLeadForNotes)
-      await loadUnreadCounts()
+      await handleViewNotes(selectedClientForNotes)
+      await loadUnreadCounts() // Refresh both counts
       showToast('Note added successfully', 'success')
     } catch (error) {
       console.error('Error adding note:', error)
@@ -765,8 +748,8 @@ Jane Smith,0723456789,jane@example.com,TikTok,Chef,Active - Reviewing Profiles,2
       {/* Header */}
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Clients</h1>
-          <p className="text-gray-600">Manage active clients and their service progress</p>
+          <h1 className="text-2xl font-bold text-gray-900">Leads2 (All Records)</h1>
+          <p className="text-gray-600">Manage all lead inquiries and client records</p>
         </div>
         <div className="flex space-x-2">
           <button
@@ -781,7 +764,7 @@ Jane Smith,0723456789,jane@example.com,TikTok,Chef,Active - Reviewing Profiles,2
             className="flex items-center px-4 py-2 bg-nestalk-primary text-white rounded-lg hover:bg-nestalk-primary/90 transition-colors"
           >
             <Plus className="w-4 h-4 mr-2" />
-            Add Client
+            Add Lead
           </button>
         </div>
       </div>
@@ -792,16 +775,16 @@ Jane Smith,0723456789,jane@example.com,TikTok,Chef,Active - Reviewing Profiles,2
         onSearchChange={setSearchTerm}
         filterStatus={filterStatus}
         onFilterChange={setFilterStatus}
-        statusOptions={clientStatusOptions}
+        statusOptions={allStatusOptions}
         placeholder="Search by name, phone, gmail, source, or role..."
       />
 
       {/* Bulk Actions */}
-      {selectedLeads.length > 0 && (
+      {selectedClients.length > 0 && (
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
           <div className="flex items-center gap-4">
             <span className="text-sm font-medium text-blue-900">
-              {selectedLeads.length} selected
+              {selectedClients.length} selected
             </span>
             <select
               value={bulkStatus}
@@ -809,7 +792,7 @@ Jane Smith,0723456789,jane@example.com,TikTok,Chef,Active - Reviewing Profiles,2
               className="px-3 py-1 border border-blue-300 rounded text-sm"
             >
               <option value="">Change status to...</option>
-              {clientStatusOptions.map(status => (
+              {allStatusOptions.map(status => (
                 <option key={status} value={status}>{status}</option>
               ))}
             </select>
@@ -821,7 +804,7 @@ Jane Smith,0723456789,jane@example.com,TikTok,Chef,Active - Reviewing Profiles,2
               Update
             </button>
             <button
-              onClick={() => setSelectedLeads([])}
+              onClick={() => setSelectedClients([])}
               className="px-3 py-1 bg-gray-500 text-white rounded text-sm hover:bg-gray-600"
             >
               Clear
@@ -830,7 +813,7 @@ Jane Smith,0723456789,jane@example.com,TikTok,Chef,Active - Reviewing Profiles,2
         </div>
       )}
 
-      {/* Leads Table */}
+      {/* Clients Table */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
@@ -839,7 +822,7 @@ Jane Smith,0723456789,jane@example.com,TikTok,Chef,Active - Reviewing Profiles,2
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   <input
                     type="checkbox"
-                    checked={selectedLeads.length === filteredLeads.length && filteredLeads.length > 0}
+                    checked={selectedClients.length === filteredClients.length && filteredClients.length > 0}
                     onChange={toggleSelectAll}
                     className="rounded border-gray-300"
                   />
@@ -856,19 +839,19 @@ Jane Smith,0723456789,jane@example.com,TikTok,Chef,Active - Reviewing Profiles,2
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {filteredLeads.map((lead, index) => {
-                const hasAttention = needsAttention(lead)
+              {filteredClients.map((client, index) => {
+                const hasAttention = needsAttention(client)
                 return (
-                  <tr key={lead.id} className={`hover:bg-gray-50 ${hasAttention ? 'bg-yellow-50 border-l-4 border-l-yellow-400' : ''}`}>
+                  <tr key={client.id} className={`hover:bg-gray-50 ${hasAttention ? 'bg-yellow-50 border-l-4 border-l-yellow-400' : ''}`}>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <input
                         type="checkbox"
-                        checked={selectedLeads.includes(lead.id)}
+                        checked={selectedClients.includes(client.id)}
                         onChange={(e) => {
                           if (e.target.checked) {
-                            setSelectedLeads(prev => [...prev, lead.id])
+                            setSelectedClients(prev => [...prev, client.id])
                           } else {
-                            setSelectedLeads(prev => prev.filter(id => id !== lead.id))
+                            setSelectedClients(prev => prev.filter(id => id !== client.id))
                           }
                         }}
                         className="rounded border-gray-300"
@@ -878,27 +861,27 @@ Jane Smith,0723456789,jane@example.com,TikTok,Chef,Active - Reviewing Profiles,2
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
                         {hasAttention && <AlertTriangle className="w-4 h-4 text-red-500 mr-2" />}
-                        <div className="text-sm font-medium text-gray-900">{lead.name}</div>
+                        <div className="text-sm font-medium text-gray-900">{client.name}</div>
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{lead.source || 'N/A'}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{lead.want_to_hire}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{client.source || 'N/A'}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{client.want_to_hire}</td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <StatusBadge status={lead.status} type="lead" />
+                      <StatusBadge status={client.status} type="client" />
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       <div className="flex items-center gap-2">
-                        {lead.custom_reminder_datetime ? (
+                        {client.custom_reminder_datetime ? (
                           <div className="bg-blue-50 rounded-lg p-2 border border-blue-200 min-w-0 flex-1">
                             <div className="text-xs">
                               {(() => {
-                                const timeInfo = getTimeUntilReminder(lead.custom_reminder_datetime)
+                                const timeInfo = getTimeUntilReminder(client.custom_reminder_datetime)
                                 return (
                                   <span className={timeInfo.overdue ? 'text-red-600 font-medium' : 'text-blue-600'}>
                                     {timeInfo.overdue ? '⚠️ Overdue' : `⏰ ${timeInfo.text} remaining`}
                                   </span>
                                 )
-                              })()}
+                              })()} 
                             </div>
                           </div>
                         ) : (
@@ -906,15 +889,15 @@ Jane Smith,0723456789,jane@example.com,TikTok,Chef,Active - Reviewing Profiles,2
                         )}
                         <div className="flex flex-col gap-1">
                           <button
-                            onClick={() => handleReminderEdit(lead)}
+                            onClick={() => handleReminderEdit(client)}
                             className="text-blue-600 hover:text-blue-800 p-1 border border-blue-300 rounded hover:bg-blue-50"
                             title="Set/Edit Reminder"
                           >
                             <Pencil className="w-3 h-3" />
                           </button>
-                          {lead.custom_reminder_datetime && (
+                          {client.custom_reminder_datetime && (
                             <button
-                              onClick={() => handleReminderDelete(lead.id)}
+                              onClick={() => handleReminderDelete(client.id)}
                               className="text-red-600 hover:text-red-800 p-1 border border-red-300 rounded hover:bg-red-50"
                               title="Cancel Reminder"
                             >
@@ -927,69 +910,63 @@ Jane Smith,0723456789,jane@example.com,TikTok,Chef,Active - Reviewing Profiles,2
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       <div className="relative">
                         <button
-                          onClick={() => handleViewNotes(lead)}
+                          onClick={() => handleViewNotes(client)}
                           className="text-nestalk-primary hover:text-nestalk-primary/80"
                           title="View/Add Notes"
                         >
                           <Eye className="w-4 h-4" />
                         </button>
-                        {(unreadCounts[lead.id] || 0) > 0 && (
+                        {/* Red badge for unread notes */}
+                        {(unreadCounts[client.id] || 0) > 0 && (
                           <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-4 w-4 flex items-center justify-center">
-                            {unreadCounts[lead.id]}
+                            {unreadCounts[client.id]}
                           </span>
                         )}
-                        {(noteCounts[lead.id] || 0) > 0 && (unreadCounts[lead.id] || 0) === 0 && (
+                        {/* Gray badge for read notes (when there are notes but all are read) */}
+                        {(noteCounts[client.id] || 0) > 0 && (unreadCounts[client.id] || 0) === 0 && (
                           <span className="absolute -top-1 -right-1 bg-gray-500 text-white text-xs rounded-full h-4 w-4 flex items-center justify-center">
-                            {noteCounts[lead.id]}
+                            {noteCounts[client.id]}
                           </span>
                         )}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {new Date(lead.inquiry_date).toLocaleDateString()}
+                      {new Date(client.inquiry_date).toLocaleDateString()}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <div className="flex items-center gap-2">
                         <button
-                          onClick={() => handleEdit(lead)}
+                          onClick={() => handleEdit(client)}
                           className="text-nestalk-primary hover:text-nestalk-primary/80"
                           title="Edit"
                         >
                           <Edit className="w-4 h-4" />
                         </button>
-                        {lead.status === 'Pending' && (
-                          <button
-                            onClick={() => convertToClient(lead)}
-                            className="px-2 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700"
-                            title="Convert to Client"
-                          >
-                            Convert
-                          </button>
-                        )}
                         <select
                           onChange={async (e) => {
                             const newStatus = e.target.value
                             if (newStatus) {
                               try {
-                                const oldStatus = lead.status
+                                const oldStatus = client.status
                                 const { error } = await supabase
                                   .from('clients')
                                   .update({ status: newStatus })
-                                  .eq('id', lead.id)
+                                  .eq('id', client.id)
                                 if (error) throw error
                                 
-                                setLeads(prev => prev.map(l => l.id === lead.id ? { ...l, status: newStatus } : l))
+                                setClients(prev => prev.map(c => c.id === client.id ? { ...c, status: newStatus } : c))
                                 
+                                // Log status change
                                 if (user?.id && staff?.name) {
                                   await supabase.from('activity_logs').insert({
                                     user_id: user.id,
                                     action_type: 'status_change',
                                     entity_type: 'client',
-                                    entity_id: lead.id,
-                                    entity_name: lead.name,
+                                    entity_id: client.id,
+                                    entity_name: client.name,
                                     old_value: oldStatus,
                                     new_value: newStatus,
-                                    description: `${staff.name} changed ${lead.name} status from ${oldStatus} to ${newStatus}`
+                                    description: `${staff.name} changed ${client.name} status from ${oldStatus} to ${newStatus}`
                                   })
                                 }
                                 
@@ -1005,7 +982,7 @@ Jane Smith,0723456789,jane@example.com,TikTok,Chef,Active - Reviewing Profiles,2
                           defaultValue=""
                         >
                           <option value="" disabled>Update Status</option>
-                          {clientStatusOptions.map(status => (
+                          {allStatusOptions.map(status => (
                             <option key={status} value={status}>{status}</option>
                           ))}
                         </select>
@@ -1019,14 +996,14 @@ Jane Smith,0723456789,jane@example.com,TikTok,Chef,Active - Reviewing Profiles,2
         </div>
       </div>
 
-      {filteredLeads.length === 0 && (
+      {filteredClients.length === 0 && (
         <div className="text-center py-12">
           <Building2 className="mx-auto h-12 w-12 text-gray-400" />
-          <h3 className="mt-2 text-sm font-medium text-gray-900">No leads found</h3>
+          <h3 className="mt-2 text-sm font-medium text-gray-900">No clients found</h3>
           <p className="mt-1 text-sm text-gray-500">
             {searchTerm || filterStatus !== 'all' 
               ? 'Try adjusting your search or filter criteria.'
-              : 'Get started by adding your first lead inquiry.'
+              : 'Get started by adding your first client inquiry.'
             }
           </p>
         </div>
@@ -1038,7 +1015,7 @@ Jane Smith,0723456789,jane@example.com,TikTok,Chef,Active - Reviewing Profiles,2
           <div className="bg-white rounded-lg max-w-md w-full max-h-screen overflow-y-auto">
             <div className="p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">
-                {selectedLead ? 'Edit Client' : 'Add New Client'}
+                {selectedClient ? 'Edit Lead' : 'Add New Lead'}
               </h2>
 
               <form onSubmit={handleSubmit} className="space-y-4">
@@ -1111,10 +1088,11 @@ Jane Smith,0723456789,jane@example.com,TikTok,Chef,Active - Reviewing Profiles,2
                     onChange={(e) => setFormData({ ...formData, status: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
                   >
-                    {clientStatusOptions.map(status => (
+                    {allStatusOptions.map(status => (
                       <option key={status} value={status}>{status}</option>
                     ))}
                   </select>
+
                 </div>
 
                 <div>
@@ -1142,7 +1120,7 @@ Jane Smith,0723456789,jane@example.com,TikTok,Chef,Active - Reviewing Profiles,2
                     type="submit"
                     className="flex-1 px-4 py-2 bg-nestalk-primary text-white rounded-lg hover:bg-nestalk-primary/90 transition-colors"
                   >
-                    {selectedLead ? 'Update' : 'Add'} Client
+                    {selectedClient ? 'Update' : 'Add'} Lead
                   </button>
                 </div>
               </form>
@@ -1181,7 +1159,7 @@ Jane Smith,0723456789,jane@example.com,TikTok,Chef,Active - Reviewing Profiles,2
                     <li>Gmail (required)</li>
                     <li>Source (optional, defaults to Referral)</li>
                     <li>Want to Hire (optional, defaults to Caregiver)</li>
-                    <li>Status (optional, defaults to Pending)</li>
+                    <li>Status (optional, defaults to Active)</li>
                     <li>Inquiry Date (required, YYYY-MM-DD)</li>
                   </ul>
                 </div>
@@ -1223,7 +1201,7 @@ Jane Smith,0723456789,jane@example.com,TikTok,Chef,Active - Reviewing Profiles,2
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg p-6 w-80">
             <h3 className="text-lg font-medium text-gray-900 mb-4">
-              {selectedLeadForReminder?.custom_reminder_datetime ? 'Edit Reminder' : 'Set Reminder'}
+              {selectedClientForReminder?.custom_reminder_datetime ? 'Edit Reminder' : 'Set Reminder'}
             </h3>
             
             <div className="space-y-4">
@@ -1269,7 +1247,7 @@ Jane Smith,0723456789,jane@example.com,TikTok,Chef,Active - Reviewing Profiles,2
               <button
                 onClick={() => {
                   setShowReminderModal(false)
-                  setSelectedLeadForReminder(null)
+                  setSelectedClientForReminder(null)
                   setReminderForm({ date: '', time: '' })
                 }}
                 className="flex-1 px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors"
@@ -1287,7 +1265,7 @@ Jane Smith,0723456789,jane@example.com,TikTok,Chef,Active - Reviewing Profiles,2
           <div className="bg-white rounded-lg max-w-2xl w-full max-h-screen overflow-y-auto">
             <div className="p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">
-                Notes for {selectedLeadForNotes?.name} ({noteCounts[selectedLeadForNotes?.id || ''] || 0} notes)
+                Notes for {selectedClientForNotes?.name} ({noteCounts[selectedClientForNotes?.id || ''] || 0} notes)
               </h2>
 
               <div className="mb-6">
@@ -1309,8 +1287,8 @@ Jane Smith,0723456789,jane@example.com,TikTok,Chef,Active - Reviewing Profiles,2
                   <button
                     onClick={() => {
                       setShowNotesModal(false)
-                      setSelectedLeadForNotes(null)
-                      setLeadNotes([])
+                      setSelectedClientForNotes(null)
+                      setClientNotes([])
                       setNewNote('')
                     }}
                     className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600"
@@ -1321,10 +1299,10 @@ Jane Smith,0723456789,jane@example.com,TikTok,Chef,Active - Reviewing Profiles,2
               </div>
 
               <div className="space-y-4 max-h-96 overflow-y-auto">
-                {leadNotes.length === 0 ? (
+                {clientNotes.length === 0 ? (
                   <p className="text-gray-500 text-center py-4">No notes yet</p>
                 ) : (
-                  leadNotes.map((note) => (
+                  clientNotes.map((note) => (
                     <div key={note.id} className="bg-gray-50 rounded-lg p-4">
                       <div className="flex justify-between items-start mb-2">
                         <span className="font-medium text-gray-900">{note.created_by}</span>
@@ -1345,4 +1323,4 @@ Jane Smith,0723456789,jane@example.com,TikTok,Chef,Active - Reviewing Profiles,2
   )
 }
 
-export default Clients
+export default Leads

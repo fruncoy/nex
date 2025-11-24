@@ -28,7 +28,7 @@ export function Layout() {
   const location = useLocation()
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
   const [isCollapsed, setIsCollapsed] = useState(false)
-  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set()) // All closed by default
+  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set(['Candidates', 'Leads (All)', 'Training Leads', 'Updates', 'Insights'])) // All open by default
 
   console.log('Layout rendering - user:', user, 'staff:', staff, 'location:', location.pathname)
 
@@ -67,10 +67,11 @@ export function Layout() {
       ]
     },
     { 
-      name: 'Clients', 
-      href: '/clients', 
+      name: 'Leads (All)', 
+      href: '/leads', 
       icon: Building2,
       subItems: [
+        { name: 'Clients', href: '/clients', icon: Target },
         { name: 'Converted Clients', href: '/converted-clients', icon: CheckCircle },
         { name: 'Placements', href: '/placements', icon: Users }
       ]
@@ -93,7 +94,14 @@ export function Layout() {
       ]
     },
     { name: 'Reporting', href: '/reporting', icon: FileText },
-    { name: 'Insights', href: '/insights', icon: BarChart3 },
+    { 
+      name: 'Insights', 
+      href: '/insights', 
+      icon: BarChart3,
+      subItems: [
+        { name: 'Reports', href: '/reports', icon: FileText }
+      ]
+    },
     { name: 'Nestara AI', href: '/nestara-ai', icon: Brain },
   ]
 
@@ -137,14 +145,14 @@ export function Layout() {
       <div className={`fixed inset-y-0 left-0 z-50 ${isCollapsed && window.innerWidth >= 1024 ? 'w-16' : 'w-64'} bg-white shadow-lg transform transition-all duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0`}>
         <div className="flex flex-col h-full">
           {/* Logo */}
-          <div className="flex items-center justify-between h-16 px-4 bg-nestalk-primary">
+          <div className="flex items-center justify-between h-[73px] px-4 bg-nestalk-primary">
             <span className={`text-xl font-bold text-white transition-opacity duration-300 ${isCollapsed && window.innerWidth >= 1024 ? 'opacity-0' : 'opacity-100'}`}>
               {isCollapsed && window.innerWidth >= 1024 ? 'N' : 'NEX'}
             </span>
           </div>
 
           {/* Navigation */}
-          <nav className={`flex-1 py-6 space-y-1 ${isCollapsed && window.innerWidth >= 1024 ? 'px-2' : 'px-4'}`}>
+          <nav className={`flex-1 py-6 space-y-1 overflow-y-auto ${isCollapsed && window.innerWidth >= 1024 ? 'px-2' : 'px-4'}`}>
             {navigation.map((item) => (
               <div key={item.name}>
                 {item.subItems ? (

@@ -1,50 +1,52 @@
 import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-import { Calendar, Clock, DollarSign, User, CheckCircle, XCircle, AlertTriangle, Phone } from 'lucide-react'
+import { ChevronDown, ChevronUp, CheckCircle, Eye } from 'lucide-react'
 import { useToast } from '../contexts/ToastContext'
 import { useAuth } from '../contexts/AuthContext'
 import { formatDateTime } from '../utils/dateFormat'
-import { ActivityLogger } from '../lib/activityLogger'
 
-interface Placement {
+interface PlacementData {
   id: string
-  candidate_id: string
-  client_id: string
-  placement_date: string
-  salary_amount: number | null
-  status: string
-  replacement_number: number
-  notes: string
   candidate_name: string
   client_name: string
-  candidate_phone: string
+  placement_date: string
+  followup_reminders: FollowupReminder[]
+  salary_reminders: SalaryReminder[]
 }
 
-interface PlacementFollowup {
+interface FollowupReminder {
   id: string
-  placement_id: string
-  followup_type: string
   due_date: string
   completed_date: string | null
   satisfaction_rating: number | null
   issues: string | null
+  completed_by: string | null
+  staff_name?: string
+}
+
+interface SalaryReminder {
+  id: string
+  due_date: string
+  completed_date: string | null
   salary_paid: boolean | null
-  placement: {
-    candidate_name: string
-    client_name: string
-    candidate_phone: string
-  }
+  completed_by: string | null
+  staff_name?: string
 }
 
 export function Placements() {
-  const [placements, setPlacements] = useState<Placement[]>([])
-  const [followups, setFollowups] = useState<PlacementFollowup[]>([])
+  const [placements, setPlacements] = useState<PlacementData[]>([])
   const [loading, setLoading] = useState(true)
-  const [selectedFollowup, setSelectedFollowup] = useState<PlacementFollowup | null>(null)
-  const [showFollowupModal, setShowFollowupModal] = useState(false)
-  const [satisfactionRating, setSatisfactionRating] = useState<number>(5)
-  const [issues, setIssues] = useState('')
-  const [salaryPaid, setSalaryPaid] = useState<boolean>(true)
+  const [expandedPlacements, setExpandedPlacements] = useState<Set<string>>(new Set())
+  const [completingFollowup, setCompletingFollowup] = useState<string | null>(null)
+  const [completingSalary, setCompletingSalary] = useState<string | null>(null)
+  const [notes, setNotes] = useState('')
+  const [rating, setRating] = useState(5)
+  const [salaryPaid, setSalaryPaid] = useState(true)
+  const [viewingNotes, setViewingNotes] = useState<{id: string, notes: string, type: string} | null>(null)
+  const [followupSearch, setFollowupSearch] = useState('')
+  const [salarySearch, setSalarySearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState('ALL')
+  const [editingPlacement, setEditingPlacement] = useState<{id: string, date: string, status: string} | null>(null)
 
   const { showToast } = useToast()
   const { staff } = useAuth()
@@ -55,47 +57,76 @@ export function Placements() {
 
   const loadData = async () => {
     try {
-      const [placementsRes, followupsRes] = await Promise.all([
-        supabase
-          .from('placements')
-          .select(`
-            *,
-            candidates(name, phone),
-            clients(name)
-          `)
-          .eq('status', 'ACTIVE')
-          .order('placement_date', { ascending: false }),
-        supabase
-          .from('placement_followups')
-          .select(`
-            *,
-            placements(
-              candidates(name, phone),
-              clients(name)
-            )
-          `)
-          .is('completed_date', null)
-          .order('due_date', { ascending: true })
-      ])
+      const { data: placementsData, error } = await supabase
+        .from('placements')
+        .select(`
+          id,
+          placement_date,
+          status,
+          candidates(name),
+          clients(name)
+        `)
+        .in('status', ['ACTIVE', 'SUCCESS', 'LOST'])
+        .order('placement_date', { ascending: false })
 
-      const placementsWithNames = (placementsRes.data || []).map(p => ({
-        ...p,
-        candidate_name: p.candidates?.name || 'Unknown',
-        candidate_phone: p.candidates?.phone || '',
-        client_name: p.clients?.name || 'Unknown'
-      }))
+      if (error) throw error
 
-      const followupsWithNames = (followupsRes.data || []).map(f => ({
-        ...f,
-        placement: {
-          candidate_name: f.placements?.candidates?.name || 'Unknown',
-          candidate_phone: f.placements?.candidates?.phone || '',
-          client_name: f.placements?.clients?.name || 'Unknown'
+      const { data: followupsData, error: followupsError } = await supabase
+        .from('placement_followups')
+        .select(`
+          id,
+          placement_id,
+          followup_type,
+          due_date,
+          completed_date,
+          satisfaction_rating,
+          issues,
+          salary_paid,
+          updated_by,
+          completed_by_username,
+          staff!updated_by(username)
+        `)
+        .in('placement_id', placementsData?.map(p => p.id) || [])
+      
+      console.log('Placements data:', placementsData)
+      console.log('Followups data:', followupsData)
+
+      const formattedPlacements = (placementsData || []).map(p => {
+        const placementFollowups = followupsData?.filter(f => f.placement_id === p.id) || []
+        
+        return {
+          id: p.id,
+          candidate_name: p.candidates?.name || 'Unknown',
+          client_name: p.clients?.name || 'Unknown',
+          placement_date: p.placement_date,
+          status: p.status,
+          followup_reminders: placementFollowups
+            .filter(f => f.followup_type === '2_week')
+            .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime())
+            .map(f => ({
+              id: f.id,
+              due_date: f.due_date,
+              completed_date: f.completed_date,
+              satisfaction_rating: f.satisfaction_rating,
+              issues: f.issues,
+              completed_by: f.updated_by,
+              staff_name: f.completed_by_username || f.staff?.username || 'FB'
+            })),
+          salary_reminders: placementFollowups
+            .filter(f => f.followup_type === 'salary')
+            .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime())
+            .map(f => ({
+              id: f.id,
+              due_date: f.due_date,
+              completed_date: f.completed_date,
+              salary_paid: f.salary_paid,
+              completed_by: f.updated_by,
+              staff_name: f.completed_by_username || f.staff?.username || 'FB'
+            }))
         }
-      }))
+      })
 
-      setPlacements(placementsWithNames)
-      setFollowups(followupsWithNames)
+      setPlacements(formattedPlacements)
     } catch (error) {
       console.error('Error loading data:', error)
     } finally {
@@ -103,339 +134,509 @@ export function Placements() {
     }
   }
 
-  const handleCompleteFollowup = async () => {
-    if (!selectedFollowup) return
+  const toggleExpanded = (placementId: string) => {
+    const newExpanded = new Set(expandedPlacements)
+    if (newExpanded.has(placementId)) {
+      newExpanded.delete(placementId)
+    } else {
+      newExpanded.add(placementId)
+    }
+    setExpandedPlacements(newExpanded)
+  }
+
+  const completeFollowup = async (followupId: string, placementId: string) => {
+    if (!notes.trim()) {
+      showToast('Notes are required', 'error')
+      return
+    }
 
     try {
-      const updateData: any = {
-        completed_date: new Date().toISOString(),
-        updated_by: staff?.id
-      }
-
-      if (selectedFollowup.followup_type === '2_week') {
-        updateData.satisfaction_rating = satisfactionRating
-        updateData.issues = issues || null
-      } else if (selectedFollowup.followup_type === 'monthly') {
-        updateData.salary_paid = salaryPaid
-      }
-
       const { error } = await supabase
         .from('placement_followups')
-        .update(updateData)
-        .eq('id', selectedFollowup.id)
+        .update({
+          completed_date: new Date().toISOString(),
+          satisfaction_rating: rating,
+          issues: notes,
+          updated_by: staff?.id,
+          completed_by_username: staff?.username
+        })
+        .eq('id', followupId)
 
       if (error) throw error
 
-      // Log follow-up completion
-      await ActivityLogger.log({
-        userId: staff?.id || '',
-        actionType: 'edit',
-        entityType: 'client',
-        entityId: selectedFollowup.placement_id,
-        entityName: selectedFollowup.placement.candidate_name,
-        description: `${selectedFollowup.followup_type === '2_week' ? '2-week' : 'Monthly'} follow-up completed for ${selectedFollowup.placement.candidate_name}${selectedFollowup.followup_type === '2_week' ? ` (Rating: ${satisfactionRating}/5)` : ` (Salary paid: ${salaryPaid ? 'Yes' : 'No'})`}`
-      })
-
       await loadData()
-      setShowFollowupModal(false)
-      setSelectedFollowup(null)
-      setSatisfactionRating(5)
-      setIssues('')
-      setSalaryPaid(true)
-      showToast('Follow-up completed successfully', 'success')
+      setCompletingFollowup(null)
+      setNotes('')
+      setRating(5)
+      showToast('Follow-up completed', 'success')
     } catch (error) {
-      console.error('Error completing follow-up:', error)
+      console.error('Error:', error)
       showToast('Failed to complete follow-up', 'error')
     }
   }
 
-  const getFollowupStatus = (dueDate: string) => {
+  const completeSalary = async (salaryId: string, placementId: string) => {
+    try {
+      const { error } = await supabase
+        .from('placement_followups')
+        .update({
+          completed_date: new Date().toISOString(),
+          salary_paid: salaryPaid,
+          updated_by: staff?.id,
+          completed_by_username: staff?.username
+        })
+        .eq('id', salaryId)
+
+      if (error) throw error
+
+      await loadData()
+      setCompletingSalary(null)
+      setSalaryPaid(true)
+      showToast('Salary reminder completed', 'success')
+    } catch (error) {
+      console.error('Error:', error)
+      showToast('Failed to complete salary reminder', 'error')
+    }
+  }
+
+  const getCompletedCount = (reminders: any[]) => {
+    return reminders.filter(r => r.completed_date).length
+  }
+
+  const getDueDateBadge = (dueDate: string) => {
     const today = new Date()
     const due = new Date(dueDate)
-    const diffDays = Math.ceil((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+    const diffTime = due.getTime() - today.getTime()
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
     
-    if (diffDays < 0) return 'overdue'
-    if (diffDays === 0) return 'due_today'
-    if (diffDays <= 3) return 'due_soon'
-    return 'upcoming'
-  }
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'overdue': return 'bg-red-100 text-red-800 border-red-200'
-      case 'due_today': return 'bg-yellow-100 text-yellow-800 border-yellow-200'
-      case 'due_soon': return 'bg-orange-100 text-orange-800 border-orange-200'
-      default: return 'bg-blue-100 text-blue-800 border-blue-200'
+    if (diffDays < 0) {
+      const overdueDays = Math.abs(diffDays)
+      return (
+        <span className="text-xs px-2 py-1 bg-red-100 text-red-800 rounded-full">
+          {overdueDays}d overdue
+        </span>
+      )
+    } else if (diffDays === 0) {
+      return (
+        <span className="text-xs px-2 py-1 bg-yellow-100 text-yellow-800 rounded-full">
+          Due today
+        </span>
+      )
+    } else if (diffDays <= 7) {
+      return (
+        <span className="text-xs px-2 py-1 bg-orange-100 text-orange-800 rounded-full">
+          {diffDays}d remaining
+        </span>
+      )
+    } else if (diffDays <= 30) {
+      return (
+        <span className="text-xs px-2 py-1 bg-blue-100 text-blue-800 rounded-full">
+          {diffDays}d remaining
+        </span>
+      )
+    } else {
+      const months = Math.floor(diffDays / 30)
+      const days = diffDays % 30
+      return (
+        <span className="text-xs px-2 py-1 bg-green-100 text-green-800 rounded-full">
+          {months}m {days}d remaining
+        </span>
+      )
     }
   }
 
-  const getStatusText = (status: string) => {
-    switch (status) {
-      case 'overdue': return 'OVERDUE'
-      case 'due_today': return 'DUE TODAY'
-      case 'due_soon': return 'DUE SOON'
-      default: return 'UPCOMING'
+  const filteredFollowupPlacements = placements.filter(p => {
+    const matchesSearch = p.client_name.toLowerCase().includes(followupSearch.toLowerCase()) ||
+                         p.candidate_name.toLowerCase().includes(followupSearch.toLowerCase())
+    const matchesStatus = statusFilter === 'ALL' || p.status === statusFilter
+    return matchesSearch && matchesStatus
+  })
+
+  const filteredSalaryPlacements = placements.filter(p => {
+    const matchesSearch = p.client_name.toLowerCase().includes(salarySearch.toLowerCase()) ||
+                         p.candidate_name.toLowerCase().includes(salarySearch.toLowerCase())
+    const matchesStatus = statusFilter === 'ALL' || p.status === statusFilter
+    return matchesSearch && matchesStatus
+  })
+
+  const updatePlacementStatus = async (placementId: string, newStatus: string) => {
+    try {
+      const { error } = await supabase
+        .from('placements')
+        .update({ status: newStatus, updated_by: staff?.id })
+        .eq('id', placementId)
+      
+      if (error) throw error
+      await loadData()
+      showToast(`Placement marked as ${newStatus}`, 'success')
+    } catch (error) {
+      console.error('Error updating placement status:', error)
+      showToast('Failed to update placement status', 'error')
     }
+  }
+
+  const getSuccessRate = (reminders: any[]) => {
+    const completed = reminders.filter(r => r.completed_date && r.satisfaction_rating)
+    if (completed.length === 0) return 0
+    const avgRating = completed.reduce((sum, r) => sum + r.satisfaction_rating, 0) / completed.length
+    return Math.round((avgRating / 5) * 100)
   }
 
   if (loading) {
     return (
       <div className="p-6">
-        <div className="animate-pulse">
-          <div className="h-8 bg-gray-200 rounded w-1/4 mb-6"></div>
-          <div className="space-y-4">
-            {[...Array(5)].map((_, i) => (
-              <div key={i} className="bg-white p-6 rounded-lg shadow h-32"></div>
-            ))}
-          </div>
+        <div className="animate-pulse space-y-4">
+          <div className="h-8 bg-gray-200 rounded w-1/4"></div>
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="bg-white p-4 rounded-lg shadow h-20"></div>
+          ))}
         </div>
       </div>
     )
   }
 
-  const overdueFollowups = followups.filter(f => getFollowupStatus(f.due_date) === 'overdue')
-  const dueTodayFollowups = followups.filter(f => getFollowupStatus(f.due_date) === 'due_today')
-  const upcomingFollowups = followups.filter(f => ['due_soon', 'upcoming'].includes(getFollowupStatus(f.due_date)))
-
   return (
-    <div className="p-6">
-      <div className="mb-6">
+    <div className="p-6 space-y-8">
+      <div>
         <h1 className="text-2xl font-bold text-gray-900">Placements</h1>
-        <p className="text-gray-600">Track all placed candidates and manage follow-ups</p>
+        <p className="text-gray-600">Manage follow-up and salary reminders</p>
       </div>
 
-      {/* Follow-up Alerts */}
-      {(overdueFollowups.length > 0 || dueTodayFollowups.length > 0) && (
-        <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-          <div className="flex items-center mb-2">
-            <AlertTriangle className="w-5 h-5 text-yellow-600 mr-2" />
-            <h3 className="text-sm font-medium text-yellow-800">Follow-up Reminders</h3>
-          </div>
-          <div className="space-y-2">
-            {[...overdueFollowups, ...dueTodayFollowups].slice(0, 5).map(followup => (
-              <div key={followup.id} className="flex items-center justify-between text-sm">
-                <span className="text-yellow-700">
-                  {followup.placement.candidate_name} - {followup.placement.client_name} 
-                  ({followup.followup_type === '2_week' ? '2-Week Check' : 'Monthly Salary'})
-                  - {getStatusText(getFollowupStatus(followup.due_date))}
-                </span>
-                <button
-                  onClick={() => {
-                    setSelectedFollowup(followup)
-                    setShowFollowupModal(true)
-                  }}
-                  className="text-yellow-600 hover:text-yellow-800 text-xs px-2 py-1 border border-yellow-300 rounded"
-                >
-                  Complete
-                </button>
-              </div>
-            ))}
+      {/* Follow-up Reminders Section */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+        <div className="p-4 border-b border-gray-200">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-gray-900">Follow-up Reminders</h2>
+            <div className="flex items-center space-x-3">
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="px-3 py-1 border border-gray-300 rounded-lg text-sm"
+              >
+                <option value="ALL">All Status</option>
+                <option value="ACTIVE">Active</option>
+                <option value="SUCCESS">Success</option>
+                <option value="LOST">Lost</option>
+              </select>
+              <input
+                type="text"
+                placeholder="Search placements..."
+                value={followupSearch}
+                onChange={(e) => setFollowupSearch(e.target.value)}
+                className="px-3 py-1 border border-gray-300 rounded-lg text-sm w-64"
+              />
+            </div>
           </div>
         </div>
-      )}
-
-      {/* Active Placements */}
-      <div className="mb-8">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">Active Placements</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {placements.map((placement) => (
-            <div key={placement.id} className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex-1">
-                  <h3 className="text-sm font-semibold text-gray-900">{placement.candidate_name}</h3>
-                  <p className="text-xs text-gray-500 flex items-center mt-1">
-                    <Phone className="w-3 h-3 mr-1" />
-                    {placement.candidate_phone}
-                  </p>
-                </div>
-                {placement.replacement_number > 0 && (
-                  <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
-                    Replacement #{placement.replacement_number}
+        <div className="divide-y divide-gray-200">
+          {filteredFollowupPlacements.map((placement, placementIndex) => {
+            const isExpanded = expandedPlacements.has(placement.id)
+            const completedCount = getCompletedCount(placement.followup_reminders)
+            
+            return (
+              <div key={placement.id} className="p-4">
+                <div 
+                  className="relative cursor-pointer hover:bg-gray-50 p-4 rounded min-h-[80px]"
+                  onClick={() => toggleExpanded(placement.id)}
+                >
+                  <span className={`absolute top-2 right-2 text-xs px-2 py-1 rounded-full font-bold ${
+                    placement.status === 'ACTIVE' ? 'bg-green-600 text-white' :
+                    placement.status === 'SUCCESS' ? 'bg-blue-600 text-white' :
+                    'bg-red-600 text-white'
+                  }`}>
+                    {placement.status}
                   </span>
-                )}
-              </div>
-              
-              <div className="space-y-2 text-xs text-gray-600">
-                <div className="flex items-center">
-                  <User className="w-3 h-3 mr-2" />
-                  <span>Client: {placement.client_name}</span>
+                  <div className="flex items-center space-x-4 pr-20">
+                    <span className="text-sm font-medium text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                      #{placementIndex + 1}
+                    </span>
+                    <div>
+                      <h3 className="font-medium text-gray-900">
+                        {placement.client_name} - {placement.candidate_name}
+                      </h3>
+                      <p className="text-sm text-gray-500">
+                        Started: {formatDateTime(placement.placement_date + 'T00:00:00')}
+                      </p>
+                    </div>
+                    <span className="text-sm font-medium text-blue-600">
+                      {completedCount}/6
+                    </span>
+                  </div>
+                  <div className="absolute bottom-2 right-2 flex items-center space-x-2">
+                    <span className="text-xs text-gray-500">
+                      {getSuccessRate(placement.followup_reminders)}% success
+                    </span>
+                    {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                  </div>
                 </div>
-                <div className="flex items-center">
-                  <Calendar className="w-3 h-3 mr-2" />
-                  <span>Started: {formatDateTime(placement.placement_date + 'T00:00:00')}</span>
-                </div>
-                {placement.salary_amount && (
-                  <div className="flex items-center">
-                    <DollarSign className="w-3 h-3 mr-2" />
-                    <span>Salary: ${placement.salary_amount.toLocaleString()}</span>
+                
+                {isExpanded && (
+                  <div className="mt-4 space-y-3 pl-4">
+                    {placement.followup_reminders.length === 0 ? (
+                      <div className="p-3 bg-yellow-50 rounded text-sm text-yellow-700">
+                        No follow-up reminders found. Check if placement_followups were created properly.
+                      </div>
+                    ) : (
+                      placement.followup_reminders.map((reminder, index) => (
+                        <div key={reminder.id} className="flex items-center justify-between p-3 bg-gray-50 rounded">
+                          <div className="flex items-center space-x-3">
+                            {reminder.completed_date ? (
+                              <CheckCircle className="w-5 h-5 text-green-500" />
+                            ) : (
+                              <div className="w-5 h-5 border-2 border-gray-300 rounded-full" />
+                            )}
+                            <div>
+                              <p className="text-sm font-medium">Check #{index + 1}</p>
+                              <div className="flex items-center space-x-2">
+                                <p className="text-xs text-gray-500">
+                                  Due: {formatDateTime(reminder.due_date + 'T00:00:00')}
+                                </p>
+                                {!reminder.completed_date && getDueDateBadge(reminder.due_date)}
+                              </div>
+                              {reminder.completed_date && (
+                                <div className="mt-1 text-xs text-gray-600">
+                                  <p>Completed: {formatDateTime(reminder.completed_date)}</p>
+                                  <p>By: {reminder.staff_name || 'FB'}</p>
+                                  <p>Rating: {reminder.satisfaction_rating}/5</p>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            {reminder.completed_date && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  if (reminder.issues) {
+                                    setViewingNotes({id: reminder.id, notes: reminder.issues, type: 'Follow-up'})
+                                  }
+                                }}
+                                className={reminder.issues ? 'text-blue-600 hover:text-blue-800' : 'text-gray-300 cursor-not-allowed'}
+                              >
+                                <Eye className="w-4 h-4" />
+                              </button>
+                            )}
+                            {!reminder.completed_date && (
+                              <div onClick={(e) => e.stopPropagation()}>
+                                {completingFollowup === reminder.id ? (
+                                  <div className="space-y-2">
+                                    <select
+                                      value={rating}
+                                      onChange={(e) => setRating(parseInt(e.target.value))}
+                                      className="text-xs px-2 py-1 border rounded"
+                                    >
+                                      <option value={5}>5 - Excellent</option>
+                                      <option value={4}>4 - Good</option>
+                                      <option value={3}>3 - Average</option>
+                                      <option value={2}>2 - Poor</option>
+                                      <option value={1}>1 - Very Poor</option>
+                                    </select>
+                                    <textarea
+                                      value={notes}
+                                      onChange={(e) => setNotes(e.target.value)}
+                                      placeholder="Notes (required)"
+                                      className="text-xs px-2 py-1 border rounded w-full"
+                                      rows={2}
+                                    />
+                                    <div className="flex space-x-1">
+                                      <button
+                                        onClick={() => completeFollowup(reminder.id, placement.id)}
+                                        className="text-xs px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700"
+                                      >
+                                        Complete
+                                      </button>
+                                      <button
+                                        onClick={() => setCompletingFollowup(null)}
+                                        className="text-xs px-2 py-1 bg-gray-500 text-white rounded hover:bg-gray-600"
+                                      >
+                                        Cancel
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <button
+                                    onClick={() => setCompletingFollowup(reminder.id)}
+                                    className="text-xs px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700"
+                                  >
+                                    Mark Complete
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))
+                    )}
                   </div>
                 )}
               </div>
-              
-              {placement.notes && (
-                <div className="mt-3 pt-3 border-t border-gray-100">
-                  <p className="text-xs text-gray-600">{placement.notes}</p>
-                </div>
-              )}
-            </div>
-          ))}
+            )
+          })}
         </div>
       </div>
 
-      {/* Follow-up Schedule */}
-      <div>
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">Follow-up Schedule</h2>
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Candidate</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Client</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Due Date</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {followups.map((followup) => {
-                  const status = getFollowupStatus(followup.due_date)
-                  return (
-                    <tr key={followup.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">{followup.placement.candidate_name}</div>
-                        <div className="text-sm text-gray-500">{followup.placement.candidate_phone}</div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {followup.placement.client_name}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {followup.followup_type === '2_week' ? '2-Week Check' : 'Monthly Salary'}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {formatDateTime(followup.due_date + 'T00:00:00')}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full border ${getStatusColor(status)}`}>
-                          {getStatusText(status)}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        <button
-                          onClick={() => {
-                            setSelectedFollowup(followup)
-                            setShowFollowupModal(true)
-                          }}
-                          className="text-nestalk-primary hover:text-nestalk-primary/80"
-                        >
-                          Complete
-                        </button>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+      {/* Salary Reminders Section */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+        <div className="p-4 border-b border-gray-200">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-gray-900">Salary Reminders</h2>
+            <input
+              type="text"
+              placeholder="Search placements..."
+              value={salarySearch}
+              onChange={(e) => setSalarySearch(e.target.value)}
+              className="px-3 py-1 border border-gray-300 rounded-lg text-sm w-64"
+            />
           </div>
         </div>
+        <div className="divide-y divide-gray-200">
+          {filteredSalaryPlacements.map((placement, placementIndex) => {
+            const isExpanded = expandedPlacements.has(`salary-${placement.id}`)
+            const completedCount = getCompletedCount(placement.salary_reminders)
+            
+            return (
+              <div key={`salary-${placement.id}`} className="p-4">
+                <div 
+                  className="relative cursor-pointer hover:bg-gray-50 p-4 rounded min-h-[80px]"
+                  onClick={() => toggleExpanded(`salary-${placement.id}`)}
+                >
+                  <span className={`absolute top-2 right-2 text-xs px-2 py-1 rounded-full font-bold ${
+                    placement.status === 'ACTIVE' ? 'bg-green-600 text-white' :
+                    placement.status === 'SUCCESS' ? 'bg-blue-600 text-white' :
+                    'bg-red-600 text-white'
+                  }`}>
+                    {placement.status}
+                  </span>
+                  <div className="flex items-center space-x-4 pr-20">
+                    <span className="text-sm font-medium text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                      #{placementIndex + 1}
+                    </span>
+                    <div>
+                      <h3 className="font-medium text-gray-900">
+                        {placement.client_name} - {placement.candidate_name}
+                      </h3>
+                      <p className="text-sm text-gray-500">
+                        Started: {formatDateTime(placement.placement_date + 'T00:00:00')}
+                      </p>
+                    </div>
+                    <span className="text-sm font-medium text-green-600">
+                      {completedCount}/3
+                    </span>
+                  </div>
+                  <div className="absolute bottom-2 right-2">
+                    {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                  </div>
+                </div>
+                
+                {isExpanded && (
+                  <div className="mt-4 space-y-3 pl-4">
+                    {placement.salary_reminders.length === 0 ? (
+                      <div className="p-3 bg-yellow-50 rounded text-sm text-yellow-700">
+                        No salary reminders found. Check if placement_followups were created properly.
+                      </div>
+                    ) : (
+                      placement.salary_reminders.map((reminder, index) => (
+                        <div key={reminder.id} className="flex items-center justify-between p-3 bg-gray-50 rounded">
+                          <div className="flex items-center space-x-3">
+                            {reminder.completed_date ? (
+                              <CheckCircle className="w-5 h-5 text-green-500" />
+                            ) : (
+                              <div className="w-5 h-5 border-2 border-gray-300 rounded-full" />
+                            )}
+                            <div>
+                              <p className="text-sm font-medium">Month {index + 1}</p>
+                              <div className="flex items-center space-x-2">
+                                <p className="text-xs text-gray-500">
+                                  Due: {formatDateTime(reminder.due_date + 'T00:00:00')}
+                                </p>
+                                {!reminder.completed_date && getDueDateBadge(reminder.due_date)}
+                              </div>
+                              {reminder.completed_date && (
+                                <div className="mt-1 text-xs text-gray-600">
+                                  <p>Completed: {formatDateTime(reminder.completed_date)}</p>
+                                  <p>By: {reminder.staff_name || 'FB'}</p>
+                                  <p>Salary Paid: {reminder.salary_paid ? 'Yes' : 'No'}</p>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          {!reminder.completed_date && (
+                            <div onClick={(e) => e.stopPropagation()}>
+                              {completingSalary === reminder.id ? (
+                                <div className="space-y-2">
+                                  <div className="flex space-x-2">
+                                    <label className="flex items-center text-xs">
+                                      <input
+                                        type="radio"
+                                        checked={salaryPaid === true}
+                                        onChange={() => setSalaryPaid(true)}
+                                        className="mr-1"
+                                      />
+                                      Paid
+                                    </label>
+                                    <label className="flex items-center text-xs">
+                                      <input
+                                        type="radio"
+                                        checked={salaryPaid === false}
+                                        onChange={() => setSalaryPaid(false)}
+                                        className="mr-1"
+                                      />
+                                      Not Paid
+                                    </label>
+                                  </div>
+                                  <div className="flex space-x-1">
+                                    <button
+                                      onClick={() => completeSalary(reminder.id, placement.id)}
+                                      className="text-xs px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700"
+                                    >
+                                      Complete
+                                    </button>
+                                    <button
+                                      onClick={() => setCompletingSalary(null)}
+                                      className="text-xs px-2 py-1 bg-gray-500 text-white rounded hover:bg-gray-600"
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <button
+                                  onClick={() => setCompletingSalary(reminder.id)}
+                                  className="text-xs px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700"
+                                >
+                                  Mark Complete
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
       </div>
 
-      {/* Follow-up Completion Modal */}
-      {showFollowupModal && selectedFollowup && (
+      {/* Notes Viewing Modal */}
+      {viewingNotes && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg max-w-md w-full">
             <div className="p-6">
               <h3 className="text-lg font-medium text-gray-900 mb-4">
-                Complete Follow-up
+                {viewingNotes.type} Notes
               </h3>
-              <div className="mb-4">
-                <p className="text-sm text-gray-600">
-                  <strong>Candidate:</strong> {selectedFollowup.placement.candidate_name}
-                </p>
-                <p className="text-sm text-gray-600">
-                  <strong>Client:</strong> {selectedFollowup.placement.client_name}
-                </p>
-                <p className="text-sm text-gray-600">
-                  <strong>Type:</strong> {selectedFollowup.followup_type === '2_week' ? '2-Week Check' : 'Monthly Salary Tracking'}
-                </p>
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <p className="text-sm text-gray-700 whitespace-pre-wrap">{viewingNotes.notes}</p>
               </div>
-
-              {selectedFollowup.followup_type === '2_week' ? (
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Satisfaction Rating (1-5)
-                    </label>
-                    <select
-                      value={satisfactionRating}
-                      onChange={(e) => setSatisfactionRating(parseInt(e.target.value))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
-                    >
-                      <option value={5}>5 - Excellent</option>
-                      <option value={4}>4 - Good</option>
-                      <option value={3}>3 - Average</option>
-                      <option value={2}>2 - Poor</option>
-                      <option value={1}>1 - Very Poor</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Issues (if any)</label>
-                    <textarea
-                      value={issues}
-                      onChange={(e) => setIssues(e.target.value)}
-                      rows={3}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
-                      placeholder="Any issues or concerns..."
-                    />
-                  </div>
-                </div>
-              ) : (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Salary Payment Status
-                  </label>
-                  <div className="space-y-2">
-                    <label className="flex items-center">
-                      <input
-                        type="radio"
-                        checked={salaryPaid === true}
-                        onChange={() => setSalaryPaid(true)}
-                        className="mr-2"
-                      />
-                      <span className="text-sm text-gray-700">Salary Paid</span>
-                    </label>
-                    <label className="flex items-center">
-                      <input
-                        type="radio"
-                        checked={salaryPaid === false}
-                        onChange={() => setSalaryPaid(false)}
-                        className="mr-2"
-                      />
-                      <span className="text-sm text-gray-700">Salary Not Paid</span>
-                    </label>
-                  </div>
-                </div>
-              )}
-
-              <div className="flex space-x-4 mt-6">
+              <div className="mt-6">
                 <button
-                  onClick={handleCompleteFollowup}
-                  className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                  onClick={() => setViewingNotes(null)}
+                  className="w-full px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600"
                 >
-                  Complete Follow-up
-                </button>
-                <button
-                  onClick={() => {
-                    setShowFollowupModal(false)
-                    setSelectedFollowup(null)
-                    setSatisfactionRating(5)
-                    setIssues('')
-                    setSalaryPaid(true)
-                  }}
-                  className="flex-1 px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600"
-                >
-                  Cancel
+                  Close
                 </button>
               </div>
             </div>

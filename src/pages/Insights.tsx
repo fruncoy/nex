@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-import { BarChart3, TrendingUp, Calendar, Users, CheckCircle, XCircle, RefreshCcw, PieChart, Target, Award, Filter, DollarSign } from 'lucide-react'
+import { BarChart3, TrendingUp, Calendar, Users, CheckCircle, XCircle, RefreshCcw, PieChart, Target, Award, Filter, DollarSign, Building2 } from 'lucide-react'
 
 interface Client {
   id: string
@@ -492,37 +492,37 @@ export function Insights() {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="bg-white rounded-lg p-4 border border-gray-200">
               <div className="flex items-center">
-                <div className="p-2 bg-green-50 rounded-lg"><Award className="w-5 h-5 text-green-600" /></div>
+                <div className="p-2 bg-blue-50 rounded-lg"><Users className="w-5 h-5 text-blue-600" /></div>
                 <div className="ml-3">
-                  <p className="text-xs text-gray-500" title="Count of clients marked Won within date range">Won Clients</p>
+                  <p className="text-xs text-gray-500">Total Leads</p>
+                  <p className="text-2xl font-bold text-gray-900">{formatNumber(getFilteredClients().filter(c => c.status.startsWith('Pending') || c.status === 'Budget' || c.status === 'Ghosted' || c.status === 'Competition').length)}</p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-white rounded-lg p-4 border border-gray-200">
+              <div className="flex items-center">
+                <div className="p-2 bg-green-50 rounded-lg"><Building2 className="w-5 h-5 text-green-600" /></div>
+                <div className="ml-3">
+                  <p className="text-xs text-gray-500">Active Clients</p>
+                  <p className="text-2xl font-bold text-gray-900">{formatNumber(getFilteredClients().filter(c => c.status.startsWith('Client -')).length)}</p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-white rounded-lg p-4 border border-gray-200">
+              <div className="flex items-center">
+                <div className="p-2 bg-emerald-50 rounded-lg"><Award className="w-5 h-5 text-emerald-600" /></div>
+                <div className="ml-3">
+                  <p className="text-xs text-gray-500">Converted Clients</p>
                   <p className="text-2xl font-bold text-gray-900">{formatNumber(dateRangeData.wonClients)}</p>
                 </div>
               </div>
             </div>
             <div className="bg-white rounded-lg p-4 border border-gray-200">
               <div className="flex items-center">
-                <div className="p-2 bg-blue-50 rounded-lg"><CheckCircle className="w-5 h-5 text-blue-600" /></div>
+                <div className="p-2 bg-purple-50 rounded-lg"><CheckCircle className="w-5 h-5 text-purple-600" /></div>
                 <div className="ml-3">
-                  <p className="text-xs text-gray-500" title="Count of candidates marked Hired within date range">Won Candidates</p>
-                  <p className="text-2xl font-bold text-gray-900">{formatNumber(dateRangeData.wonCandidates)}</p>
-                </div>
-              </div>
-            </div>
-            <div className="bg-white rounded-lg p-4 border border-gray-200">
-              <div className="flex items-center">
-                <div className="p-2 bg-emerald-50 rounded-lg"><TrendingUp className="w-5 h-5 text-emerald-600" /></div>
-                <div className="ml-3">
-                  <p className="text-xs text-gray-500" title="Won / (Won + Lost) within range">Win Rate</p>
-                  <p className="text-2xl font-bold text-gray-900">{dateRangeData.overallWinRate}%</p>
-                </div>
-              </div>
-            </div>
-            <div className="bg-white rounded-lg p-4 border border-gray-200">
-              <div className="flex items-center">
-                <div className="p-2 bg-red-50 rounded-lg"><XCircle className="w-5 h-5 text-red-600" /></div>
-                <div className="ml-3">
-                  <p className="text-xs text-gray-500" title="Lost / (Won + Lost) within range">Loss Rate</p>
-                  <p className="text-2xl font-bold text-gray-900">{dateRangeData.overallLossRate}%</p>
+                  <p className="text-xs text-gray-500">Active Placements</p>
+                  <p className="text-2xl font-bold text-gray-900">{formatNumber(getFilteredClients().filter(c => c.status === 'Won' && c.placement_status === 'Active').length)}</p>
                 </div>
               </div>
             </div>
@@ -600,37 +600,59 @@ export function Insights() {
             </div>
           </div>
 
-          {/* Client Funnel */}
+          {/* Lead to Placement Funnel */}
           <div className="bg-white rounded-lg p-4 md:p-6 border border-gray-200">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Client Funnel</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Lead to Placement Funnel</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-4">
               <div className="text-center">
                 <div className="bg-blue-100 rounded-lg p-3 md:p-4">
-                  <p className="text-xl md:text-2xl font-bold text-blue-600">{formatNumber(clients.length)}</p>
-                  <p className="text-xs text-gray-600">Total Inquiries</p>
-                </div>
-              </div>
-              <div className="text-center">
-                <div className="bg-yellow-100 rounded-lg p-3 md:p-4">
-                  <p className="text-xl md:text-2xl font-bold text-yellow-600">{formatNumber(clients.filter(c => c.status.includes('Active')).length)}</p>
-                  <p className="text-xs text-gray-600">Active</p>
+                  <p className="text-xl md:text-2xl font-bold text-blue-600">{formatNumber(clients.filter(c => c.status.startsWith('Pending')).length)}</p>
+                  <p className="text-xs text-gray-600">Leads</p>
                 </div>
               </div>
               <div className="text-center">
                 <div className="bg-green-100 rounded-lg p-3 md:p-4">
-                  <p className="text-xl md:text-2xl font-bold text-green-600">{formatNumber(clients.filter(c => c.status === 'Won').length)}</p>
-                  <p className="text-xs text-gray-600">Won</p>
+                  <p className="text-xl md:text-2xl font-bold text-green-600">{formatNumber(clients.filter(c => c.status.startsWith('Active')).length)}</p>
+                  <p className="text-xs text-gray-600">Clients</p>
+                </div>
+              </div>
+              <div className="text-center">
+                <div className="bg-emerald-100 rounded-lg p-3 md:p-4">
+                  <p className="text-xl md:text-2xl font-bold text-emerald-600">{formatNumber(clients.filter(c => c.status === 'Won').length)}</p>
+                  <p className="text-xs text-gray-600">Converted</p>
+                </div>
+              </div>
+              <div className="text-center">
+                <div className="bg-purple-100 rounded-lg p-3 md:p-4">
+                  <p className="text-xl md:text-2xl font-bold text-purple-600">{formatNumber(clients.filter(c => c.status === 'Won' && c.placement_status === 'Active').length)}</p>
+                  <p className="text-xs text-gray-600">Active Placements</p>
                 </div>
               </div>
             </div>
-            <div className="text-center p-3 bg-gray-50 rounded-lg">
-              <p className="text-xs md:text-sm text-gray-600">Active → Won Conversion: <span className="font-bold text-nestalk-primary">{(() => {
-                const active = clients.filter(c => c.status.includes('Active')).length
-                const won = clients.filter(c => c.status === 'Won').length
-                const total = active + won
-                return total > 0 ? Math.round((won / total) * 100) : 0
-              })()}%</span></p>
-              <p className="text-xs text-gray-500">Formula: Won / (Active + Won)</p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="text-center p-3 bg-gray-50 rounded-lg">
+                <p className="text-xs md:text-sm text-gray-600">Lead → Client: <span className="font-bold text-nestalk-primary">{(() => {
+                  const leads = clients.filter(c => c.status.startsWith('Pending')).length
+                  const activeClients = clients.filter(c => c.status.startsWith('Active')).length
+                  const total = leads + activeClients
+                  return total > 0 ? Math.round((activeClients / total) * 100) : 0
+                })()}%</span></p>
+              </div>
+              <div className="text-center p-3 bg-gray-50 rounded-lg">
+                <p className="text-xs md:text-sm text-gray-600">Client → Won: <span className="font-bold text-nestalk-primary">{(() => {
+                  const activeClients = clients.filter(c => c.status.startsWith('Active')).length
+                  const won = clients.filter(c => c.status === 'Won').length
+                  const total = activeClients + won
+                  return total > 0 ? Math.round((won / total) * 100) : 0
+                })()}%</span></p>
+              </div>
+              <div className="text-center p-3 bg-gray-50 rounded-lg">
+                <p className="text-xs md:text-sm text-gray-600">Placement Success: <span className="font-bold text-nestalk-primary">{(() => {
+                  const wonClients = clients.filter(c => c.status === 'Won').length
+                  const activePlacements = clients.filter(c => c.status === 'Won' && c.placement_status === 'Active').length
+                  return wonClients > 0 ? Math.round((activePlacements / wonClients) * 100) : 0
+                })()}%</span></p>
+              </div>
             </div>
           </div>
 
@@ -1135,22 +1157,31 @@ export function Insights() {
       {/* Clients Tab */}
       {activeTab === 'clients' && (
         <div className="space-y-6">
-          {/* Client KPI Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+          {/* Lead & Client KPI Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
             <div className="bg-white rounded-lg p-4 border border-gray-200">
               <div className="flex items-center">
                 <div className="p-2 bg-blue-50 rounded-lg"><Users className="w-5 h-5 text-blue-600" /></div>
                 <div className="ml-3">
-                  <p className="text-xs text-gray-500">Total Clients</p>
-                  <p className="text-2xl font-bold text-gray-900">{formatNumber(getFilteredClients().length)}</p>
+                  <p className="text-xs text-gray-500">Total Leads</p>
+                  <p className="text-2xl font-bold text-gray-900">{formatNumber(getFilteredClients().filter(c => c.status.startsWith('Pending') || c.status === 'Budget' || c.status === 'Ghosted' || c.status === 'Competition').length)}</p>
                 </div>
               </div>
             </div>
             <div className="bg-white rounded-lg p-4 border border-gray-200">
               <div className="flex items-center">
-                <div className="p-2 bg-green-50 rounded-lg"><CheckCircle className="w-5 h-5 text-green-600" /></div>
+                <div className="p-2 bg-green-50 rounded-lg"><Building2 className="w-5 h-5 text-green-600" /></div>
                 <div className="ml-3">
-                  <p className="text-xs text-gray-500">Won</p>
+                  <p className="text-xs text-gray-500">Active Clients</p>
+                  <p className="text-2xl font-bold text-gray-900">{formatNumber(getFilteredClients().filter(c => c.status.startsWith('Client -')).length)}</p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-white rounded-lg p-4 border border-gray-200">
+              <div className="flex items-center">
+                <div className="p-2 bg-emerald-50 rounded-lg"><Award className="w-5 h-5 text-emerald-600" /></div>
+                <div className="ml-3">
+                  <p className="text-xs text-gray-500">Converted</p>
                   <p className="text-2xl font-bold text-gray-900">{formatNumber(dateRangeData.wonClients)}</p>
                 </div>
               </div>
@@ -1159,41 +1190,65 @@ export function Insights() {
               <div className="flex items-center">
                 <div className="p-2 bg-red-50 rounded-lg"><XCircle className="w-5 h-5 text-red-600" /></div>
                 <div className="ml-3">
-                  <p className="text-xs text-gray-500">Lost</p>
-                  <p className="text-2xl font-bold text-gray-900">{formatNumber(dateRangeData.lostClients)}</p>
+                  <p className="text-xs text-gray-500">Lost Leads</p>
+                  <p className="text-2xl font-bold text-gray-900">{formatNumber(getFilteredClients().filter(c => c.status.startsWith('Lost')).length)}</p>
                 </div>
               </div>
             </div>
             <div className="bg-white rounded-lg p-4 border border-gray-200">
               <div className="flex items-center">
-                <div className="p-2 bg-emerald-50 rounded-lg"><TrendingUp className="w-5 h-5 text-emerald-600" /></div>
+                <div className="p-2 bg-purple-50 rounded-lg"><CheckCircle className="w-5 h-5 text-purple-600" /></div>
                 <div className="ml-3">
-                  <p className="text-xs text-gray-500">Win Rate</p>
-                  <p className="text-2xl font-bold text-gray-900">{dateRangeData.clientWinRate}%</p>
+                  <p className="text-xs text-gray-500">Active Placements</p>
+                  <p className="text-2xl font-bold text-gray-900">{formatNumber(getFilteredClients().filter(c => c.status === 'Won' && c.placement_status === 'Active').length)}</p>
                 </div>
               </div>
             </div>
             <div className="bg-white rounded-lg p-4 border border-gray-200">
               <div className="flex items-center">
-                <div className="p-2 bg-red-50 rounded-lg"><XCircle className="w-5 h-5 text-red-600" /></div>
+                <div className="p-2 bg-orange-50 rounded-lg"><RefreshCcw className="w-5 h-5 text-orange-600" /></div>
                 <div className="ml-3">
-                  <p className="text-xs text-gray-500">Loss Rate</p>
-                  <p className="text-2xl font-bold text-gray-900">{dateRangeData.clientLossRate}%</p>
+                  <p className="text-xs text-gray-500">Lost Placements</p>
+                  <p className="text-2xl font-bold text-gray-900">{formatNumber(getFilteredClients().filter(c => c.status === 'Won' && (c.placement_status?.includes('Lost') || false)).length)}</p>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Clients by Status */}
+          {/* Lead to Client Journey */}
           <div className="bg-white rounded-lg p-6 border border-gray-200">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Clients by Status</h3>
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Lead to Client Journey</h3>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {['Pending', 'Active', 'Won', 'Lost'].map(status => {
-                const count = clientStatusData.find(s => s.status === status)?.count || 0
+              <div className="p-3 bg-blue-50 rounded-lg text-center">
+                <p className="text-2xl font-bold text-blue-600">{getFilteredClients().filter(c => c.status.startsWith('Pending')).length}</p>
+                <p className="text-xs text-gray-600">Leads (Pending)</p>
+              </div>
+              <div className="p-3 bg-green-50 rounded-lg text-center">
+                <p className="text-2xl font-bold text-green-600">{getFilteredClients().filter(c => c.status.startsWith('Active')).length}</p>
+                <p className="text-xs text-gray-600">Clients (Active)</p>
+              </div>
+              <div className="p-3 bg-emerald-50 rounded-lg text-center">
+                <p className="text-2xl font-bold text-emerald-600">{getFilteredClients().filter(c => c.status === 'Won').length}</p>
+                <p className="text-xs text-gray-600">Converted (Won)</p>
+              </div>
+              <div className="p-3 bg-red-50 rounded-lg text-center">
+                <p className="text-2xl font-bold text-red-600">{getFilteredClients().filter(c => c.status.startsWith('Lost') || c.status === 'Budget' || c.status === 'Ghosted' || c.status === 'Competition').length}</p>
+                <p className="text-xs text-gray-600">Lost</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Placement Status Distribution */}
+          <div className="bg-white rounded-lg p-6 border border-gray-200">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Placement Status (Converted Clients)</h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {['Active', 'Lost (Refunded)', 'Lost (No Refund)', undefined].map(status => {
+                const count = getFilteredClients().filter(c => c.status === 'Won' && (status === undefined ? !c.placement_status : c.placement_status === status)).length
+                const label = status || 'No Status'
                 return (
-                  <div key={status} className="p-3 bg-gray-50 rounded-lg text-center">
+                  <div key={label} className="p-3 bg-gray-50 rounded-lg text-center">
                     <p className="text-2xl font-bold text-nestalk-primary">{count}</p>
-                    <p className="text-xs text-gray-600">{status}</p>
+                    <p className="text-xs text-gray-600">{label}</p>
                   </div>
                 )
               })}
@@ -1312,23 +1367,23 @@ export function Insights() {
 
           {/* Source Outcomes */}
           <div className="bg-white rounded-lg p-4 md:p-6 border border-gray-200 mb-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-6">Source Outcomes</h3>
+            <h3 className="text-lg font-semibold text-gray-900 mb-6">Source Outcomes (Lead Journey)</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-8">
               {sources.map(source => {
                 const sourceClients = getFilteredClients().filter(c => (c.source || 'Other') === source)
-                const pending = sourceClients.filter(c => c.status === 'Pending').length
-                const active = sourceClients.filter(c => c.status.includes('Active')).length
-                const lost = sourceClients.filter(c => c.status.includes('Lost')).length
-                const won = sourceClients.filter(c => c.status === 'Won').length
-                const total = pending + active + lost + won
+                const leads = sourceClients.filter(c => c.status.startsWith('Pending')).length
+                const clients = sourceClients.filter(c => c.status.startsWith('Active')).length
+                const converted = sourceClients.filter(c => c.status === 'Won').length
+                const lost = sourceClients.filter(c => c.status.startsWith('Lost')).length
+                const total = leads + clients + converted + lost
                 
                 if (total === 0) return null
                 
                 const statusData = [
-                  { status: 'Pending', count: pending, color: '#3b82f6' },
-                  { status: 'Active', count: active, color: '#f97316' },
-                  { status: 'Lost', count: lost, color: '#ef4444' },
-                  { status: 'Won', count: won, color: '#10b981' }
+                  { status: 'Leads', count: leads, color: '#3b82f6' },
+                  { status: 'Clients', count: clients, color: '#10b981' },
+                  { status: 'Converted', count: converted, color: '#059669' },
+                  { status: 'Lost', count: lost, color: '#ef4444' }
                 ].filter(d => d.count > 0)
                 
                 return (
@@ -1482,7 +1537,7 @@ export function Insights() {
           <div className="bg-white rounded-lg p-6 border border-gray-200 mb-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-6">Source Conversion Leaderboard</h3>
             <div className="mb-4 text-sm text-gray-500 text-center">
-              Shows win rate efficiency: Won / (Won + Lost) per source
+              Shows conversion efficiency: Converted / (Converted + Lost) per source
             </div>
             <div className="space-y-4">
               {sources.map(source => {
@@ -1554,7 +1609,7 @@ export function Insights() {
       {activeTab === 'candidates' && (
         <div className="space-y-6">
           {/* Candidate KPI Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
             <div className="bg-white rounded-lg p-4 border border-gray-200">
               <div className="flex items-center">
                 <div className="p-2 bg-blue-50 rounded-lg"><Users className="w-5 h-5 text-blue-600" /></div>

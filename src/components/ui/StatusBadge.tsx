@@ -2,7 +2,7 @@ import React from 'react'
 
 interface StatusBadgeProps {
   status: string
-  type?: 'candidate' | 'client' | 'training' | 'interview'
+  type?: 'candidate' | 'client' | 'training' | 'interview' | 'lead'
 }
 
 export function StatusBadge({ status, type = 'candidate' }: StatusBadgeProps) {
@@ -12,6 +12,8 @@ export function StatusBadge({ status, type = 'candidate' }: StatusBadgeProps) {
     const candidateStatusColors: Record<string, string> = {
       'WON': 'bg-green-100 text-green-800',
       'LOST': 'bg-red-100 text-red-800',
+      'LOST - INTERVIEW LOST': 'bg-red-100 text-red-800',
+      'LOST - MISSED INTERVIEW': 'bg-orange-100 text-orange-800',
       'LOST, AGE': 'bg-red-100 text-red-800',
       'LOST, NO REFERENCES': 'bg-red-100 text-red-800',
       'LOST, NO RESPONSE': 'bg-red-100 text-red-800', // Legacy support
@@ -26,8 +28,20 @@ export function StatusBadge({ status, type = 'candidate' }: StatusBadgeProps) {
       'ARCHIVED': 'bg-gray-200 text-gray-700'
     }
 
+    const leadStatusColors: Record<string, string> = {
+      'PENDING': 'bg-yellow-100 text-yellow-800',
+      'LOST': 'bg-red-100 text-red-800'
+    }
+
     const clientStatusColors: Record<string, string> = {
-      // MainStatus - SubStatus format colors based on main status
+      'CLIENT - ACTIVE': 'bg-blue-100 text-blue-800',
+      'CLIENT - REVIEWING PROFILES': 'bg-blue-100 text-blue-800',
+      'CLIENT - PROFILE SENT BUT NO RESPONSE': 'bg-yellow-100 text-yellow-800',
+      'CLIENT - CONDUCTING TRIALS': 'bg-purple-100 text-purple-800',
+      'CLIENT - PAYMENT PENDING': 'bg-orange-100 text-orange-800',
+      'CLIENT - WON': 'bg-green-100 text-green-800',
+      'CLIENT - LOST': 'bg-red-100 text-red-800',
+      // Legacy support
       'PENDING - FORM NOT FILLED': 'bg-yellow-100 text-yellow-800',
       'PENDING - PAF NOT PAID': 'bg-yellow-100 text-yellow-800',
       'PENDING - SILENT AFTER PROFILES': 'bg-yellow-100 text-yellow-800',
@@ -37,7 +51,6 @@ export function StatusBadge({ status, type = 'candidate' }: StatusBadgeProps) {
       'LOST/COLD - GHOSTED': 'bg-red-100 text-red-800',
       'LOST/COLD - BUDGET CONSTRAINTS': 'bg-red-100 text-red-800',
       'LOST/COLD - DISAPPOINTED WITH PROFILES': 'bg-red-100 text-red-800',
-      'WON': 'bg-green-100 text-green-800',
       
       // Single status format (for compatibility)
       'PENDING': 'bg-yellow-100 text-yellow-800',
@@ -45,9 +58,14 @@ export function StatusBadge({ status, type = 'candidate' }: StatusBadgeProps) {
       'PAF NOT PAID': 'bg-yellow-100 text-yellow-800',
       'SILENT AFTER PROFILES': 'bg-yellow-100 text-yellow-800',
       'ACTIVE': 'bg-blue-100 text-blue-800',
+      'REVIEWING PROFILES': 'bg-blue-100 text-blue-800',
+      'PROFILE SENT BUT NO RESPONSE': 'bg-yellow-100 text-yellow-800',
+      'CONDUCTING TRIALS': 'bg-purple-100 text-purple-800',
       'FORM FILLED, NO RESPONSE YET': 'bg-blue-100 text-blue-800',
       'COMMUNICATION ONGOING': 'bg-blue-100 text-blue-800',
-      'PAYMENT PENDING': 'bg-blue-100 text-blue-800',
+      'PAYMENT PENDING': 'bg-orange-100 text-orange-800',
+      'WON': 'bg-green-100 text-green-800',
+      'LOST': 'bg-red-100 text-red-800',
       'LOST/COLD': 'bg-red-100 text-red-800',
       'GHOSTED': 'bg-red-100 text-red-800',
       'BUDGET CONSTRAINTS': 'bg-red-100 text-red-800',
@@ -102,6 +120,7 @@ export function StatusBadge({ status, type = 'candidate' }: StatusBadgeProps) {
 
     const mapByType: Record<string, Record<string, string>> = {
       candidate: candidateStatusColors,
+      lead: leadStatusColors,
       client: clientStatusColors,
       training: trainingStatusColors,
       interview: interviewStatusColors,

@@ -6,6 +6,7 @@ import { Layout } from './components/Layout'
 import { LoginForm } from './components/auth/LoginForm'
 import { Dashboard } from './pages/Dashboard'
 import { Candidates } from './pages/Candidates'
+import { Leads } from './pages/Leads'
 import { Clients } from './pages/Clients'
 import { TrainingLeads } from './pages/TrainingLeads'
 import { Interviews } from './pages/Interviews'
@@ -14,7 +15,8 @@ import { Reminders } from './pages/Reminders'
 import { MeetingNotes } from './pages/MeetingNotes'
 import { Reporting } from './pages/Reporting'
 import { DataEntry } from './pages/reporting/DataEntry'
-import { Reports } from './pages/reporting/Reports'
+import { Reports as ReportingReports } from './pages/reporting/Reports'
+import { Reports } from './pages/Reports'
 import { Dashboards } from './pages/reporting/Dashboards'
 import { Insights } from './pages/Insights'
 import { Vetting } from './pages/Vetting'
@@ -59,6 +61,7 @@ function AppRoutes() {
         <Route path="candidates" element={<Candidates />} />
         <Route path="vetting" element={<Vetting />} />
         <Route path="clients" element={<Clients />} />
+        <Route path="leads" element={<Leads />} />
         <Route path="converted-clients" element={<ConvertedClients />} />
         <Route path="placements" element={<Placements />} />
         <Route path="staff" element={<Staff />} />
@@ -71,10 +74,11 @@ function AppRoutes() {
         <Route path="updates" element={<Updates />} />
         <Route path="reminders" element={<Reminders />} />
         <Route path="meeting-notes" element={<MeetingNotes />} />
+        <Route path="reports" element={<Reports />} />
         <Route path="reporting" element={<Reporting />}>
           <Route index element={<DataEntry />} />
           <Route path="data-entry" element={<DataEntry />} />
-          <Route path="reports" element={<Reports />} />
+          <Route path="reports" element={<ReportingReports />} />
           <Route path="dashboards" element={<Dashboards />} />
         </Route>
       </Route>
