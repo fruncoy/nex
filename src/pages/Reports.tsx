@@ -667,7 +667,339 @@ export function Reports() {
         }
     </style>
 </head>
-<body>`
+<body>
+    <!-- COVER PAGE -->
+    <div class="cover-page">
+        <div class="cover-logo">Nestara</div>
+        
+        <div class="cover-title">Business Progress Report</div>
+        
+        <div class="cover-subtitle">Comprehensive Business Analytics</div>
+        
+        <div class="cover-date">September 15 - October 22, 2025</div>
+        
+        <div class="cover-team">
+            <div class="cover-team-title">Prepared By</div>
+            <div class="cover-team-member">Frank, Marketing Specialist</div>
+            <div class="cover-team-member">Ivy, Client Specialist</div>
+            <div class="cover-team-member">Purity, Recruitment Specialist</div>
+        </div>
+        
+        <div class="cover-footer">
+            Nestara Confidential Report | Internal Use Only
+        </div>
+    </div>
+
+    <!-- PAGE 1: BUSINESS CORE -->
+    <div class="page">
+        <div class="header">
+            <div class="logo">Nestara</div>
+            <div class="date-badge">Generated: October 25, 2025</div>
+        </div>
+
+        <div class="title-section">
+            <div class="main-title">Business Progress Report</div>
+            <div class="subtitle">Comprehensive Analytics | September 15 - October 22, 2025</div>
+        </div>
+
+        <div class="section-header">BUSINESS CORE OVERVIEW</div>
+
+        <div class="metrics-grid">
+            <div class="metric-card">
+                <div class="metric-value">39</div>
+                <div class="metric-label">Total Clients</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value">258</div>
+                <div class="metric-label">Total Candidates</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value">18.2%</div>
+                <div class="metric-label">Candidate Win Rate</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value">10.3%</div>
+                <div class="metric-label">Client Win Rate</div>
+            </div>
+        </div>
+
+        <div class="insight-box">
+            <div class="insight-title">Executive Summary</div>
+            <div class="insight-text">
+                Over the 40-day period (Sep 15 - Oct 22, 2025), Nestara demonstrated strong market presence with 39 client engagements and 258 candidate applications. The business achieved 4 successful client placements (10.3% win rate) and onboarded 47 qualified candidates (18.2% win rate) into the talent pool. With 11 active clients in communication (who paid KES 3,000 PAF) and 13 pending candidates, the pipeline remains healthy. Marketing investment of KES 32,000 generated strong performance with Google Ads achieving 100% lead conversion to paid PAF or won status. Key operational challenges include high candidate attrition rates (68.2% lost primarily due to lack of good conduct certificates) and client ghosting (13 clients), requiring enhanced engagement strategies.
+            </div>
+        </div>
+
+        <div class="section-header">BUSINESS WINS & ACHIEVEMENTS</div>
+
+        <div class="two-col">
+            <div class="card">
+                <div class="card-title">Successful Placements</div>
+                <div class="stat-row">
+                    <span class="stat-label">Part-Time Placements</span>
+                    <span class="stat-value">2</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">• Angeline Nelima</span>
+                    <span class="stat-value">Active</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">• Doreen Khayanga</span>
+                    <span class="stat-value">Active</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Active Trial</span>
+                    <span class="stat-value">1</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">• Evaline Adhiambo</span>
+                    <span class="stat-value">On Trial</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Reliever Assignment</span>
+                    <span class="stat-value">1</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">• Nelly (Client: Safiya)</span>
+                    <span class="stat-value">Active</span>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">Reputation & Reviews</div>
+                <div class="stat-row">
+                    <span class="stat-label">Google Reviews</span>
+                    <span class="stat-value">12</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Published Client Review</span>
+                    <span class="stat-value">1</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">• Asim Shah</span>
+                    <span class="stat-value">✓</span>
+                </div>
+                <div style="margin-top: 10px; padding: 7px; background: #f0f9ff; border-radius: 5px;">
+                    <div style="font-size: 9px; color: #666; margin-bottom: 3px;">Review Velocity</div>
+                    <div class="highlight-number">0.3 <span style="font-size: 11px; font-weight: normal;">reviews/day</span></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section-header">CHALLENGES & LEARNINGS</div>
+
+        <div class="two-col">
+            <div class="card">
+                <div class="card-title">Failed Placements & Trials</div>
+                <div class="stat-row">
+                    <span class="stat-label">Failed Placement</span>
+                    <span class="stat-value">1</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">• Euphemia</span>
+                    <span class="badge badge-danger">Placement Failed</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Failed Trial</span>
+                    <span class="stat-value">1</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">• Everline Wairimu</span>
+                    <span class="badge badge-danger">BLACKLISTED</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Refunded Placement</span>
+                    <span class="stat-value">1</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">• Rachael Njoki (KES 23,000)</span>
+                    <span class="badge badge-warning">No Good Conduct</span>
+                </div>
+                <div style="margin-top: 8px; font-size: 9px; color: #d32f2f; font-weight: 600;">
+                    Trial Success Rate: 0% (0/1)
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">Client Pipeline Health</div>
+                <div class="stat-row">
+                    <span class="stat-label">Active Communication (Paid PAF)</span>
+                    <span class="stat-value">11 clients</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Ghosted/Lost</span>
+                    <span class="stat-value">13 clients</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Budget Constraints</span>
+                    <span class="stat-value">4 clients</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Pending Actions</span>
+                    <span class="stat-value">6 clients</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="section-header">CLIENT CONVERSION FUNNEL</div>
+
+        <div class="funnel">
+            <div class="funnel-stage">
+                <span>Total Client Inquiries</span>
+                <span>39 (100%)</span>
+            </div>
+            <div class="funnel-stage">
+                <span>Active + Communication Ongoing</span>
+                <span>11 (28.2%)</span>
+            </div>
+            <div class="funnel-stage">
+                <span>Won Clients</span>
+                <span>4 (10.3%)</span>
+            </div>
+            <div class="funnel-stage">
+                <span>Successful Placements</span>
+                <span>2 (5.1%)</span>
+            </div>
+        </div>
+
+        <div class="footer">
+            Nestara Progress Report | Confidential Business Document | Page 1 of 4
+        </div>
+    </div>
+
+    <!-- PAGE 2: CLIENT ANALYSIS -->
+    <div class="page">
+        <div class="header">
+            <div class="logo">Nestara</div>
+            <div class="date-badge">Sep 15 - Oct 22, 2025</div>
+        </div>
+
+        <div class="section-header">CLIENT ACQUISITION & PERFORMANCE ANALYSIS</div>
+
+        <div class="metrics-grid">
+            <div class="metric-card">
+                <div class="metric-value">39</div>
+                <div class="metric-label">Total Inquiries</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value">4</div>
+                <div class="metric-label">Won Clients</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value">10.3%</div>
+                <div class="metric-label">Conversion Rate</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value">11</div>
+                <div class="metric-label">Active Pipeline (Paid PAF)</div>
+            </div>
+        </div>
+
+        <div class="insight-box">
+            <div class="insight-title">AI-Powered Client Insights</div>
+            <div class="insight-text">
+                Client acquisition shows strong channel diversification with Google Search (10 clients) and Instagram (11 clients) leading inquiries. Referrals demonstrate superior quality with 33.3% win rate (2 of 6 converted), significantly outperforming all channels. Google Ads achieved exceptional 100% conversion to paid PAF or won status (10 of 10), with 80% paying the KES 3,000 Profile Access Fee. The 33.3% ghosting rate (13 clients) after form submission indicates potential friction in early engagement stages. Budget constraints affected 10.3% of prospects. House Manager roles dominate demand (20 requests, 51.3%), followed by Housekeepers (11 requests, 28.2%). Active pipeline of 11 clients who paid PAF represents strong near-term revenue potential.
+            </div>
+        </div>
+
+        <div class="section-header">CLIENT PIPELINE STATUS BREAKDOWN</div>
+
+        <div class="four-col">
+            <div class="status-card" style="border-color: #2e7d32;">
+                <div class="status-number" style="color: #2e7d32;">4</div>
+                <div class="status-label">Won</div>
+                <div style="font-size: 8px; color: #999; margin-top: 2px;">10.3%</div>
+            </div>
+            <div class="status-card" style="border-color: #1565c0;">
+                <div class="status-number" style="color: #1565c0;">11</div>
+                <div class="status-label">Active (Paid PAF)</div>
+                <div style="font-size: 8px; color: #999; margin-top: 2px;">28.2%</div>
+            </div>
+            <div class="status-card" style="border-color: #f57c00;">
+                <div class="status-number" style="color: #f57c00;">6</div>
+                <div class="status-label">Pending</div>
+                <div style="font-size: 8px; color: #999; margin-top: 2px;">15.4%</div>
+            </div>
+            <div class="status-card" style="border-color: #c62828;">
+                <div class="status-number" style="color: #c62828;">18</div>
+                <div class="status-label">Lost/Cold</div>
+                <div style="font-size: 8px; color: #999; margin-top: 2px;">46.2%</div>
+            </div>
+        </div>
+
+        <div class="footer">
+            Nestara Progress Report | Confidential Business Document | Page 2 of 4
+        </div>
+    </div>
+
+    <!-- PAGE 3: CANDIDATES -->
+    <div class="page">
+        <div class="header">
+            <div class="logo">Nestara</div>
+            <div class="date-badge">Sep 15 - Oct 22, 2025</div>
+        </div>
+
+        <div class="section-header">CANDIDATES RECRUITMENT ANALYSIS</div>
+
+        <div class="metrics-grid">
+            <div class="metric-card">
+                <div class="metric-value">47</div>
+                <div class="metric-label">WON Candidates</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value">30</div>
+                <div class="metric-label">Interviews Conducted</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value">96.7%</div>
+                <div class="metric-label">Interview Success</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value">23</div>
+                <div class="metric-label">Complete Profiles</div>
+            </div>
+        </div>
+
+        <div class="footer">
+            Nestara Progress Report | Confidential Business Document | Page 3 of 4
+        </div>
+    </div>
+
+    <!-- PAGE 4: MARKETING -->
+    <div class="page">
+        <div class="header">
+            <div class="logo">Nestara</div>
+            <div class="date-badge">Sep 15 - Oct 22, 2025</div>
+        </div>
+
+        <div class="section-header">MARKETING PERFORMANCE ANALYSIS</div>
+
+        <div class="metrics-grid">
+            <div class="metric-card">
+                <div class="metric-value">32.0K</div>
+                <div class="metric-label">Total Ad Spend (KES)</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value">1,500</div>
+                <div class="metric-label">Cost Per Client Lead</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value">250</div>
+                <div class="metric-label">Cost Per WON Candidate</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value">100%</div>
+                <div class="metric-label">Google Conversion</div>
+            </div>
+        </div>
+
+        <div class="footer">
+            Nestara Progress Report | Confidential Business Document | Page 4 of 4
+        </div>
+    </div>
+</body>
+</html>`
+  }
 
   const getReportHTML = () => {
     const metrics = getBusinessMetrics()
@@ -735,63 +1067,40 @@ export function Reports() {
 
   return (
     <div className="p-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Business Reports</h1>
-        <p className="text-gray-600">Generate and manage comprehensive business analytics reports</p>
-      </div>
-
-      {/* Generate New Report */}
-      <div className="mb-6 p-4 bg-gray-50 rounded-lg">
-        <h3 className="text-lg font-semibold mb-3">Generate New Report</h3>
-        <div className="flex gap-3 items-end">
-          <div>
-            <label className="block text-xs text-gray-600 mb-1">Start Date</label>
-            <input
-              type="date"
-              value={dateRange.start}
-              onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))}
-              className="px-2 py-1 border border-gray-300 rounded text-sm"
-            />
-          </div>
-          
-          <div>
-            <label className="block text-xs text-gray-600 mb-1">End Date</label>
-            <input
-              type="date"
-              value={dateRange.end}
-              onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))}
-              className="px-2 py-1 border border-gray-300 rounded text-sm"
-            />
-          </div>
-
-          <button
-            onClick={generateReport}
-            className="flex items-center gap-2 px-4 py-2 bg-nestalk-primary text-white rounded hover:bg-nestalk-primary/90"
-          >
-            <Plus className="w-4 h-4" />
-            Generate Report
-          </button>
+      <div className="mb-6 flex justify-between items-center">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Business Reports</h1>
+          <p className="text-gray-600">Generate and manage comprehensive business analytics reports</p>
         </div>
+        <button
+          onClick={generateReport}
+          className="flex items-center gap-2 px-4 py-2 bg-nestalk-primary text-white rounded hover:bg-nestalk-primary/90"
+        >
+          <Plus className="w-4 h-4" />
+          Generate Report
+        </button>
       </div>
+
+
 
       {/* Reports List */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {/* Template Report */}
+        {/* Business Progress Report */}
         <div className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm">
           <div className="flex items-start justify-between mb-3">
             <FileText className="w-8 h-8 text-nestalk-primary" />
-            <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full font-medium">Template</span>
+            <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full font-medium">Report</span>
           </div>
           <h3 className="font-semibold text-gray-900 mb-2">Business Progress Report from 15th Sep to 22nd Oct</h3>
           <p className="text-sm text-gray-600 mb-3">Sep 15, 2025 - Oct 22, 2025</p>
-          <p className="text-xs text-gray-500 mb-4">Sample report template</p>
+          <p className="text-xs text-gray-500 mb-4">Comprehensive business analytics report</p>
           <div className="flex gap-2">
             <button
               onClick={() => setViewingReport('template')}
               className="flex items-center gap-1 px-3 py-1 bg-nestalk-primary text-white rounded text-sm hover:bg-nestalk-primary/90"
             >
               <Eye className="w-3 h-3" />
-              View
+              View Report
             </button>
           </div>
         </div>
