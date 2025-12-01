@@ -360,7 +360,7 @@ export function CreateProfile() {
         referee_2_name: qualificationData.referee_2_name || null,
         referee_2_phone: qualificationData.referee_2_phone || null,
         source: formData.source,
-        status: kenyaYears >= 7 && !hasGoodConduct ? 'Pending, applying GC' : 'PENDING',
+        status: kenyaYears >= 7 && !hasGoodConduct ? 'Pending, applying GC' : 'Pending Review',
         inquiry_date: new Date().toISOString().split('T')[0],
         added_by: 'self'
       }
@@ -493,8 +493,8 @@ export function CreateProfile() {
             return 'Lost, No Good Conduct'
           }
           
-          // All requirements met = PENDING
-          return 'PENDING'
+          // All requirements met = Pending Review
+          return 'Pending Review'
         })(),
         lost_reason: isQualified ? null : qualificationReasons.join(', '),
         inquiry_date: new Date().toISOString().split('T')[0],
@@ -732,7 +732,7 @@ export function CreateProfile() {
             </div>
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-xl font-bold text-gray-900">
-                {currentStep === 1 ? 'Initial Candidate Review' : 
+                {currentStep === 1 ? 'Basic Information' : 
                  currentStep === 2 ? 'Work Experience' :
                  currentStep === 3 ? 'References' :
                  currentStep === 4 ? 'Confirm Details' :
@@ -1429,7 +1429,7 @@ export function CreateProfile() {
           <div className="p-8">
             {formStep === 1 && (
               <div className="space-y-4">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Basic Information - {formData.name}</h3>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Personal Information - {formData.name}</h3>
                 <input
                   type="text"
                   placeholder="Full Name *"

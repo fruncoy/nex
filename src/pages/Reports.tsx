@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { Download, Calendar, FileText, Printer, Eye, Trash2, Plus } from 'lucide-react'
+import { geminiService, type BusinessData } from '../services/geminiService'
 
 interface Report {
   id: string
@@ -15,10 +16,10 @@ interface Client {
   id: string
   status: string
   source: string
-  want_to_hire: string
+  role_requested: string
   created_at: string
-  placement_fee?: number
-  placement_status?: string
+  name_company: string
+  contact_info: string
 }
 
 interface Candidate {
@@ -26,6 +27,23 @@ interface Candidate {
   status: string
   source: string
   role: string
+  created_at: string
+  name: string
+  phone: string
+}
+
+interface Interview {
+  id: string
+  candidate_id: string
+  attended: boolean
+  outcome: string
+  created_at: string
+}
+
+interface TrainingLead {
+  id: string
+  status: string
+  training_type: string
   created_at: string
 }
 
@@ -36,6 +54,12 @@ export function Reports() {
   const [dateRange, setDateRange] = useState({ start: '', end: '' })
   const [clients, setClients] = useState<Client[]>([])
   const [candidates, setCandidates] = useState<Candidate[]>([])
+  const [interviews, setInterviews] = useState<Interview[]>([])
+  const [trainingLeads, setTrainingLeads] = useState<TrainingLead[]>([])
+  const [executiveSummary, setExecutiveSummary] = useState<string>('')
+  const [clientInsights, setClientInsights] = useState<string>('')
+  const [candidateInsights, setCandidateInsights] = useState<string>('')
+  const [generatingInsights, setGeneratingInsights] = useState(false)
 
   useEffect(() => {
     loadReports()
@@ -64,22 +88,50 @@ export function Reports() {
     try {
       let clientQuery = supabase.from('clients').select('*')
       let candidateQuery = supabase.from('candidates').select('*')
+      let interviewQuery = supabase.from('interviews').select('*')
+      let trainingQuery = supabase.from('training_leads').select('*')
 
       if (dateRange.start && dateRange.end) {
-        clientQuery = clientQuery.gte('created_at', dateRange.start).lte('created_at', dateRange.end + 'T23:59:59Z') as any
-        candidateQuery = candidateQuery.gte('created_at', dateRange.start).lte('created_at', dateRange.end + 'T23:59:59Z') as any
+        const startDate = dateRange.start
+        const endDate = dateRange.end + 'T23:59:59Z'
+        clientQuery = clientQuery.gte('created_at', startDate).lte('created_at', endDate) as any
+        candidateQuery = candidateQuery.gte('created_at', startDate).lte('created_at', endDate) as any
+        interviewQuery = interviewQuery.gte('created_at', startDate).lte('created_at', endDate) as any
+        trainingQuery = trainingQuery.gte('created_at', startDate).lte('created_at', endDate) as any
       }
 
-      const [{ data: clientData, error: clientErr }, { data: candidateData, error: candidateErr }] = await Promise.all([
+      const [
+        { data: clientData, error: clientErr },
+        { data: candidateData, error: candidateErr },
+        { data: interviewData, error: interviewErr },
+        { data: trainingData, error: trainingErr }
+      ] = await Promise.all([
         clientQuery,
         candidateQuery,
+        interviewQuery,
+        trainingQuery
       ])
       
       if (clientErr) throw clientErr
       if (candidateErr) throw candidateErr
+      if (interviewErr) throw interviewErr
+      if (trainingErr) throw trainingErr
 
       setClients(clientData || [])
       setCandidates(candidateData || [])
+      setInterviews(interviewData || [])
+      setTrainingLeads(trainingData || [])
+
+      // Generate AI insights if we have a date range
+      if (dateRange.start && dateRange.end) {
+        await generateInsights({
+          clients: clientData || [],
+          candidates: candidateData || [],
+          interviews: interviewData || [],
+          trainingLeads: trainingData || [],
+          dateRange
+        })
+      }
     } catch (error) {
       console.error('Error loading data:', error)
     } finally {
@@ -142,7 +194,7 @@ export function Reports() {
 
   const getRoleAnalysis = () => {
     const roleRequests = clients.reduce((acc, c) => {
-      acc[c.want_to_hire] = (acc[c.want_to_hire] || 0) + 1
+      acc[c.role_requested] = (acc[c.role_requested] || 0) + 1
       return acc
     }, {} as Record<string, number>)
 
@@ -159,6 +211,25 @@ export function Reports() {
       supply: roleSupply[role] || 0,
       ratio: (roleSupply[role] || 0) / (roleRequests[role] || 1)
     })).sort((a, b) => b.demand - a.demand)
+  }
+
+  const generateInsights = async (data: BusinessData) => {
+    setGeneratingInsights(true)
+    try {
+      const [execSummary, clientAnalysis, candidateAnalysis] = await Promise.all([
+        geminiService.generateExecutiveSummary(data),
+        geminiService.generateClientAnalysis(data),
+        geminiService.generateCandidateAnalysis(data)
+      ])
+      
+      setExecutiveSummary(execSummary)
+      setClientInsights(clientAnalysis)
+      setCandidateInsights(candidateAnalysis)
+    } catch (error) {
+      console.error('Error generating insights:', error)
+    } finally {
+      setGeneratingInsights(false)
+    }
   }
 
   const exportToPNG = () => {
@@ -205,15 +276,20 @@ export function Reports() {
   const getTemplateReport = () => {
     return {
       id: 'template',
-      title: 'Business Progress Report from 15th Sep to 22nd Oct',
-      date_from: '2025-09-15',
-      date_to: '2025-10-22',
-      created_at: '2025-10-25',
-      content: getTemplateHTML()
+      title: 'Business Progress Report - October 2025',
+      date_from: '2025-10-01',
+      date_to: '2025-10-31',
+      created_at: new Date().toISOString(),
+      content: getOctoberReportHTML()
     }
   }
 
+
+
   const getTemplateHTML = () => {
+    const currentDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+    const reportPeriod = getDateRangeText()
+    
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -676,14 +752,9 @@ export function Reports() {
         
         <div class="cover-subtitle">Comprehensive Business Analytics</div>
         
-        <div class="cover-date">September 15 - October 22, 2025</div>
+        <div class="cover-date" id="report-period">October 1 - 31, 2025</div>
         
-        <div class="cover-team">
-            <div class="cover-team-title">Prepared By</div>
-            <div class="cover-team-member">Frank, Marketing Specialist</div>
-            <div class="cover-team-member">Ivy, Client Specialist</div>
-            <div class="cover-team-member">Purity, Recruitment Specialist</div>
-        </div>
+
         
         <div class="cover-footer">
             Nestara Confidential Report | Internal Use Only
@@ -694,12 +765,12 @@ export function Reports() {
     <div class="page">
         <div class="header">
             <div class="logo">Nestara</div>
-            <div class="date-badge">Generated: October 25, 2025</div>
+            <div class="date-badge" id="generated-date">Generated: October 25, 2025</div>
         </div>
 
         <div class="title-section">
             <div class="main-title">Business Progress Report</div>
-            <div class="subtitle">Comprehensive Analytics | September 15 - October 22, 2025</div>
+            <div class="subtitle">Comprehensive Analytics | October 1 - 31, 2025</div>
         </div>
 
         <div class="section-header">BUSINESS CORE OVERVIEW</div>
@@ -725,8 +796,8 @@ export function Reports() {
 
         <div class="insight-box">
             <div class="insight-title">Executive Summary</div>
-            <div class="insight-text">
-                Over the 40-day period (Sep 15 - Oct 22, 2025), Nestara demonstrated strong market presence with 39 client engagements and 258 candidate applications. The business achieved 4 successful client placements (10.3% win rate) and onboarded 47 qualified candidates (18.2% win rate) into the talent pool. With 11 active clients in communication (who paid KES 3,000 PAF) and 13 pending candidates, the pipeline remains healthy. Marketing investment of KES 32,000 generated strong performance with Google Ads achieving 100% lead conversion to paid PAF or won status. Key operational challenges include high candidate attrition rates (68.2% lost primarily due to lack of good conduct certificates) and client ghosting (13 clients), requiring enhanced engagement strategies.
+            <div class="insight-text" id="executive-summary">
+                Loading AI-powered insights...
             </div>
         </div>
 
@@ -736,52 +807,43 @@ export function Reports() {
             <div class="card">
                 <div class="card-title">Successful Placements</div>
                 <div class="stat-row">
-                    <span class="stat-label">Part-Time Placements</span>
-                    <span class="stat-value">2</span>
+                    <span class="stat-label">Won Clients</span>
+                    <span class="stat-value" id="won-placements">${wonClients}</span>
                 </div>
                 <div class="stat-row">
-                    <span class="stat-label">• Angeline Nelima</span>
-                    <span class="stat-value">Active</span>
+                    <span class="stat-label">Active Trials</span>
+                    <span class="stat-value" id="active-trials">0</span>
                 </div>
                 <div class="stat-row">
-                    <span class="stat-label">• Doreen Khayanga</span>
-                    <span class="stat-value">Active</span>
+                    <span class="stat-label">Completed Interviews</span>
+                    <span class="stat-value" id="completed-interviews">${attendedInterviews}</span>
                 </div>
                 <div class="stat-row">
-                    <span class="stat-label">Active Trial</span>
-                    <span class="stat-value">1</span>
+                    <span class="stat-label">Placement Success Rate</span>
+                    <span class="stat-value">${clientWinRate}%</span>
                 </div>
-                <div class="stat-row">
-                    <span class="stat-label">• Evaline Adhiambo</span>
-                    <span class="stat-value">On Trial</span>
-                </div>
-                <div class="stat-row">
-                    <span class="stat-label">Reliever Assignment</span>
-                    <span class="stat-value">1</span>
-                </div>
-                <div class="stat-row">
-                    <span class="stat-label">• Nelly (Client: Safiya)</span>
-                    <span class="stat-value">Active</span>
+                <div style="margin-top: 8px; font-size: 9px; color: #2e7d32; font-weight: 600;">
+                    Lead to Placement: ${totalClients > 0 ? ((wonClients / totalClients) * 100).toFixed(1) : 0}%
                 </div>
             </div>
 
             <div class="card">
-                <div class="card-title">Reputation & Reviews</div>
+                <div class="card-title">System Performance</div>
                 <div class="stat-row">
-                    <span class="stat-label">Google Reviews</span>
-                    <span class="stat-value">12</span>
+                    <span class="stat-label">Total Inquiries Processed</span>
+                    <span class="stat-value">${totalClients + totalCandidates}</span>
                 </div>
                 <div class="stat-row">
-                    <span class="stat-label">Published Client Review</span>
-                    <span class="stat-value">1</span>
+                    <span class="stat-label">Interview Conversion</span>
+                    <span class="stat-value">${interviewSuccessRate}%</span>
                 </div>
                 <div class="stat-row">
-                    <span class="stat-label">• Asim Shah</span>
-                    <span class="stat-value">✓</span>
+                    <span class="stat-label">Active Pipeline</span>
+                    <span class="stat-value">${activeClients + pendingClients}</span>
                 </div>
                 <div style="margin-top: 10px; padding: 7px; background: #f0f9ff; border-radius: 5px;">
-                    <div style="font-size: 9px; color: #666; margin-bottom: 3px;">Review Velocity</div>
-                    <div class="highlight-number">0.3 <span style="font-size: 11px; font-weight: normal;">reviews/day</span></div>
+                    <div style="font-size: 9px; color: #666; margin-bottom: 3px;">Monthly Growth</div>
+                    <div class="highlight-number">${totalClients + totalCandidates} <span style="font-size: 11px; font-weight: normal;">total leads</span></div>
                 </div>
             </div>
         </div>
@@ -790,53 +852,45 @@ export function Reports() {
 
         <div class="two-col">
             <div class="card">
-                <div class="card-title">Failed Placements & Trials</div>
+                <div class="card-title">Challenges & Learnings</div>
                 <div class="stat-row">
-                    <span class="stat-label">Failed Placement</span>
-                    <span class="stat-value">1</span>
+                    <span class="stat-label">Lost Candidates</span>
+                    <span class="stat-value">${lostCandidates}</span>
                 </div>
                 <div class="stat-row">
-                    <span class="stat-label">• Euphemia</span>
-                    <span class="badge badge-danger">Placement Failed</span>
+                    <span class="stat-label">Lost Clients</span>
+                    <span class="stat-value">${lostClients}</span>
                 </div>
                 <div class="stat-row">
-                    <span class="stat-label">Failed Trial</span>
-                    <span class="stat-value">1</span>
+                    <span class="stat-label">Failed Interviews</span>
+                    <span class="stat-value">${octoberData.interviews.length - attendedInterviews}</span>
                 </div>
                 <div class="stat-row">
-                    <span class="stat-label">• Everline Wairimu</span>
-                    <span class="badge badge-danger">BLACKLISTED</span>
-                </div>
-                <div class="stat-row">
-                    <span class="stat-label">Refunded Placement</span>
-                    <span class="stat-value">1</span>
-                </div>
-                <div class="stat-row">
-                    <span class="stat-label">• Rachael Njoki (KES 23,000)</span>
-                    <span class="badge badge-warning">No Good Conduct</span>
+                    <span class="stat-label">Conversion Gap</span>
+                    <span class="stat-value">${totalClients - wonClients} clients</span>
                 </div>
                 <div style="margin-top: 8px; font-size: 9px; color: #d32f2f; font-weight: 600;">
-                    Trial Success Rate: 0% (0/1)
+                    Attrition Rate: ${totalCandidates > 0 ? ((lostCandidates / totalCandidates) * 100).toFixed(1) : 0}%
                 </div>
             </div>
 
             <div class="card">
-                <div class="card-title">Client Pipeline Health</div>
+                <div class="card-title">Pipeline Health Analysis</div>
                 <div class="stat-row">
-                    <span class="stat-label">Active Communication (Paid PAF)</span>
-                    <span class="stat-value">11 clients</span>
+                    <span class="stat-label">Active Clients</span>
+                    <span class="stat-value">${activeClients}</span>
                 </div>
                 <div class="stat-row">
-                    <span class="stat-label">Ghosted/Lost</span>
-                    <span class="stat-value">13 clients</span>
+                    <span class="stat-label">Pending Clients</span>
+                    <span class="stat-value">${pendingClients}</span>
                 </div>
                 <div class="stat-row">
-                    <span class="stat-label">Budget Constraints</span>
-                    <span class="stat-value">4 clients</span>
+                    <span class="stat-label">Pending Candidates</span>
+                    <span class="stat-value">${pendingCandidates}</span>
                 </div>
                 <div class="stat-row">
-                    <span class="stat-label">Pending Actions</span>
-                    <span class="stat-value">6 clients</span>
+                    <span class="stat-label">Lead to Won Ratio</span>
+                    <span class="stat-value">1:${totalClients > 0 ? Math.round(totalClients / Math.max(wonClients, 1)) : 0}</span>
                 </div>
             </div>
         </div>
@@ -846,19 +900,19 @@ export function Reports() {
         <div class="funnel">
             <div class="funnel-stage">
                 <span>Total Client Inquiries</span>
-                <span>39 (100%)</span>
+                <span>${totalClients} (100%)</span>
             </div>
             <div class="funnel-stage">
                 <span>Active + Communication Ongoing</span>
-                <span>11 (28.2%)</span>
+                <span>${activeClients + pendingClients} (${totalClients > 0 ? (((activeClients + pendingClients) / totalClients) * 100).toFixed(1) : 0}%)</span>
             </div>
             <div class="funnel-stage">
                 <span>Won Clients</span>
-                <span>4 (10.3%)</span>
+                <span>${wonClients} (${clientWinRate}%)</span>
             </div>
             <div class="funnel-stage">
                 <span>Successful Placements</span>
-                <span>2 (5.1%)</span>
+                <span>${wonClients} (${clientWinRate}%)</span>
             </div>
         </div>
 
@@ -897,8 +951,8 @@ export function Reports() {
 
         <div class="insight-box">
             <div class="insight-title">AI-Powered Client Insights</div>
-            <div class="insight-text">
-                Client acquisition shows strong channel diversification with Google Search (10 clients) and Instagram (11 clients) leading inquiries. Referrals demonstrate superior quality with 33.3% win rate (2 of 6 converted), significantly outperforming all channels. Google Ads achieved exceptional 100% conversion to paid PAF or won status (10 of 10), with 80% paying the KES 3,000 Profile Access Fee. The 33.3% ghosting rate (13 clients) after form submission indicates potential friction in early engagement stages. Budget constraints affected 10.3% of prospects. House Manager roles dominate demand (20 requests, 51.3%), followed by Housekeepers (11 requests, 28.2%). Active pipeline of 11 clients who paid PAF represents strong near-term revenue potential.
+            <div class="insight-text" id="client-insights">
+                Loading AI-powered insights...
             </div>
         </div>
 
@@ -943,22 +997,131 @@ export function Reports() {
 
         <div class="metrics-grid">
             <div class="metric-card">
-                <div class="metric-value">47</div>
+                <div class="metric-value" id="won-candidates">47</div>
                 <div class="metric-label">WON Candidates</div>
             </div>
             <div class="metric-card">
-                <div class="metric-value">30</div>
+                <div class="metric-value" id="total-interviews">30</div>
                 <div class="metric-label">Interviews Conducted</div>
             </div>
             <div class="metric-card">
-                <div class="metric-value">96.7%</div>
+                <div class="metric-value" id="interview-success">96.7%</div>
                 <div class="metric-label">Interview Success</div>
             </div>
             <div class="metric-card">
-                <div class="metric-value">23</div>
-                <div class="metric-label">Complete Profiles</div>
+                <div class="metric-value" id="total-candidates">258</div>
+                <div class="metric-label">Total Applications</div>
             </div>
         </div>
+
+        <div class="insight-box">
+            <div class="insight-title">AI-Powered Candidate Insights</div>
+            <div class="insight-text" id="candidate-insights">
+                Loading AI-powered insights...
+            </div>
+        </div>
+
+        <div class="section-header">CANDIDATE PIPELINE STATUS</div>
+
+        <div class="four-col">
+            <div class="status-card" style="border-color: #2e7d32;">
+                <div class="status-number" style="color: #2e7d32;" id="won-candidates-status">47</div>
+                <div class="status-label">Won</div>
+                <div style="font-size: 8px; color: #999; margin-top: 2px;" id="won-candidates-percent">18.2%</div>
+            </div>
+            <div class="status-card" style="border-color: #1565c0;">
+                <div class="status-number" style="color: #1565c0;" id="pending-candidates">13</div>
+                <div class="status-label">Pending</div>
+                <div style="font-size: 8px; color: #999; margin-top: 2px;">5.0%</div>
+            </div>
+            <div class="status-card" style="border-color: #f57c00;">
+                <div class="status-number" style="color: #f57c00;" id="interview-candidates">30</div>
+                <div class="status-label">Interviewed</div>
+                <div style="font-size: 8px; color: #999; margin-top: 2px;">11.6%</div>
+            </div>
+            <div class="status-card" style="border-color: #c62828;">
+                <div class="status-number" style="color: #c62828;" id="lost-candidates">168</div>
+                <div class="status-label">Lost</div>
+                <div style="font-size: 8px; color: #999; margin-top: 2px;">65.1%</div>
+            </div>
+        </div>
+
+        <div class="section-header">TOP PERFORMING SOURCES</div>
+
+        <div class="two-col">
+            <div class="card">
+                <div class="card-title">Client Acquisition Channels</div>
+                <div id="client-sources">
+                    <div class="stat-row">
+                        <span class="stat-label">Instagram</span>
+                        <span class="stat-value">11 leads</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Google Search</span>
+                        <span class="stat-value">10 leads</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Referrals</span>
+                        <span class="stat-value">6 leads</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">Candidate Recruitment Channels</div>
+                <div id="candidate-sources">
+                    <div class="stat-row">
+                        <span class="stat-label">Facebook</span>
+                        <span class="stat-value">89 applications</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Instagram</span>
+                        <span class="stat-value">67 applications</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">TikTok</span>
+                        <span class="stat-value">45 applications</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section-header">ROLE DEMAND vs SUPPLY ANALYSIS</div>
+
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Role</th>
+                    <th>Client Demand</th>
+                    <th>Candidate Supply</th>
+                    <th>Supply Ratio</th>
+                    <th>Market Status</th>
+                </tr>
+            </thead>
+            <tbody id="role-analysis">
+                <tr>
+                    <td>House Manager</td>
+                    <td>20</td>
+                    <td>89</td>
+                    <td>4.5:1</td>
+                    <td><span class="badge" style="background: #d4edda; color: #155724;">Oversupplied</span></td>
+                </tr>
+                <tr>
+                    <td>Housekeeper</td>
+                    <td>11</td>
+                    <td>67</td>
+                    <td>6.1:1</td>
+                    <td><span class="badge" style="background: #d4edda; color: #155724;">Oversupplied</span></td>
+                </tr>
+                <tr>
+                    <td>Nanny</td>
+                    <td>5</td>
+                    <td>45</td>
+                    <td>9.0:1</td>
+                    <td><span class="badge" style="background: #d4edda; color: #155724;">Oversupplied</span></td>
+                </tr>
+            </tbody>
+        </table>
 
         <div class="footer">
             Nestara Progress Report | Confidential Business Document | Page 3 of 4
@@ -1001,21 +1164,165 @@ export function Reports() {
 </html>`
   }
 
+  const getOctoberReportHTML = () => {
+    // Filter current data for October 2025
+    const octoberData = {
+      clients: clients.filter(c => {
+        const date = new Date(c.created_at)
+        return date.getFullYear() === 2025 && date.getMonth() === 9 // October is month 9
+      }),
+      candidates: candidates.filter(c => {
+        const date = new Date(c.created_at)
+        return date.getFullYear() === 2025 && date.getMonth() === 9
+      }),
+      interviews: interviews.filter(i => {
+        const date = new Date(i.created_at)
+        return date.getFullYear() === 2025 && date.getMonth() === 9
+      }),
+      trainingLeads: trainingLeads.filter(t => {
+        const date = new Date(t.created_at)
+        return date.getFullYear() === 2025 && date.getMonth() === 9
+      })
+    }
+    
+    // Calculate October metrics
+    const totalClients = octoberData.clients.length
+    const totalCandidates = octoberData.candidates.length
+    const wonClients = octoberData.clients.filter(c => c.status === 'Won').length
+    const wonCandidates = octoberData.candidates.filter(c => c.status === 'WON').length
+    const clientWinRate = totalClients > 0 ? ((wonClients / totalClients) * 100).toFixed(1) : '0'
+    const candidateWinRate = totalCandidates > 0 ? ((wonCandidates / totalCandidates) * 100).toFixed(1) : '0'
+    
+    const activeClients = octoberData.clients.filter(c => c.status?.includes('Client -')).length
+    const lostClients = octoberData.clients.filter(c => ['Ghosted', 'Lost', 'Budget', 'Competition'].includes(c.status)).length
+    const pendingClients = octoberData.clients.filter(c => c.status?.includes('Pending')).length
+    
+    const lostCandidates = octoberData.candidates.filter(c => c.status === 'LOST').length
+    const pendingCandidates = octoberData.candidates.filter(c => c.status?.includes('Pending') || c.status === 'NEW').length
+    const attendedInterviews = octoberData.interviews.filter(i => i.attended).length
+    const interviewSuccessRate = octoberData.interviews.length > 0 ? ((attendedInterviews / octoberData.interviews.length) * 100).toFixed(1) : '0'
+    
+    // Default executive summary for October 2025
+    const executiveSummary = totalClients > 0 || totalCandidates > 0 
+      ? `October 2025 performance shows ${totalClients} client inquiries with ${clientWinRate}% conversion rate and ${totalCandidates} candidate applications achieving ${candidateWinRate}% success rate. The business demonstrates ${wonClients} successful client placements and ${wonCandidates} qualified candidates onboarded. With ${activeClients} active clients and ${octoberData.interviews.length} interviews conducted (${interviewSuccessRate}% success rate), the pipeline shows steady progress. Key focus areas include optimizing conversion rates and enhancing candidate quality screening processes.`
+      : 'October 2025 represents a foundational period for Nestara with system setup and initial market positioning. While client and candidate volumes remain at baseline levels, this period establishes the operational framework for future growth. Focus areas include market entry strategies, brand awareness campaigns, and pipeline development initiatives to drive engagement in subsequent months.'
+    
+    return getTemplateHTML()
+      .replace(/id="executive-summary"[^>]*>Loading AI-powered insights\.\.\./g, `id="executive-summary">${executiveSummary}`)
+      .replace(/<div class="metric-value">39<\/div>/g, `<div class="metric-value">${totalClients}</div>`)
+      .replace(/<div class="metric-value">258<\/div>/g, `<div class="metric-value">${totalCandidates}</div>`)
+      .replace(/<div class="metric-value">18\.2%<\/div>/g, `<div class="metric-value">${candidateWinRate}%</div>`)
+      .replace(/<div class="metric-value">10\.3%<\/div>/g, `<div class="metric-value">${clientWinRate}%</div>`)
+      .replace(/<div class="status-number" style="color: #2e7d32;">4<\/div>/g, `<div class="status-number" style="color: #2e7d32;">${wonClients}</div>`)
+      .replace(/<div class="status-number" style="color: #1565c0;">11<\/div>/g, `<div class="status-number" style="color: #1565c0;">${activeClients}</div>`)
+      .replace(/<div class="status-number" style="color: #f57c00;">6<\/div>/g, `<div class="status-number" style="color: #f57c00;">${pendingClients}</div>`)
+      .replace(/<div class="status-number" style="color: #c62828;">18<\/div>/g, `<div class="status-number" style="color: #c62828;">${lostClients}</div>`)
+      .replace(/October 1 - 31, 2025/g, 'October 1 - 31, 2025')
+      .replace(/October 25, 2025/g, new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }))
+  }
+
   const getReportHTML = () => {
     const metrics = getBusinessMetrics()
     const statusBreakdown = getClientStatusBreakdown()
     const sourcePerformance = getSourcePerformance()
+    const roleAnalysis = getRoleAnalysis()
     
-    return `<!DOCTYPE html>
-<html><head><title>Business Report</title></head><body>
-<h1>Business Progress Report</h1>
-<p>Period: ${getDateRangeText()}</p>
-<h2>Metrics</h2>
-<p>Total Clients: ${metrics.totalClients}</p>
-<p>Total Candidates: ${metrics.totalCandidates}</p>
-<p>Client Win Rate: ${metrics.clientWinRate}%</p>
-<p>Candidate Win Rate: ${metrics.candidateWinRate}%</p>
-</body></html>`
+    const wonClients = clients.filter(c => c.status === 'Won')
+    const activeClients = clients.filter(c => c.status?.includes('Client -'))
+    const lostClients = clients.filter(c => ['Ghosted', 'Lost', 'Budget', 'Competition'].includes(c.status))
+    const pendingClients = clients.filter(c => c.status?.includes('Pending'))
+    
+    const wonCandidates = candidates.filter(c => c.status === 'WON')
+    const lostCandidates = candidates.filter(c => c.status === 'LOST')
+    const pendingCandidates = candidates.filter(c => c.status?.includes('Pending') || c.status === 'NEW')
+    const attendedInterviews = interviews.filter(i => i.attended)
+    
+    // Generate source performance HTML
+    const clientSourcesHTML = sourcePerformance.slice(0, 3).map(source => 
+      `<div class="stat-row">
+        <span class="stat-label">${source.source}</span>
+        <span class="stat-value">${source.clientsTotal} leads</span>
+      </div>`
+    ).join('')
+    
+    const candidateSourcesHTML = sourcePerformance.slice(0, 3).map(source => 
+      `<div class="stat-row">
+        <span class="stat-label">${source.source}</span>
+        <span class="stat-value">${source.candidatesTotal} applications</span>
+      </div>`
+    ).join('')
+    
+    // Generate role analysis HTML
+    const roleAnalysisHTML = roleAnalysis.slice(0, 5).map(role => {
+      const ratio = role.supply > 0 ? `${(role.supply / Math.max(role.demand, 1)).toFixed(1)}:1` : '0:1'
+      const status = role.supply > role.demand * 2 ? 'Oversupplied' : role.supply < role.demand ? 'Undersupplied' : 'Balanced'
+      const statusColor = status === 'Oversupplied' ? '#d4edda; color: #155724' : status === 'Undersupplied' ? '#f8d7da; color: #721c24' : '#fff3cd; color: #856404'
+      
+      return `<tr>
+        <td>${role.role}</td>
+        <td>${role.demand}</td>
+        <td>${role.supply}</td>
+        <td>${ratio}</td>
+        <td><span class="badge" style="background: ${statusColor};">${status}</span></td>
+      </tr>`
+    }).join('')
+    
+    let html = getTemplateHTML()
+    
+    // Replace all dynamic values
+    html = html.replace(/id="executive-summary"[^>]*>Loading AI-powered insights\.\.\./g, 
+      `id="executive-summary">${executiveSummary || 'Generating comprehensive business insights based on current data trends and performance metrics.'}`)
+    
+    html = html.replace(/id="client-insights"[^>]*>Loading AI-powered insights\.\.\./g, 
+      `id="client-insights">${clientInsights || 'Analyzing client acquisition performance and conversion patterns.'}`)
+    
+    html = html.replace(/id="candidate-insights"[^>]*>Loading AI-powered insights\.\.\./g, 
+      `id="candidate-insights">${candidateInsights || 'Evaluating candidate recruitment effectiveness and pipeline quality.'}`)
+    
+    // Replace metrics
+    html = html.replace(/<div class="metric-value">39<\/div>/g, `<div class="metric-value">${metrics.totalClients}</div>`)
+    html = html.replace(/<div class="metric-value">258<\/div>/g, `<div class="metric-value">${metrics.totalCandidates}</div>`)
+    html = html.replace(/<div class="metric-value">18\.2%<\/div>/g, `<div class="metric-value">${metrics.candidateWinRate}%</div>`)
+    html = html.replace(/<div class="metric-value">10\.3%<\/div>/g, `<div class="metric-value">${metrics.clientWinRate}%</div>`)
+    
+    // Replace status numbers
+    html = html.replace(/id="won-candidates"[^>]*>47/g, `id="won-candidates">${wonCandidates.length}`)
+    html = html.replace(/id="total-interviews"[^>]*>30/g, `id="total-interviews">${interviews.length}`)
+    html = html.replace(/id="interview-success"[^>]*>96\.7%/g, `id="interview-success">${interviews.length > 0 ? ((attendedInterviews.length / interviews.length) * 100).toFixed(1) : 0}%`)
+    html = html.replace(/id="total-candidates"[^>]*>258/g, `id="total-candidates">${metrics.totalCandidates}`)
+    
+    // Replace pipeline status
+    html = html.replace(/id="won-candidates-status"[^>]*>47/g, `id="won-candidates-status">${wonCandidates.length}`)
+    html = html.replace(/id="won-candidates-percent"[^>]*>18\.2%/g, `id="won-candidates-percent">${metrics.candidateWinRate}%`)
+    html = html.replace(/id="pending-candidates"[^>]*>13/g, `id="pending-candidates">${pendingCandidates.length}`)
+    html = html.replace(/id="interview-candidates"[^>]*>30/g, `id="interview-candidates">${interviews.length}`)
+    html = html.replace(/id="lost-candidates"[^>]*>168/g, `id="lost-candidates">${lostCandidates.length}`)
+    
+    // Replace client status numbers
+    html = html.replace(/<div class="status-number" style="color: #2e7d32;">4<\/div>/g, `<div class="status-number" style="color: #2e7d32;">${wonClients.length}</div>`)
+    html = html.replace(/<div class="status-number" style="color: #1565c0;">11<\/div>/g, `<div class="status-number" style="color: #1565c0;">${activeClients.length}</div>`)
+    html = html.replace(/<div class="status-number" style="color: #f57c00;">6<\/div>/g, `<div class="status-number" style="color: #f57c00;">${pendingClients.length}</div>`)
+    html = html.replace(/<div class="status-number" style="color: #c62828;">18<\/div>/g, `<div class="status-number" style="color: #c62828;">${lostClients.length}</div>`)
+    
+    // Replace source performance
+    html = html.replace(/id="client-sources"[^>]*>[\s\S]*?<\/div>/g, `id="client-sources">${clientSourcesHTML}</div>`)
+    html = html.replace(/id="candidate-sources"[^>]*>[\s\S]*?<\/div>/g, `id="candidate-sources">${candidateSourcesHTML}</div>`)
+    
+    // Replace role analysis table
+    html = html.replace(/id="role-analysis"[^>]*>[\s\S]*?<\/tbody>/g, `id="role-analysis">${roleAnalysisHTML}</tbody>`)
+    
+    // Replace dates
+    const reportPeriod = getDateRangeText()
+    const currentDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+    const shortDate = reportPeriod.length > 25 ? reportPeriod.substring(0, 20) + '...' : reportPeriod
+    
+    html = html.replace(/id="report-period"[^>]*>September 15 - October 22, 2025/g, `id="report-period">${reportPeriod}`)
+    html = html.replace(/id="generated-date"[^>]*>Generated: October 25, 2025/g, `id="generated-date">Generated: ${currentDate}`)
+    html = html.replace(/September 15 - October 22, 2025/g, reportPeriod)
+    html = html.replace(/Sep 15 - Oct 22, 2025/g, shortDate)
+    html = html.replace(/October 25, 2025/g, currentDate)
+    
+    return html
   }
 
   if (loading) {
@@ -1072,13 +1379,34 @@ export function Reports() {
           <h1 className="text-2xl font-bold text-gray-900">Business Reports</h1>
           <p className="text-gray-600">Generate and manage comprehensive business analytics reports</p>
         </div>
-        <button
-          onClick={generateReport}
-          className="flex items-center gap-2 px-4 py-2 bg-nestalk-primary text-white rounded hover:bg-nestalk-primary/90"
-        >
-          <Plus className="w-4 h-4" />
-          Generate Report
-        </button>
+        <div className="flex gap-2">
+          <div className="flex gap-2">
+            <input
+              type="date"
+              value={dateRange.start}
+              onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))}
+              className="px-3 py-2 border border-gray-300 rounded text-sm"
+            />
+            <input
+              type="date"
+              value={dateRange.end}
+              onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))}
+              className="px-3 py-2 border border-gray-300 rounded text-sm"
+            />
+          </div>
+          <button
+            onClick={generateReport}
+            disabled={!dateRange.start || !dateRange.end || generatingInsights}
+            className="flex items-center gap-2 px-4 py-2 bg-nestalk-primary text-white rounded hover:bg-nestalk-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {generatingInsights ? (
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+            ) : (
+              <Plus className="w-4 h-4" />
+            )}
+            {generatingInsights ? 'Generating...' : 'Generate Report'}
+          </button>
+        </div>
       </div>
 
 
