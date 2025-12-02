@@ -79,7 +79,7 @@ export function Candidates() {
     source: '',
     role: '',
     inquiry_date: '',
-    status: 'PENDING' as 'PENDING' | 'INTERVIEW_SCHEDULED' | 'Lost - Interview Lost' | 'Lost - Missed Interview' | 'Lost, Age' | 'Lost, No References' | 'Lost, No Response' | 'Lost, Personality' | 'Lost, Salary' | 'Lost, Experience' | 'Lost, No Good Conduct' | 'Pending, applying GC',
+    status: 'PENDING' as 'PENDING' | 'Pending Review' | 'INTERVIEW_SCHEDULED' | 'Lost - Interview Lost' | 'Lost - Missed Interview' | 'Lost, Age' | 'Lost, No References' | 'Lost, No Response' | 'Lost, Personality' | 'Lost, Salary' | 'Lost, Experience' | 'Lost, No Good Conduct' | 'Pending, applying GC',
     scheduledDateOnly: '',
     live_arrangement: '',
     work_schedule: '',
@@ -152,7 +152,7 @@ export function Candidates() {
   const { user, staff } = useAuth()
   const { showToast } = useToast()
 
-  const statusOptions = ['PENDING', 'INTERVIEW_SCHEDULED', 'WON', 'Lost - Interview Lost', 'Lost - Missed Interview', 'Lost, Age', 'Lost, No References', 'Lost, No Response', 'Lost, Personality', 'Lost, Salary', 'Lost, Experience', 'Lost, No Good Conduct', 'Pending, applying GC', 'BLACKLISTED']
+  const statusOptions = ['PENDING', 'Pending Review', 'Pending, applying GC', 'INTERVIEW_SCHEDULED', 'WON', 'Lost - Interview Lost', 'Lost - Missed Interview', 'Lost, Age', 'Lost, No References', 'Lost, No Response', 'Lost, Personality', 'Lost, Salary', 'Lost, Experience', 'Lost, No Good Conduct', 'BLACKLISTED']
   const filterStatusOptions = ['Pending', 'Won', 'Lost', 'Blacklisted', 'Added by System', 'Self-Registered']
   const roleOptions = ['Nanny', 'House Manager', 'Chef', 'Driver', 'Night Nurse', 'Caregiver', 'Housekeeper']
   const sourceOptions = ['TikTok', 'Facebook', 'Instagram', 'Google Search', 'Website', 'Referral', 'LinkedIn', 'Walk-in poster', 'Youtube', 'Referred By Church']

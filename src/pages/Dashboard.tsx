@@ -11,11 +11,17 @@ export function Dashboard() {
   const [stats, setStats] = useState({
     totalCandidates: 0,
     totalClients: 0,
+    totalLeads: 0,
     activeClients: 0,
     wonClients: 0,
     lostClients: 0,
     pendingClients: 0,
     clientsThisMonth: 0,
+    interviewWon: 0,
+    winRate: 0,
+    interviewConversion: 0,
+    pendingPipeline: 0,
+    qualificationRate: 0,
     activeCandidates: 0,
     wonCandidates: 0,
     lostCandidates: 0,
@@ -78,15 +84,33 @@ export function Dashboard() {
 
       const thisMonth = new Date().toISOString().slice(0, 7) + '-01T00:00:00'
       
-      // Load stats
+      // Load all clients data for calculations
+      const { data: allClients } = await supabase.from('clients').select('*')
+      const { data: allCandidates } = await supabase.from('candidates').select('*')
+      
+      // Client status definitions
+      const clientStatuses = ['Active', 'Won', 'Lost - Disappointed With Profiles', 'Lost - Conflict of Interest', 'Lost - Competition']
+      const lostClientStatuses = ['Lost - Disappointed With Profiles', 'Lost - Conflict of Interest', 'Lost - Competition']
+      
+      const totalClients = allClients?.filter(c => clientStatuses.includes(c.status)).length || 0
+      const totalLeads = allClients?.length || 0
+      const activeClients = allClients?.filter(c => c.status?.startsWith('Active')).length || 0
+      const wonClients = allClients?.filter(c => c.status === 'Won').length || 0
+      const lostClients = allClients?.filter(c => lostClientStatuses.includes(c.status)).length || 0
+      const pendingClients = allClients?.filter(c => c.status?.startsWith('Pending')).length || 0
+      const clientsThisMonth = allClients?.filter(c => new Date(c.created_at) >= new Date(thisMonth)).length || 0
+      
+      // Interview metrics
+      const interviewWon = allCandidates?.filter(c => c.status === 'WON' && c.scheduled_date).length || 0
+      const totalScheduled = allCandidates?.filter(c => c.scheduled_date).length || 0
+      const winRate = totalClients > 0 ? Math.round((wonClients / totalClients) * 100) : 0
+      const interviewConversion = totalScheduled > 0 ? Math.round((interviewWon / totalScheduled) * 100) : 0
+      const pendingPipeline = allClients?.filter(c => ['Pending', 'Budget'].includes(c.status)).length || 0
+      const qualificationRate = totalLeads > 0 ? Math.round((totalClients / totalLeads) * 100) : 0
+      
+      // Load remaining stats
       const [
         candidatesCount,
-        clientsCount,
-        activeClientsCount,
-        wonClientsCount,
-        lostClientsCount,
-        pendingClientsCount,
-        clientsThisMonthCount,
         activeCandidatesCount,
         wonCandidatesCount,
         lostCandidatesCount,
@@ -94,12 +118,6 @@ export function Dashboard() {
         todayInterviewsCount
       ] = await Promise.all([
         supabase.from('candidates').select('id', { count: 'exact', head: true }),
-        supabase.from('clients').select('id', { count: 'exact', head: true }),
-        supabase.from('clients').select('id', { count: 'exact', head: true }).like('status', 'Active%'),
-        supabase.from('clients').select('id', { count: 'exact', head: true }).eq('status', 'Won'),
-        supabase.from('clients').select('id', { count: 'exact', head: true }).like('status', 'Lost%'),
-        supabase.from('clients').select('id', { count: 'exact', head: true }).like('status', 'Pending%'),
-        supabase.from('clients').select('id', { count: 'exact', head: true }).gte('created_at', thisMonth),
         supabase.from('candidates').select('id', { count: 'exact', head: true }).in('status', ['Available', 'In Process', 'Interview Scheduled']),
         supabase.from('candidates').select('id', { count: 'exact', head: true }).eq('status', 'WON'),
         supabase.from('candidates').select('id', { count: 'exact', head: true }).like('status', 'Lost%'),
@@ -109,12 +127,18 @@ export function Dashboard() {
       
       setStats({
         totalCandidates: candidatesCount.count || 0,
-        totalClients: clientsCount.count || 0,
-        activeClients: activeClientsCount.count || 0,
-        wonClients: wonClientsCount.count || 0,
-        lostClients: lostClientsCount.count || 0,
-        pendingClients: pendingClientsCount.count || 0,
-        clientsThisMonth: clientsThisMonthCount.count || 0,
+        totalClients,
+        totalLeads,
+        activeClients,
+        wonClients,
+        lostClients,
+        pendingClients,
+        clientsThisMonth,
+        interviewWon,
+        winRate,
+        interviewConversion,
+        pendingPipeline,
+        qualificationRate,
         activeCandidates: activeCandidatesCount.count || 0,
         wonCandidates: wonCandidatesCount.count || 0,
         lostCandidates: lostCandidatesCount.count || 0,
@@ -165,7 +189,14 @@ export function Dashboard() {
   }
 
   const statCards = [
-    // Client Cards (6)
+    // Client Cards (12)
+    {
+      name: 'Total Leads',
+      value: stats.totalLeads,
+      icon: Building2,
+      color: 'bg-slate-500',
+      href: '/clients',
+    },
     {
       name: 'Total Clients',
       value: stats.totalClients,
@@ -202,13 +233,48 @@ export function Dashboard() {
       href: '/clients',
     },
     {
+      name: 'Interview Won',
+      value: stats.interviewWon,
+      icon: Building2,
+      color: 'bg-teal-500',
+      href: '/clients',
+    },
+    {
+      name: 'Win Rate',
+      value: `${stats.winRate}%`,
+      icon: Building2,
+      color: 'bg-indigo-500',
+      href: '/clients',
+    },
+    {
+      name: 'Interview Conversion',
+      value: `${stats.interviewConversion}%`,
+      icon: Building2,
+      color: 'bg-cyan-500',
+      href: '/clients',
+    },
+    {
+      name: 'Pending Pipeline',
+      value: stats.pendingPipeline,
+      icon: Building2,
+      color: 'bg-amber-500',
+      href: '/clients',
+    },
+    {
+      name: 'Qualification Rate',
+      value: `${stats.qualificationRate}%`,
+      icon: Building2,
+      color: 'bg-rose-500',
+      href: '/clients',
+    },
+    {
       name: 'Clients This Month',
       value: stats.clientsThisMonth,
       icon: Building2,
       color: 'bg-purple-500',
       href: '/clients',
     },
-    // Candidate Cards (6)
+    // Candidate Cards (5)
     {
       name: 'Total Candidates',
       value: stats.totalCandidates,

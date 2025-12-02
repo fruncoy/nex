@@ -70,7 +70,6 @@ export function Clients() {
     'Won',
     'Lost - Disappointed With Profiles',
     'Lost - Conflict of Interest',
-    'Lost - Ghosted',
     'Lost - Competition'
   ]
   // Lost reasons for leads

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-import { BarChart3, TrendingUp, Calendar, Users, CheckCircle, XCircle, RefreshCcw, PieChart, Target, Award, Filter, DollarSign, Building2 } from 'lucide-react'
+import { BarChart3, TrendingUp, Calendar, Users, CheckCircle, XCircle, RefreshCcw, PieChart, Target, Award, Filter, DollarSign, Building2, Clock } from 'lucide-react'
 
 interface Client {
   id: string
@@ -119,7 +119,7 @@ export function Insights() {
     
     const lostCandidates = candidates.filter(c => {
       const createdDate = new Date(c.created_at)
-      return c.status === 'LOST' && createdDate >= startDate && createdDate <= endDate
+      return c.status.startsWith('Lost') && createdDate >= startDate && createdDate <= endDate
     }).length
     
     const totalClientOutcomes = wonClients + lostClients
@@ -169,6 +169,8 @@ export function Insights() {
     
     return Object.entries(statusCounts).map(([status, count]) => ({ status, count }))
   }
+
+  const candidateStatusOptions = ['PENDING', 'Pending Review', 'Pending, applying GC', 'INTERVIEW_SCHEDULED', 'WON', 'Lost - Interview Lost', 'Lost - Missed Interview', 'Lost, Age', 'Lost, No References', 'Lost, No Response', 'Lost, Personality', 'Lost, Salary', 'Lost, Experience', 'Lost, No Good Conduct', 'BLACKLISTED']
 
   const getTopSources = () => {
     const clientSources = clients
@@ -495,7 +497,7 @@ export function Insights() {
                 <div className="p-2 bg-blue-50 rounded-lg"><Users className="w-5 h-5 text-blue-600" /></div>
                 <div className="ml-3">
                   <p className="text-xs text-gray-500">Total Leads</p>
-                  <p className="text-2xl font-bold text-gray-900">{formatNumber(getFilteredClients().filter(c => c.status.startsWith('Pending') || c.status === 'Budget' || c.status === 'Ghosted' || c.status === 'Competition').length)}</p>
+                  <p className="text-2xl font-bold text-gray-900">{formatNumber(clients.length)}</p>
                 </div>
               </div>
             </div>
@@ -504,7 +506,7 @@ export function Insights() {
                 <div className="p-2 bg-green-50 rounded-lg"><Building2 className="w-5 h-5 text-green-600" /></div>
                 <div className="ml-3">
                   <p className="text-xs text-gray-500">Active Clients</p>
-                  <p className="text-2xl font-bold text-gray-900">{formatNumber(getFilteredClients().filter(c => c.status.startsWith('Client -')).length)}</p>
+                  <p className="text-2xl font-bold text-gray-900">{formatNumber(getFilteredClients().filter(c => c.status.startsWith('Active')).length)}</p>
                 </div>
               </div>
             </div>
@@ -513,7 +515,7 @@ export function Insights() {
                 <div className="p-2 bg-emerald-50 rounded-lg"><Award className="w-5 h-5 text-emerald-600" /></div>
                 <div className="ml-3">
                   <p className="text-xs text-gray-500">Converted Clients</p>
-                  <p className="text-2xl font-bold text-gray-900">{formatNumber(dateRangeData.wonClients)}</p>
+                  <p className="text-2xl font-bold text-gray-900">{formatNumber(getFilteredClients().filter(c => c.status === 'Won').length)}</p>
                 </div>
               </div>
             </div>
@@ -606,13 +608,13 @@ export function Insights() {
             <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-4">
               <div className="text-center">
                 <div className="bg-blue-100 rounded-lg p-3 md:p-4">
-                  <p className="text-xl md:text-2xl font-bold text-blue-600">{formatNumber(clients.filter(c => c.status.startsWith('Pending')).length)}</p>
+                  <p className="text-xl md:text-2xl font-bold text-blue-600">{formatNumber(clients.length)}</p>
                   <p className="text-xs text-gray-600">Leads</p>
                 </div>
               </div>
               <div className="text-center">
                 <div className="bg-green-100 rounded-lg p-3 md:p-4">
-                  <p className="text-xl md:text-2xl font-bold text-green-600">{formatNumber(clients.filter(c => c.status.startsWith('Active')).length)}</p>
+                  <p className="text-xl md:text-2xl font-bold text-green-600">{formatNumber(clients.filter(c => c.status.startsWith('Active') || c.status === 'Won' || c.status === 'Lost - Disappointed With Profiles' || c.status === 'Lost - Conflict of Interest' || c.status === 'Lost - Competition').length)}</p>
                   <p className="text-xs text-gray-600">Clients</p>
                 </div>
               </div>
@@ -1158,13 +1160,13 @@ export function Insights() {
       {activeTab === 'clients' && (
         <div className="space-y-6">
           {/* Lead & Client KPI Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
             <div className="bg-white rounded-lg p-4 border border-gray-200">
               <div className="flex items-center">
                 <div className="p-2 bg-blue-50 rounded-lg"><Users className="w-5 h-5 text-blue-600" /></div>
                 <div className="ml-3">
                   <p className="text-xs text-gray-500">Total Leads</p>
-                  <p className="text-2xl font-bold text-gray-900">{formatNumber(getFilteredClients().filter(c => c.status.startsWith('Pending') || c.status === 'Budget' || c.status === 'Ghosted' || c.status === 'Competition').length)}</p>
+                  <p className="text-2xl font-bold text-gray-900">{formatNumber(getFilteredClients().length)}</p>
                 </div>
               </div>
             </div>
@@ -1173,7 +1175,7 @@ export function Insights() {
                 <div className="p-2 bg-green-50 rounded-lg"><Building2 className="w-5 h-5 text-green-600" /></div>
                 <div className="ml-3">
                   <p className="text-xs text-gray-500">Active Clients</p>
-                  <p className="text-2xl font-bold text-gray-900">{formatNumber(getFilteredClients().filter(c => c.status.startsWith('Client -')).length)}</p>
+                  <p className="text-2xl font-bold text-gray-900">{formatNumber(getFilteredClients().filter(c => c.status.startsWith('Active')).length)}</p>
                 </div>
               </div>
             </div>
@@ -1182,7 +1184,7 @@ export function Insights() {
                 <div className="p-2 bg-emerald-50 rounded-lg"><Award className="w-5 h-5 text-emerald-600" /></div>
                 <div className="ml-3">
                   <p className="text-xs text-gray-500">Converted</p>
-                  <p className="text-2xl font-bold text-gray-900">{formatNumber(dateRangeData.wonClients)}</p>
+                  <p className="text-2xl font-bold text-gray-900">{formatNumber(getFilteredClients().filter(c => c.status === 'Won').length)}</p>
                 </div>
               </div>
             </div>
@@ -1213,6 +1215,70 @@ export function Insights() {
                 </div>
               </div>
             </div>
+            <div className="bg-white rounded-lg p-4 border border-gray-200">
+              <div className="flex items-center">
+                <div className="p-2 bg-yellow-50 rounded-lg"><Clock className="w-5 h-5 text-yellow-600" /></div>
+                <div className="ml-3">
+                  <p className="text-xs text-gray-500">Budget Issues</p>
+                  <p className="text-2xl font-bold text-gray-900">{formatNumber(getFilteredClients().filter(c => c.status === 'Budget').length)}</p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-white rounded-lg p-4 border border-gray-200">
+              <div className="flex items-center">
+                <div className="p-2 bg-gray-50 rounded-lg"><Users className="w-5 h-5 text-gray-600" /></div>
+                <div className="ml-3">
+                  <p className="text-xs text-gray-500">Ghosted</p>
+                  <p className="text-2xl font-bold text-gray-900">{formatNumber(getFilteredClients().filter(c => c.status === 'Ghosted').length)}</p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-white rounded-lg p-4 border border-gray-200">
+              <div className="flex items-center">
+                <div className="p-2 bg-amber-50 rounded-lg"><Building2 className="w-5 h-5 text-amber-600" /></div>
+                <div className="ml-3">
+                  <p className="text-xs text-gray-500">Competition</p>
+                  <p className="text-2xl font-bold text-gray-900">{formatNumber(getFilteredClients().filter(c => c.status === 'Competition').length)}</p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-white rounded-lg p-4 border border-gray-200">
+              <div className="flex items-center">
+                <div className="p-2 bg-indigo-50 rounded-lg"><DollarSign className="w-5 h-5 text-indigo-600" /></div>
+                <div className="ml-3">
+                  <p className="text-xs text-gray-500">Refunded</p>
+                  <p className="text-2xl font-bold text-gray-900">{formatNumber(getFilteredClients().filter(c => c.placement_status === 'Refunded').length)}</p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-white rounded-lg p-4 border border-gray-200">
+              <div className="flex items-center">
+                <div className="p-2 bg-rose-50 rounded-lg"><XCircle className="w-5 h-5 text-rose-600" /></div>
+                <div className="ml-3">
+                  <p className="text-xs text-gray-500">Lost (Refunded)</p>
+                  <p className="text-2xl font-bold text-gray-900">{formatNumber(getFilteredClients().filter(c => c.placement_status === 'Lost (Refunded)').length)}</p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-white rounded-lg p-4 border border-gray-200">
+              <div className="flex items-center">
+                <div className="p-2 bg-slate-50 rounded-lg"><XCircle className="w-5 h-5 text-slate-600" /></div>
+                <div className="ml-3">
+                  <p className="text-xs text-gray-500">Lost (No Refund)</p>
+                  <p className="text-2xl font-bold text-gray-900">{formatNumber(getFilteredClients().filter(c => c.placement_status === 'Lost (No Refund)').length)}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-lg p-4 border border-gray-200">
+              <div className="flex items-center">
+                <div className="p-2 bg-violet-50 rounded-lg"><Calendar className="w-5 h-5 text-violet-600" /></div>
+                <div className="ml-3">
+                  <p className="text-xs text-gray-500">Total Clients</p>
+                  <p className="text-2xl font-bold text-gray-900">{formatNumber(clients.filter(c => c.status.startsWith('Active') || c.status === 'Won' || c.status === 'Lost - Disappointed With Profiles' || c.status === 'Lost - Conflict of Interest' || c.status === 'Lost - Competition').length)}</p>
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Lead to Client Journey */}
@@ -1220,8 +1286,8 @@ export function Insights() {
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Lead to Client Journey</h3>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="p-3 bg-blue-50 rounded-lg text-center">
-                <p className="text-2xl font-bold text-blue-600">{getFilteredClients().filter(c => c.status.startsWith('Pending')).length}</p>
-                <p className="text-xs text-gray-600">Leads (Pending)</p>
+                <p className="text-2xl font-bold text-blue-600">{clients.length}</p>
+                <p className="text-xs text-gray-600">Total Leads</p>
               </div>
               <div className="p-3 bg-green-50 rounded-lg text-center">
                 <p className="text-2xl font-bold text-green-600">{getFilteredClients().filter(c => c.status.startsWith('Active')).length}</p>
@@ -1232,7 +1298,7 @@ export function Insights() {
                 <p className="text-xs text-gray-600">Converted (Won)</p>
               </div>
               <div className="p-3 bg-red-50 rounded-lg text-center">
-                <p className="text-2xl font-bold text-red-600">{getFilteredClients().filter(c => c.status.startsWith('Lost') || c.status === 'Budget' || c.status === 'Ghosted' || c.status === 'Competition').length}</p>
+                <p className="text-2xl font-bold text-red-600">{getFilteredClients().filter(c => c.status === 'Lost - Disappointed With Profiles' || c.status === 'Lost - Conflict of Interest' || c.status === 'Lost - Competition').length}</p>
                 <p className="text-xs text-gray-600">Lost</p>
               </div>
             </div>
@@ -1243,7 +1309,7 @@ export function Insights() {
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Placement Status (Converted Clients)</h3>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {['Active', 'Lost (Refunded)', 'Lost (No Refund)', undefined].map(status => {
-                const count = getFilteredClients().filter(c => c.status === 'Won' && (status === undefined ? !c.placement_status : c.placement_status === status)).length
+                const count = clients.filter(c => c.status === 'Won' && (status === undefined ? !c.placement_status : c.placement_status === status)).length
                 const label = status || 'No Status'
                 return (
                   <div key={label} className="p-3 bg-gray-50 rounded-lg text-center">
@@ -1609,101 +1675,120 @@ export function Insights() {
       {activeTab === 'candidates' && (
         <div className="space-y-6">
           {/* Candidate KPI Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-            <div className="bg-white rounded-lg p-4 border border-gray-200">
-              <div className="flex items-center">
-                <div className="p-2 bg-blue-50 rounded-lg"><Users className="w-5 h-5 text-blue-600" /></div>
-                <div className="ml-3">
-                  <p className="text-xs text-gray-500">Total</p>
-                  <p className="text-2xl font-bold text-gray-900">{formatNumber(getFilteredCandidates().length)}</p>
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+            {candidateStatusOptions.map(status => {
+              const count = getFilteredCandidates().filter(c => c.status === status).length
+              if (count === 0) return null
+              
+              const getStatusColor = (status: string) => {
+                if (status === 'WON') return 'bg-green-50 text-green-600'
+                if (status.startsWith('Lost')) return 'bg-red-50 text-red-600'
+                if (status === 'INTERVIEW_SCHEDULED') return 'bg-yellow-50 text-yellow-600'
+                if (status === 'BLACKLISTED') return 'bg-gray-50 text-gray-600'
+                return 'bg-blue-50 text-blue-600'
+              }
+              
+              return (
+                <div key={status} className="bg-white rounded-lg p-4 border border-gray-200">
+                  <div className="flex items-center">
+                    <div className={`p-2 rounded-lg ${getStatusColor(status)}`}>
+                      {status === 'WON' ? <CheckCircle className="w-5 h-5" /> :
+                       status.startsWith('Lost') ? <XCircle className="w-5 h-5" /> :
+                       status === 'INTERVIEW_SCHEDULED' ? <Calendar className="w-5 h-5" /> :
+                       <Users className="w-5 h-5" />}
+                    </div>
+                    <div className="ml-3">
+                      <p className="text-xs text-gray-500">{status.replace('_', ' ')}</p>
+                      <p className="text-2xl font-bold text-gray-900">{formatNumber(count)}</p>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
-            <div className="bg-white rounded-lg p-4 border border-gray-200">
-              <div className="flex items-center">
-                <div className="p-2 bg-green-50 rounded-lg"><CheckCircle className="w-5 h-5 text-green-600" /></div>
-                <div className="ml-3">
-                  <p className="text-xs text-gray-500">Won</p>
-                  <p className="text-2xl font-bold text-gray-900">{formatNumber(dateRangeData.wonCandidates)}</p>
-                </div>
-              </div>
-            </div>
-            <div className="bg-white rounded-lg p-4 border border-gray-200">
-              <div className="flex items-center">
-                <div className="p-2 bg-red-50 rounded-lg"><XCircle className="w-5 h-5 text-red-600" /></div>
-                <div className="ml-3">
-                  <p className="text-xs text-gray-500">Lost</p>
-                  <p className="text-2xl font-bold text-gray-900">{formatNumber(dateRangeData.lostCandidates)}</p>
-                </div>
-              </div>
-            </div>
-            <div className="bg-white rounded-lg p-4 border border-gray-200">
-              <div className="flex items-center">
-                <div className="p-2 bg-yellow-50 rounded-lg"><Calendar className="w-5 h-5 text-yellow-600" /></div>
-                <div className="ml-3">
-                  <p className="text-xs text-gray-500">Interviewed</p>
-                  <p className="text-2xl font-bold text-gray-900">{formatNumber(candidates.filter(c => c.status === 'INTERVIEW_SCHEDULED').length)}</p>
-                </div>
-              </div>
-            </div>
-            <div className="bg-white rounded-lg p-4 border border-gray-200">
-              <div className="flex items-center">
-                <div className="p-2 bg-orange-50 rounded-lg"><RefreshCcw className="w-5 h-5 text-orange-600" /></div>
-                <div className="ml-3">
-                  <p className="text-xs text-gray-500">Rescheduled</p>
-                  <p className="text-2xl font-bold text-gray-900">{formatNumber(candidates.filter(c => c.status === 'RESCHEDULED').length)}</p>
-                </div>
-              </div>
-            </div>
-            <div className="bg-white rounded-lg p-4 border border-gray-200">
-              <div className="flex items-center">
-                <div className="p-2 bg-purple-50 rounded-lg"><RefreshCcw className="w-5 h-5 text-purple-600" /></div>
-                <div className="ml-3">
-                  <p className="text-xs text-gray-500">Reschedule Rate</p>
-                  <p className="text-2xl font-bold text-gray-900">{(() => {
-                    const interviewed = candidates.filter(c => c.status === 'INTERVIEW_SCHEDULED').length
-                    const rescheduled = candidates.filter(c => c.status === 'RESCHEDULED').length
-                    const total = interviewed + rescheduled
-                    return total > 0 ? Math.round((rescheduled / total) * 100) : 0
-                  })()}%</p>
-                </div>
-              </div>
-            </div>
-            <div className="bg-white rounded-lg p-4 border border-gray-200">
-              <div className="flex items-center">
-                <div className="p-2 bg-emerald-50 rounded-lg"><TrendingUp className="w-5 h-5 text-emerald-600" /></div>
-                <div className="ml-3">
-                  <p className="text-xs text-gray-500">Win Rate</p>
-                  <p className="text-2xl font-bold text-gray-900">{dateRangeData.candidateWinRate}%</p>
-                </div>
-              </div>
-            </div>
-            <div className="bg-white rounded-lg p-4 border border-gray-200">
-              <div className="flex items-center">
-                <div className="p-2 bg-red-50 rounded-lg"><XCircle className="w-5 h-5 text-red-600" /></div>
-                <div className="ml-3">
-                  <p className="text-xs text-gray-500">Loss Rate</p>
-                  <p className="text-2xl font-bold text-gray-900">{dateRangeData.candidateLossRate}%</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Candidates by Status */}
-          <div className="bg-white rounded-lg p-6 border border-gray-200">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Candidates by Status</h3>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-              {['PENDING', 'INTERVIEW_SCHEDULED', 'RESCHEDULED', 'WON', 'LOST'].map(status => {
-                const count = candidateStatusData.find(s => s.status === status)?.count || 0
-                return (
-                  <div key={status} className="p-3 bg-gray-50 rounded-lg text-center">
-                    <p className="text-2xl font-bold text-nestalk-primary">{count}</p>
-                    <p className="text-xs text-gray-600">{status.replace('_', ' ')}</p>
+              )
+            })}
+            
+            {/* Additional Metrics */}
+            {(() => {
+              const totalLost = getFilteredCandidates().filter(c => c.status.startsWith('Lost')).length
+              const won = getFilteredCandidates().filter(c => c.status === 'WON').length
+              const interviewed = getFilteredCandidates().filter(c => c.scheduled_date).length
+              const scheduled = getFilteredCandidates().filter(c => c.scheduled_date).length
+              const interviewWon = getFilteredCandidates().filter(c => c.status === 'WON' && c.scheduled_date).length
+              const pending = getFilteredCandidates().filter(c => ['PENDING', 'Pending Review', 'Pending, applying GC'].includes(c.status)).length
+              const qualified = getFilteredCandidates().filter(c => ['Pending Review', 'Pending, applying GC', 'INTERVIEW_SCHEDULED', 'WON'].includes(c.status)).length
+              const total = getFilteredCandidates().length
+              
+              return [
+                totalLost > 0 && (
+                  <div key="total-lost" className="bg-white rounded-lg p-4 border border-gray-200">
+                    <div className="flex items-center">
+                      <div className="p-2 bg-red-50 rounded-lg"><XCircle className="w-5 h-5 text-red-600" /></div>
+                      <div className="ml-3">
+                        <p className="text-xs text-gray-500">Total Lost</p>
+                        <p className="text-2xl font-bold text-gray-900">{formatNumber(totalLost)}</p>
+                      </div>
+                    </div>
+                  </div>
+                ),
+                interviewWon > 0 && (
+                  <div key="interview-won" className="bg-white rounded-lg p-4 border border-gray-200">
+                    <div className="flex items-center">
+                      <div className="p-2 bg-emerald-50 rounded-lg"><Award className="w-5 h-5 text-emerald-600" /></div>
+                      <div className="ml-3">
+                        <p className="text-xs text-gray-500">Interview Won</p>
+                        <p className="text-2xl font-bold text-gray-900">{formatNumber(interviewWon)}</p>
+                      </div>
+                    </div>
+                  </div>
+                ),
+                (won + totalLost) > 0 && (
+                  <div key="win-rate" className="bg-white rounded-lg p-4 border border-gray-200">
+                    <div className="flex items-center">
+                      <div className="p-2 bg-green-50 rounded-lg"><TrendingUp className="w-5 h-5 text-green-600" /></div>
+                      <div className="ml-3">
+                        <p className="text-xs text-gray-500">Win Rate</p>
+                        <p className="text-2xl font-bold text-gray-900">{Math.round((won / (won + totalLost)) * 100)}%</p>
+                      </div>
+                    </div>
+                  </div>
+                ),
+                scheduled > 0 && (
+                  <div key="interview-conversion" className="bg-white rounded-lg p-4 border border-gray-200">
+                    <div className="flex items-center">
+                      <div className="p-2 bg-yellow-50 rounded-lg"><Target className="w-5 h-5 text-yellow-600" /></div>
+                      <div className="ml-3">
+                        <p className="text-xs text-gray-500">Interview Conversion</p>
+                        <p className="text-2xl font-bold text-gray-900">{Math.round((interviewWon / scheduled) * 100)}%</p>
+                      </div>
+                    </div>
+                  </div>
+                ),
+                pending > 0 && (
+                  <div key="pending-pipeline" className="bg-white rounded-lg p-4 border border-gray-200">
+                    <div className="flex items-center">
+                      <div className="p-2 bg-blue-50 rounded-lg"><Clock className="w-5 h-5 text-blue-600" /></div>
+                      <div className="ml-3">
+                        <p className="text-xs text-gray-500">Pending Pipeline</p>
+                        <p className="text-2xl font-bold text-gray-900">{formatNumber(pending)}</p>
+                      </div>
+                    </div>
+                  </div>
+                ),
+                total > 0 && (
+                  <div key="qualification-rate" className="bg-white rounded-lg p-4 border border-gray-200">
+                    <div className="flex items-center">
+                      <div className="p-2 bg-purple-50 rounded-lg"><Award className="w-5 h-5 text-purple-600" /></div>
+                      <div className="ml-3">
+                        <p className="text-xs text-gray-500">Qualification Rate</p>
+                        <p className="text-2xl font-bold text-gray-900">{Math.round((qualified / total) * 100)}%</p>
+                      </div>
+                    </div>
                   </div>
                 )
-              })}
-            </div>
+              ].filter(Boolean)
+            })()}
           </div>
+
+
 
           {/* Candidate Acquisition Trend */}
           <div className="bg-white rounded-lg p-4 md:p-6 border border-gray-200 mb-6">
