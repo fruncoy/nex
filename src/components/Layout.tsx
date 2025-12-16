@@ -102,6 +102,7 @@ export function Layout() {
         { name: 'Reports', href: '/reports', icon: FileText }
       ]
     },
+    { name: 'Calendar', href: '/calendar', icon: Calendar },
     { name: 'Nestara AI', href: '/nestara-ai', icon: Brain },
   ]
 
