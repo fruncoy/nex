@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
-import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import { supabase } from '../lib/supabase'
 import { 
   Home, 
   Users, 
@@ -20,15 +21,17 @@ import {
   Target,
   CheckCircle,
   Brain,
-  Clock
+  Clock,
+  Gift
 } from 'lucide-react'
 
 export function Layout() {
   const { signOut, user, staff } = useAuth()
   const location = useLocation()
+  const navigate = useNavigate()
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
   const [isCollapsed, setIsCollapsed] = useState(false)
-  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set(['Candidates', 'Leads (All)', 'Training Leads', 'Updates', 'Insights'])) // All open by default
+  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set(['Candidates', 'Leads (All)', 'Training Leads', 'Updates', 'Insights']))
 
   console.log('Layout rendering - user:', user, 'staff:', staff, 'location:', location.pathname)
 
@@ -45,13 +48,33 @@ export function Layout() {
     handleResize()
     window.addEventListener('resize', handleResize)
     
-    // Auto-expand Candidates if we're on interviews page
     if (location.pathname === '/interviews') {
       setExpandedItems(prev => new Set([...prev, 'Candidates']))
     }
     
     return () => window.removeEventListener('resize', handleResize)
   }, [location.pathname])
+
+  useEffect(() => {
+    checkWrappedViews()
+  }, [staff?.id])
+
+  const checkWrappedViews = async () => {
+    if (!staff?.id) return
+
+    const { data } = await supabase
+      .from('wrapped_views')
+      .select('has_viewed_wrapped')
+      .eq('user_id', staff.id)
+      .single()
+
+    if (!data || !data.has_viewed_wrapped) {
+      navigate('/wrapped')
+      await supabase
+        .from('wrapped_views')
+        .upsert({ user_id: staff.id, has_viewed_wrapped: true })
+    }
+  }
 
   const navigation = [
     { name: 'Dashboard', href: '/', icon: Home },
@@ -99,7 +122,8 @@ export function Layout() {
       href: '/insights', 
       icon: BarChart3,
       subItems: [
-        { name: 'Reports', href: '/reports', icon: FileText }
+        { name: 'Reports', href: '/reports', icon: FileText },
+        { name: '2025 Wrapped', href: '/wrapped', icon: Gift }
       ]
     },
     { name: 'Calendar', href: '/calendar', icon: Calendar },
