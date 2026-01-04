@@ -170,10 +170,12 @@ export function Layout() {
       <div className={`fixed inset-y-0 left-0 z-50 ${isCollapsed && window.innerWidth >= 1024 ? 'w-16' : 'w-64'} bg-white shadow-lg transform transition-all duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0`}>
         <div className="flex flex-col h-full">
           {/* Logo */}
-          <div className="flex items-center justify-between h-[73px] px-4 bg-nestalk-primary">
-            <span className={`text-xl font-bold text-white transition-opacity duration-300 ${isCollapsed && window.innerWidth >= 1024 ? 'opacity-0' : 'opacity-100'}`}>
-              {isCollapsed && window.innerWidth >= 1024 ? 'N' : 'NEX'}
-            </span>
+          <div className="flex items-center justify-center h-[73px] px-4 bg-nestalk-primary">
+            <img 
+              src="/icon.png" 
+              alt="NEX" 
+              className="w-10 h-10"
+            />
           </div>
 
           {/* Navigation */}

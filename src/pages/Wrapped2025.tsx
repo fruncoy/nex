@@ -18,6 +18,16 @@ interface WrappedStats {
     mostActive: { name: string; activities: number }
     signupDates: string[]
   }
+  // Exam Room metrics
+  wonCandidates: number
+  lostClients: number
+  qualifiedCandidates: number
+  activePlacements: number
+  refundedClients: number
+  interviewWon: number
+  totalOutcomes: number
+  totalPlacements: number
+  candidatesWithInterviews: number
 }
 
 export function Wrapped2025() {
@@ -93,6 +103,64 @@ export function Wrapped2025() {
 
       // Total placements (Won clients)
       const placementsCount = leadsData?.filter(client => client.status === 'Won').length || 0
+
+      // Additional metrics for Exam Room
+      const { data: candidatesData } = await supabase
+        .from('candidates')
+        .select('status')
+        .gte('created_at', year2025Start)
+        .lte('created_at', year2025End)
+      
+      const wonCandidates = candidatesData?.filter(c => c.status === 'WON').length || 0
+      const lostClients = leadsData?.filter(c => c.status.includes('Lost')).length || 0
+      
+      // Interview conversion: candidates who got interviews and won / total interviews
+      const candidatesWithInterviews = candidatesData?.filter(c => 
+        c.status === 'INTERVIEW_SCHEDULED' || c.status === 'WON' || c.status.startsWith('Lost')
+      ).length || 0
+      
+      // Qualified candidates = won candidates (since they're the ones who made it)
+      const qualifiedCandidates = wonCandidates
+      
+      // Get placement data from placements table
+      const { data: placementsData } = await supabase
+        .from('placements')
+        .select('status')
+        .gte('created_at', year2025Start)
+        .lte('created_at', year2025End)
+      
+      // Get clients with placement_status for refund calculations
+      const { data: clientsWithPlacement } = await supabase
+        .from('clients')
+        .select('status, placement_status')
+        .eq('status', 'Won')
+        .gte('created_at', year2025Start)
+        .lte('created_at', year2025End)
+      
+      // Total placements = Won clients
+      const totalPlacements = clientsWithPlacement?.length || 0
+      
+      // Active placements = placements with ACTIVE status OR clients without refund status
+      const activePlacementsFromTable = placementsData?.filter(p => p.status === 'ACTIVE').length || 0
+      const activeFromClients = clientsWithPlacement?.filter(c => 
+        !c.placement_status || c.placement_status === 'Active'
+      ).length || 0
+      const activePlacements = Math.max(activePlacementsFromTable, activeFromClients)
+      
+      // Refunded clients = clients with refund-related placement_status
+      const refundedClients = clientsWithPlacement?.filter(c => 
+        c.placement_status === 'Refunded' || c.placement_status === 'Lost (Refunded)'
+      ).length || 0
+      
+      // Interview conversion: interviews won / total interviews
+      const { data: interviewsWithOutcome } = await supabase
+        .from('interviews')
+        .select('outcome')
+        .gte('created_at', year2025Start)
+        .lte('created_at', year2025End)
+      
+      const interviewWon = interviewsWithOutcome?.filter(i => i.outcome === 'Interview_Won').length || 0
+      const totalOutcomes = wonCandidates + lostClients + placementsCount + (candidatesData?.filter(c => c.status.startsWith('Lost')).length || 0)
 
       // Busiest month
       const { data: monthlyData } = await supabase
@@ -178,7 +246,17 @@ export function Wrapped2025() {
             activities: mostActiveUserId.count
           },
           signupDates: teamData?.map(member => member.created_at) || []
-        }
+        },
+        // Exam Room metrics
+        wonCandidates,
+        lostClients,
+        qualifiedCandidates,
+        activePlacements,
+        refundedClients,
+        interviewWon,
+        totalOutcomes,
+        totalPlacements,
+        candidatesWithInterviews
       })
     } catch (error) {
       console.error('Error loading wrapped stats:', error)
@@ -281,6 +359,63 @@ export function Wrapped2025() {
       )
     },
     {
+      title: "Exam Room",
+      content: (
+        <div className="text-center">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 max-w-4xl mx-auto">
+            <div className="bg-white/20 backdrop-blur-sm border border-white/30 p-2 md:p-4 rounded-xl shadow-lg">
+              <div className="text-lg md:text-2xl font-bold text-gray-800">
+                {stats ? Math.round((stats.totalCandidates > 0 ? (stats.wonCandidates / stats.totalCandidates) * 100 : 0)) : 0}%
+              </div>
+              <div className="text-xs md:text-sm text-gray-600">Candidates Win Rate</div>
+            </div>
+            <div className="bg-white/20 backdrop-blur-sm border border-white/30 p-2 md:p-4 rounded-xl shadow-lg">
+              <div className="text-lg md:text-2xl font-bold text-gray-800">
+                {stats ? Math.round((stats.totalClients > 0 ? (stats.totalPlacements / stats.totalClients) * 100 : 0)) : 0}%
+              </div>
+              <div className="text-xs md:text-sm text-gray-600">Client Win Rate</div>
+            </div>
+            <div className="bg-white/20 backdrop-blur-sm border border-white/30 p-2 md:p-4 rounded-xl shadow-lg">
+              <div className="text-lg md:text-2xl font-bold text-gray-800">
+                {stats ? Math.round((stats.totalLeads > 0 ? (stats.totalClients / stats.totalLeads) * 100 : 0)) : 0}%
+              </div>
+              <div className="text-xs md:text-sm text-gray-600">Client Conversion</div>
+            </div>
+            <div className="bg-white/20 backdrop-blur-sm border border-white/30 p-2 md:p-4 rounded-xl shadow-lg">
+              <div className="text-lg md:text-2xl font-bold text-gray-800">
+                {stats ? Math.round((stats.totalInterviews > 0 ? (stats.interviewWon / stats.totalInterviews) * 100 : 0)) : 0}%
+              </div>
+              <div className="text-xs md:text-sm text-gray-600">Interview Conversion</div>
+            </div>
+            <div className="bg-white/20 backdrop-blur-sm border border-white/30 p-2 md:p-4 rounded-xl shadow-lg">
+              <div className="text-lg md:text-2xl font-bold text-gray-800">
+                {stats ? Math.round((stats.totalCandidates > 0 ? (stats.qualifiedCandidates / stats.totalCandidates) * 100 : 0)) : 0}%
+              </div>
+              <div className="text-xs md:text-sm text-gray-600">Qualification Rate</div>
+            </div>
+            <div className="bg-white/20 backdrop-blur-sm border border-white/30 p-2 md:p-4 rounded-xl shadow-lg">
+              <div className="text-lg md:text-2xl font-bold text-gray-800">
+                {stats ? Math.round((stats.totalPlacements > 0 ? (stats.activePlacements / stats.totalPlacements) * 100 : 0)) : 0}%
+              </div>
+              <div className="text-xs md:text-sm text-gray-600">Placement Success</div>
+            </div>
+            <div className="bg-white/20 backdrop-blur-sm border border-white/30 p-2 md:p-4 rounded-xl shadow-lg">
+              <div className="text-lg md:text-2xl font-bold text-gray-800">
+                {stats ? Math.round((stats.totalOutcomes > 0 ? ((stats.totalPlacements + stats.wonCandidates) / stats.totalOutcomes) * 100 : 0)) : 0}%
+              </div>
+              <div className="text-xs md:text-sm text-gray-600">Overall Win Rate</div>
+            </div>
+            <div className="bg-white/20 backdrop-blur-sm border border-white/30 p-2 md:p-4 rounded-xl shadow-lg">
+              <div className="text-lg md:text-2xl font-bold text-gray-800">
+                {stats ? Math.round((stats.totalPlacements > 0 ? (stats.refundedClients / stats.totalPlacements) * 100 : 0)) : 0}%
+              </div>
+              <div className="text-xs md:text-sm text-gray-600">Refund Rate</div>
+            </div>
+          </div>
+        </div>
+      )
+    },
+    {
       title: "Tusidanganyane",
       content: (
         <div className="text-center">
@@ -326,38 +461,65 @@ export function Wrapped2025() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 to-white">
       <div className="container mx-auto px-4 py-8">
-        <div className="max-w-2xl mx-auto relative">
-          {/* Left chevron */}
+        <div className="max-w-2xl mx-auto relative overflow-hidden">
+          {/* Left chevron - desktop only */}
           {currentCard > 0 && (
             <button
               onClick={() => setCurrentCard(currentCard - 1)}
-              className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-16 p-3 rounded-full bg-orange-600 text-white hover:bg-orange-700 transition-colors z-10"
+              className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-16 p-3 rounded-full bg-orange-600 text-white hover:bg-orange-700 transition-colors z-20 hidden sm:block"
             >
               <ChevronLeft className="w-6 h-6" />
             </button>
           )}
           
-          {/* Right chevron */}
+          {/* Right chevron - desktop only */}
           {currentCard < cards.length - 1 && (
             <button
               onClick={handleNextCard}
-              className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-16 p-3 rounded-full bg-orange-600 text-white hover:bg-orange-700 transition-colors z-10"
+              className="absolute right-4 top-1/2 -translate-y-1/2 p-3 rounded-full bg-orange-600 text-white hover:bg-orange-700 transition-colors z-20 hidden sm:block"
             >
               <ChevronRight className="w-6 h-6" />
             </button>
           )}
-          {/* Card */}
-          <div className="bg-white rounded-2xl shadow-xl p-8 min-h-[500px] flex flex-col justify-center relative overflow-hidden">
-            {/* Background decoration */}
-            <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-orange-100 to-orange-200 rounded-full -translate-y-16 translate-x-16 opacity-50"></div>
-            <div className="absolute bottom-0 left-0 w-24 h-24 bg-gradient-to-tr from-orange-50 to-orange-100 rounded-full translate-y-12 -translate-x-12 opacity-30"></div>
-            
-            <div className="flex flex-col items-center justify-center h-full relative z-10">
-              <h1 className="text-2xl font-bold text-orange-600 mb-6">
-                {cards[currentCard].title}
-              </h1>
-              {cards[currentCard].content}
-            </div>
+          
+          {/* Cards Container */}
+          <div 
+            className="flex transition-transform duration-300 ease-out"
+            style={{ transform: `translateX(-${currentCard * 100}%)` }}
+            onTouchStart={(e) => {
+              const touch = e.touches[0]
+              e.currentTarget.dataset.startX = touch.clientX.toString()
+            }}
+            onTouchEnd={(e) => {
+              const startX = parseFloat(e.currentTarget.dataset.startX || '0')
+              const endX = e.changedTouches[0].clientX
+              const diff = startX - endX
+              
+              if (Math.abs(diff) > 50) {
+                if (diff > 0 && currentCard < cards.length - 1) {
+                  handleNextCard()
+                } else if (diff < 0 && currentCard > 0) {
+                  setCurrentCard(currentCard - 1)
+                }
+              }
+            }}
+          >
+            {cards.map((card, index) => (
+              <div key={index} className="w-full flex-shrink-0">
+                <div className="bg-white rounded-2xl shadow-xl p-8 min-h-[500px] flex flex-col justify-center relative overflow-hidden">
+                  {/* Background decoration */}
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-orange-100 to-orange-200 rounded-full -translate-y-16 translate-x-16 opacity-50"></div>
+                  <div className="absolute bottom-0 left-0 w-24 h-24 bg-gradient-to-tr from-orange-50 to-orange-100 rounded-full translate-y-12 -translate-x-12 opacity-30"></div>
+                  
+                  <div className="flex flex-col items-center justify-center h-full relative z-10">
+                    <h1 className="text-2xl font-bold text-orange-600 mb-6">
+                      {card.title}
+                    </h1>
+                    {card.content}
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
 
           {/* Progress indicator */}
