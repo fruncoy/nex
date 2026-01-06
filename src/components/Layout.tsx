@@ -127,6 +127,7 @@ export function Layout() {
       ]
     },
     { name: 'Calendar', href: '/calendar', icon: Calendar },
+    { name: 'SMS Management', href: '/sms', icon: MessageCircle },
     { name: 'Nestara AI', href: '/nestara-ai', icon: Brain },
   ]
 

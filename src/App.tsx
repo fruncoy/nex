@@ -24,6 +24,7 @@ import { Staff } from './pages/Staff'
 import { LeadTracker } from './pages/LeadTracker'
 import { ConvertedClients } from './pages/ConvertedClients'
 import { Blacklisted } from './pages/Blacklisted'
+import { SMSManagement } from './pages/SMSManagement'
 import { NestaraAI } from './pages/NestaraAI'
 import { CreateProfile } from './pages/CreateProfile'
 import { Placements } from './pages/Placements'
@@ -74,6 +75,7 @@ function AppRoutes() {
         <Route path="interviews" element={<Interviews />} />
         <Route path="insights" element={<Insights />} />
         <Route path="calendar" element={<Calendar />} />
+        <Route path="sms" element={<SMSManagement />} />
         <Route path="nestara-ai" element={<NestaraAI />} />
         <Route path="updates" element={<Updates />} />
         <Route path="reminders" element={<Reminders />} />

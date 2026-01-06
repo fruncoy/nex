@@ -1960,7 +1960,7 @@ John Smith,0723456789,Facebook,Driver,PENDING,2025-01-14`
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Interview Date (Time will be set to 2:00 PM)
+                    Interview Date (Time will be set to 9:00 AM)
                   </label>
                   <input
                     type="date"
@@ -1982,7 +1982,7 @@ John Smith,0723456789,Facebook,Driver,PENDING,2025-01-14`
                       
                       try {
                         const date = new Date(scheduleModal.dateOnly)
-                        date.setHours(14, 0, 0, 0) // Set to 2:00 PM
+                        date.setHours(9, 0, 0, 0) // Set to 9:00 AM
                         const isoDateTime = date.toISOString()
                         
                         // Create interview

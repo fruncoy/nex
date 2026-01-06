@@ -158,6 +158,15 @@ export function StatusBadge({ status, type = 'candidate' }: StatusBadgeProps) {
         default: return status
       }
     }
+    
+    // Format candidate statuses
+    if (type === 'candidate') {
+      switch (status.toUpperCase()) {
+        case 'INTERVIEW_SCHEDULED': return 'Interview Scheduled'
+        default: return status
+      }
+    }
+    
     // Return the status as-is for other types
     return status
   }

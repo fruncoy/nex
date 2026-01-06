@@ -2,10 +2,11 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { SearchFilter } from '../components/ui/SearchFilter'
 import { StatusBadge } from '../components/ui/StatusBadge'
-import { Plus, Calendar, CheckCircle, XCircle, Clock } from 'lucide-react'
+import { Plus, Calendar, CheckCircle, XCircle, Clock, MessageSquare, Loader2 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
 import { ActivityLogger } from '../lib/activityLogger'
+import { smsService } from '../services/smsService'
 
 interface Interview {
   id: string
@@ -48,600 +49,449 @@ export function Interviews() {
   const [showCandidateDropdown, setShowCandidateDropdown] = useState(false)
   const [selectedInterviews, setSelectedInterviews] = useState<string[]>([])
   const [bulkStatus, setBulkStatus] = useState('')
+  const [smsStates, setSmsStates] = useState<Record<string, 'idle' | 'sending' | 'sent' | 'failed'>>({})
 
   // reschedule state
-  const [reschedule, setReschedule] = useState<{ open: boolean; interview: Interview | null; dateTime: string }>(
-    { open: false, interview: null, dateTime: '' }
-  )
+  const [reschedule, setReschedule] = useState<{ open: boolean; interview: Interview | null; dateTime: string }>({
+    open: false, interview: null, dateTime: ''
+  })
 
   const { user, staff } = useAuth()
   const { showToast } = useToast()
 
-  const statusOptions = ['all', 'scheduled', 'won', 'lost'] // Include lost interviews for visibility
+  const statusOptions = ['all', 'scheduled', 'won', 'lost']
   const outcomeOptions = ['Interview_Won', 'Interview_Lost', 'Missed_Interview', 'Reschedule_Interview']
 
-  useEffect(() => {
-    Promise.all([loadInterviews(), loadScheduledCandidates()])
-    
-    // Set up realtime subscriptions for immediate updates
-    const interviewsSubscription = supabase
-      .channel('interviews-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'interviews'
-        },
-        (payload) => {
-          console.log('Interviews table change detected:', payload)
-          loadInterviews()
-        }
-      )
-      .subscribe()
-
-    const candidatesSubscription = supabase
-      .channel('candidates-changes-for-interviews')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public', 
-          table: 'candidates'
-        },
-        (payload) => {
-          console.log('Candidates table change detected:', payload)
-          // Reload scheduled candidates when candidate status changes
-          loadScheduledCandidates()
-        }
-      )
-      .subscribe()
-    
-    // Set up an interval to check for interviews that need attention
-    const checkInterviewsInterval = setInterval(() => {
-      const now = new Date()
-      setInterviews(prevInterviews => {
-        return prevInterviews.map(interview => {
-          const interviewDate = new Date(interview.date_time)
-          if (!interview.attended && !interview.outcome && interviewDate < now) {
-            // Mark as needing attention if time has passed
-            return { ...interview, needsAttention: true }
-          }
-          return interview
-        })
-      })
-    }, 60000) // Check every minute
-    
-    return () => {
-      interviewsSubscription.unsubscribe()
-      candidatesSubscription.unsubscribe()
-      clearInterval(checkInterviewsInterval)
+  const getInterviewStatus = (interview: Interview) => {
+    // If interview has an outcome, show that
+    if (interview.outcome) {
+      if (interview.outcome === 'Interview_Won') return 'won'
+      if (interview.outcome === 'Interview_Lost') return 'lost'
+      if (interview.outcome === 'Missed_Interview') return 'missed'
+      // No "rescheduled" status - when rescheduled, it becomes "scheduled" again
     }
-  }, [])
+    
+    // If no outcome, check if time has passed - auto "needs attention"
+    const now = new Date()
+    const interviewTime = new Date(interview.date_time)
+    
+    if (interviewTime < now) {
+      return 'needs_attention' // Time passed, no status set = needs attention
+    }
+    
+    return 'scheduled' // Future interview, no outcome = scheduled
+  }
 
-  useEffect(() => {
-    filterInterviews()
-  }, [interviews, searchTerm, filterStatus, sortBy])
+  const getDropdownValue = (interview: Interview) => {
+    // Dropdown only shows actual outcomes, not auto-statuses
+    if (interview.outcome) {
+      if (interview.outcome === 'Interview_Won') return 'Interview_Won'
+      if (interview.outcome === 'Interview_Lost') return 'Interview_Lost'
+      if (interview.outcome === 'Missed_Interview') return 'Missed_Interview'
+      // No rescheduled option - when rescheduled, outcome is cleared
+    }
+    return '' // Empty for placeholder
+  }
 
-  const loadInterviews = async () => {
+  const handleStatusChange = async (interview: Interview, newStatus: string) => {
+    if (!newStatus) return // Don't process empty selection
+    
+    // If reschedule is selected, open the modal instead of updating status
+    if (newStatus === 'Reschedule_Interview') {
+      // Set time to 9AM automatically
+      const currentDate = new Date(interview.date_time)
+      const newDate = new Date(currentDate)
+      newDate.setHours(9, 0, 0, 0) // Set to 9:00 AM
+      const dateTimeString = newDate.toISOString().slice(0, 16) // Format for datetime-local input
+      
+      setReschedule({ open: true, interview, dateTime: dateTimeString })
+      return
+    }
+    
     try {
-      showToast('Loading interviews...', 'loading')
-      
-      // First, check for candidates with INTERVIEW_SCHEDULED status but no interview record
-      const { data: scheduledCandidates } = await supabase
+      let outcome = newStatus // Use exact database values
+      let attended = false
+      let candidateStatus = ''
+
+      switch (newStatus) {
+        case 'Interview_Won':
+          attended = true
+          candidateStatus = 'WON - Interview Won'
+          break
+        case 'Interview_Lost':
+          attended = true
+          candidateStatus = 'Lost - Interview Lost'
+          break
+        case 'Missed_Interview':
+          attended = false
+          candidateStatus = 'Lost - Missed Interview'
+          break
+      }
+
+      console.log('Updating interview:', {
+        interview_id: interview.id,
+        outcome,
+        attended,
+        candidate_id: interview.candidate_id,
+        candidateStatus
+      })
+
+      // Update interview
+      const { error: interviewError } = await supabase
+        .from('interviews')
+        .update({ outcome, attended })
+        .eq('id', interview.id)
+
+      if (interviewError) {
+        console.error('Interview update error:', interviewError)
+        throw interviewError
+      }
+
+      // Update candidate status if needed
+      if (candidateStatus) {
+        const { error: candidateError } = await supabase
+          .from('candidates')
+          .update({ status: candidateStatus })
+          .eq('id', interview.candidate_id)
+
+        if (candidateError) {
+          console.error('Candidate update error:', candidateError)
+          throw candidateError
+        }
+        
+        console.log('Candidate status updated to:', candidateStatus)
+      }
+
+      // Log activity
+      await ActivityLogger.log({
+        userId: staff?.id || user?.id || '',
+        actionType: 'status_change',
+        entityType: 'interview',
+        entityId: interview.id,
+        entityName: interview.candidates?.name || 'Unknown Candidate',
+        oldValue: interview.outcome || 'No Status',
+        newValue: newStatus,
+        description: `Interview outcome updated from ${interview.outcome || 'No Status'} to ${newStatus.replace('_', ' ')}`
+      })
+
+      showToast(`Interview status updated to ${newStatus.replace('_', ' ')}`, 'success')
+      fetchInterviews()
+    } catch (error) {
+      console.error('Status update failed:', error)
+      showToast('Failed to update interview status', 'error')
+    }
+  }
+
+  const handleReschedule = async (interview: Interview, newDateTime: string) => {
+    try {
+      const { error } = await supabase
+        .from('interviews')
+        .update({ 
+          date_time: newDateTime,
+          outcome: null,
+          attended: false
+        })
+        .eq('id', interview.id)
+
+      if (error) throw error
+
+      // Update candidate status to INTERVIEW_SCHEDULED when rescheduled
+      const { error: candidateError } = await supabase
         .from('candidates')
-        .select('id, name, scheduled_date')
-        .eq('status', 'INTERVIEW_SCHEDULED')
-      
-      if (scheduledCandidates) {
-        for (const candidate of scheduledCandidates) {
-          // Check if interview record exists
-          const { data: existingInterview } = await supabase
-            .from('interviews')
-            .select('id')
-            .eq('candidate_id', candidate.id)
-            .single()
-          
-          // If no interview record exists, create one
-          if (!existingInterview && candidate.scheduled_date) {
-            await supabase
-              .from('interviews')
-              .insert({
-                candidate_id: candidate.id,
-                date_time: candidate.scheduled_date,
-                location: 'Office',
-                assigned_staff: user?.id,
-                attended: false,
-                outcome: null,
-                status: 'scheduled'
-              })
-          }
+        .update({ status: 'INTERVIEW_SCHEDULED' })
+        .eq('id', interview.candidate_id)
+
+      if (candidateError) throw candidateError
+
+      // Log reschedule activity
+      await ActivityLogger.logReschedule(
+        staff?.id || user?.id || '',
+        'interview',
+        interview.id,
+        interview.candidates?.name || 'Unknown Candidate',
+        interview.date_time,
+        newDateTime,
+        staff?.name || user?.email || 'Unknown User'
+      )
+
+      showToast('Interview rescheduled successfully', 'success')
+      setReschedule({ open: false, interview: null, dateTime: '' })
+      fetchInterviews()
+    } catch (error) {
+      showToast('Failed to reschedule interview', 'error')
+    }
+  }
+
+  const getCountdown = (interviewDateTime: string) => {
+    const interview = new Date(interviewDateTime)
+    const now = new Date()
+    const diff = interview.getTime() - now.getTime()
+    
+    if (diff < 0) return '-'
+    
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24))
+    const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
+    
+    if (days > 0) return `${days}d ${hours}h`
+    if (hours > 0) return `${hours}h ${minutes}m`
+    return `${minutes}m`
+  }
+
+  const getStatusDisplay = (interview: Interview) => {
+    const status = getInterviewStatus(interview)
+    
+    const statusConfig = {
+      scheduled: {
+        text: 'Interview Scheduled',
+        className: 'bg-blue-50 text-blue-700 border border-blue-200'
+      },
+      needs_attention: {
+        text: 'Needs Attention',
+        className: 'bg-red-50 text-red-700 border border-red-200'
+      },
+      won: {
+        text: 'Interview Won',
+        className: 'bg-green-50 text-green-700 border border-green-200'
+      },
+      lost: {
+        text: 'Interview Lost',
+        className: 'bg-red-50 text-red-700 border border-red-200'
+      },
+      missed: {
+        text: 'Missed Interview',
+        className: 'bg-orange-50 text-orange-700 border border-orange-200'
+      }
+    }
+
+    const config = statusConfig[status] || statusConfig.scheduled
+    
+    return (
+      <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${config.className}`}>
+        {config.text}
+      </span>
+    )
+  }
+
+  const handleOutcomeUpdate = async (interview: Interview, outcome: string) => {
+    try {
+      // Update interview outcome
+      const { error: interviewError } = await supabase
+        .from('interviews')
+        .update({ 
+          outcome,
+          attended: outcome === 'Interview_Won' || outcome === 'Interview_Lost'
+        })
+        .eq('id', interview.id)
+
+      if (interviewError) throw interviewError
+
+      // Update candidate status based on outcome
+      let candidateStatus = ''
+      if (outcome === 'Interview_Won') {
+        candidateStatus = 'WON - Interview Won'
+      } else if (outcome === 'Interview_Lost') {
+        candidateStatus = 'Lost - Interview Lost'
+      } else if (outcome === 'Missed_Interview') {
+        candidateStatus = 'Lost - Missed Interview'
+      }
+
+      if (candidateStatus) {
+        const { error: candidateError } = await supabase
+          .from('candidates')
+          .update({ status: candidateStatus })
+          .eq('id', interview.candidate_id)
+
+        if (candidateError) throw candidateError
+      }
+
+      // Log activity
+      await ActivityLogger.logActivity({
+        type: 'interview_outcome',
+        description: `Interview outcome updated to ${outcome}`,
+        metadata: {
+          interview_id: interview.id,
+          candidate_id: interview.candidate_id,
+          outcome
+        }
+      })
+
+      showToast(`Interview marked as ${outcome.replace('_', ' ')}`, 'success')
+      fetchInterviews() // Refresh data
+    } catch (error) {
+      showToast('Failed to update interview outcome', 'error')
+    }
+  }
+
+  const handleBulkStatusUpdate = async (status: string) => {
+    if (selectedInterviews.length === 0) {
+      showToast('Please select interviews to update', 'error')
+      return
+    }
+
+    try {
+      for (const interviewId of selectedInterviews) {
+        const interview = interviews.find(i => i.id === interviewId)
+        if (interview) {
+          await handleStatusChange(interview, status)
         }
       }
-      
+      setSelectedInterviews([])
+      showToast(`Updated ${selectedInterviews.length} interviews to ${status.replace('_', ' ')}`, 'success')
+    } catch (error) {
+      showToast('Failed to update interviews', 'error')
+    }
+  }
+
+  const handleScheduleInterview = async () => {
+    if (!formData.candidate_id || !formData.date_time) {
+      showToast('Please select candidate and date/time', 'error')
+      return
+    }
+
+    // Set time to 9:00 AM automatically
+    const selectedDate = new Date(formData.date_time)
+    selectedDate.setHours(9, 0, 0, 0)
+    const finalDateTime = selectedDate.toISOString()
+
+    try {
+      const { error } = await supabase
+        .from('interviews')
+        .insert({
+          candidate_id: formData.candidate_id,
+          date_time: finalDateTime,
+          assigned_staff: staff?.id || user?.id
+        })
+
+      if (error) throw error
+
+      showToast('Interview scheduled successfully', 'success')
+      setShowModal(false)
+      setFormData({ candidate_id: '', date_time: '', attended: false, outcome: '' })
+      setCandidateSearch('')
+      fetchInterviews()
+    } catch (error) {
+      showToast('Failed to schedule interview', 'error')
+    }
+  }
+
+  const filteredCandidates = candidates.filter(candidate =>
+    candidate.name.toLowerCase().includes(candidateSearch.toLowerCase())
+  )
+
+  const canSendSMS = (interviewDateTime: string) => {
+    const interview = new Date(interviewDateTime)
+    const now = new Date()
+    const hoursDiff = (interview.getTime() - now.getTime()) / (1000 * 60 * 60)
+    return hoursDiff > 6
+  }
+
+  const handleSendSMS = async (interview: Interview) => {
+    if (!interview.candidates?.name || !interview.candidates?.phone) {
+      showToast('Missing candidate information', 'error')
+      return
+    }
+
+    setSmsStates(prev => ({ ...prev, [interview.id]: 'sending' }))
+
+    try {
+      const interviewDay = new Date(interview.date_time).toLocaleDateString('en-US', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      })
+
+      const message = smsService.generateInterviewReminderMessage(
+        interview.candidates.name,
+        interviewDay
+      )
+
+      const result = await smsService.sendSMS({
+        recipientType: 'candidate',
+        recipientId: interview.candidate_id,
+        recipientName: interview.candidates.name,
+        phoneNumber: interview.candidates.phone,
+        messageType: 'interview_reminder',
+        messageContent: message,
+        sentBy: staff?.id || user?.id || ''
+      })
+
+      if (result.success) {
+        setSmsStates(prev => ({ ...prev, [interview.id]: 'sent' }))
+        showToast('SMS sent successfully', 'success')
+      } else {
+        setSmsStates(prev => ({ ...prev, [interview.id]: 'failed' }))
+        showToast(`SMS failed: ${result.error}`, 'error')
+      }
+    } catch (error) {
+      setSmsStates(prev => ({ ...prev, [interview.id]: 'failed' }))
+      showToast('Failed to send SMS', 'error')
+    }
+  }
+
+  useEffect(() => {
+    fetchInterviews()
+    fetchCandidates()
+  }, [])
+
+  const fetchInterviews = async () => {
+    try {
       const { data, error } = await supabase
         .from('interviews')
         .select(`
           *,
-          candidates (name, phone, status)
+          candidates (
+            name,
+            phone,
+            status
+          )
         `)
-        .order('created_at', { ascending: false })
+        .order('date_time', { ascending: false })
 
       if (error) throw error
-      
-      // Check for interviews that need attention (time has passed)
-      const now = new Date()
-      const updatedInterviews = data?.map(interview => {
-        const interviewDate = new Date(interview.date_time)
-        if (!interview.attended && !interview.outcome && interviewDate < now) {
-          // Mark as needing attention if time has passed
-          return { ...interview, needsAttention: true }
-        }
-        return interview
-      }) || []
-      
-      setInterviews(updatedInterviews)
-      showToast('Interviews loaded successfully', 'success')
+      setInterviews(data || [])
     } catch (error) {
-      console.error('Error loading interviews:', error)
-      showToast('Failed to load interviews', 'error')
+      showToast('Failed to fetch interviews', 'error')
     } finally {
       setLoading(false)
     }
   }
 
-  const loadScheduledCandidates = async () => {
+  const fetchCandidates = async () => {
     try {
-      showToast('Loading candidates...', 'loading')
       const { data, error } = await supabase
         .from('candidates')
         .select('id, name')
-        .in('status', ['PENDING', 'INTERVIEW_SCHEDULED']) // Include both PENDING and INTERVIEW_SCHEDULED candidates
         .order('name')
 
       if (error) throw error
       setCandidates(data || [])
-      showToast('Candidates loaded successfully', 'success')
     } catch (error) {
-      console.error('Error loading pending candidates:', error)
-      showToast('Failed to load candidates', 'error')
+      console.error('Failed to fetch candidates:', error)
     }
   }
 
-  const filterInterviews = () => {
-    let filtered = [...interviews]
+  useEffect(() => {
+    let filtered = interviews
 
     if (searchTerm) {
-      // Normalize phone number for search
-      const normalizePhone = (phone: string) => {
-        return phone.replace(/[^0-9]/g, '') // Remove all non-digits
-      }
-      
-      const searchPhone = normalizePhone(searchTerm)
-      
-      filtered = filtered.filter(interview => {
-        const nameMatch = interview.candidates?.name.toLowerCase().includes(searchTerm.toLowerCase())
-        const outcomeMatch = (interview.outcome || '').toLowerCase().includes(searchTerm.toLowerCase())
-        
-        // Phone matching with normalization
-        let phoneMatch = false
-        if (searchPhone && interview.candidates?.phone) {
-          const candidatePhone = normalizePhone(interview.candidates.phone)
-          phoneMatch = candidatePhone.includes(searchPhone) ||
-                      candidatePhone.endsWith(searchPhone) ||
-                      (searchPhone.startsWith('0') && candidatePhone.endsWith(searchPhone.substring(1)))
-        }
-        
-        return nameMatch || phoneMatch || outcomeMatch
-      })
+      filtered = filtered.filter(interview =>
+        interview.candidates?.name.toLowerCase().includes(searchTerm.toLowerCase())
+      )
     }
 
     if (filterStatus !== 'all') {
-      if (filterStatus === 'scheduled') {
-        filtered = filtered.filter(interview => !interview.attended && !interview.outcome)
-      } else if (filterStatus === 'won') {
-        filtered = filtered.filter(interview => interview.outcome === 'Won')
-      } else if (filterStatus === 'lost') {
-        filtered = filtered.filter(interview => interview.outcome === 'Lost')
-      }
-      // Removed other filter options as requested
+      filtered = filtered.filter(interview => {
+        if (filterStatus === 'scheduled') return !interview.attended && !interview.outcome
+        if (filterStatus === 'won') return interview.outcome === 'Interview_Won'
+        if (filterStatus === 'lost') return interview.outcome === 'Interview_Lost'
+        return true
+      })
     }
-
-    filtered.sort((a, b) => {
-      const av = (a as any)[sortBy] as string
-      const bv = (b as any)[sortBy] as string
-      return new Date(bv).getTime() - new Date(av).getTime()
-    })
 
     setFilteredInterviews(filtered)
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    
-    // Validate candidate selection for new interviews
-    if (!selectedInterview && !formData.candidate_id) {
-      showToast('Please select a candidate', 'error')
-      return
-    }
-    
-    try {
-      showToast(selectedInterview ? 'Updating interview...' : 'Scheduling interview...', 'loading')
-      
-      // Check for duplicate interviews when creating a new interview
-      if (!selectedInterview && formData.candidate_id) {
-        const { data: existingInterviews } = await supabase
-          .from('interviews')
-          .select('id, outcome, attended')
-          .eq('candidate_id', formData.candidate_id)
-        
-        // Check if there's already a scheduled interview (no outcome and not attended)
-        const scheduledInterviews = existingInterviews?.filter(i => !i.outcome && !i.attended) || []
-        
-        if (scheduledInterviews.length > 0) {
-          showToast('This candidate already has a scheduled interview', 'error')
-          return
-        }
-      }
-      
-      if (selectedInterview) {
-        // For existing interviews
-        const { error } = await supabase
-          .from('interviews')
-          .update({
-            ...formData,
-            status: formData.outcome ? 'completed' : 'scheduled'
-          })
-          .eq('id', selectedInterview.id)
-        if (error) throw error
-
-        // Update candidate status based on outcome
-        if (formData.outcome) {
-          const candidateStatus = formData.outcome === 'Won Interview' ? 'WON' : 'LOST'
-          
-          const { error: candidateError } = await supabase
-            .from('candidates')
-            .update({ status: candidateStatus })
-            .eq('id', selectedInterview.candidate_id)
-            
-          if (candidateError) {
-            console.error('Error updating candidate status:', candidateError)
-            throw candidateError
-          }
-        }
-
-        // Log the activity for interview update
-        if (staff?.id && staff?.name) {
-          const candidateName = selectedInterview.candidates?.name || 'Unknown Candidate'
-          const actionDescription = formData.attended ? 
-            (formData.outcome ? `marked ${candidateName} interview as ${formData.outcome}` : `marked ${candidateName} interview as attended`) :
-            `updated ${candidateName} interview details`
-          
-          await ActivityLogger.log({
-            userId: staff.id,
-            actionType: 'edit',
-            entityType: 'interview',
-            entityId: selectedInterview.id,
-            entityName: candidateName,
-            description: `${staff.name} ${actionDescription}`
-          })
-        }
-        
-        showToast('Interview updated successfully', 'success')
-      } else {
-        // For new interviews, ensure time is set to 2:00 PM
-        const dateOnly = formData.date_time
-        const d = new Date(dateOnly)
-        d.setHours(14, 0, 0, 0) // Set to 2:00 PM
-        const isoDateTime = d.toISOString()
-        
-        const { error } = await supabase
-          .from('interviews')
-          .insert({
-            candidate_id: formData.candidate_id,
-            date_time: isoDateTime,
-            location: 'Office',
-            assigned_staff: user?.id,
-            attended: false,
-            outcome: null,
-            notes: '',
-            status: 'scheduled'
-          })
-        if (error) throw error
-        
-        // Update candidate status to INTERVIEW_SCHEDULED and set scheduled_date
-        const { error: candidateError } = await supabase
-          .from('candidates')
-          .update({ 
-            status: 'INTERVIEW_SCHEDULED',
-            scheduled_date: isoDateTime
-          })
-          .eq('id', formData.candidate_id)
-          
-        if (candidateError) {
-          console.error('Error updating candidate status:', candidateError)
-          throw candidateError
-        }
-        
-        // Log to activity_logs
-        await supabase.from('activity_logs').insert({
-          activity_type: 'interview_scheduled',
-          entity_type: 'interview',
-          entity_id: formData.candidate_id,
-          performed_by: staff?.name || user?.email || 'Unknown',
-          action_description: `scheduled interview for ${d.toDateString()} at 2:00 PM`,
-          metadata: {
-            candidate_id: formData.candidate_id,
-            interview_date: isoDateTime
-          }
-        })
-        
-        showToast('Interview scheduled successfully', 'success')
-      }
-
-      // Refresh both interviews and candidate lists to ensure sync
-      await Promise.all([loadInterviews(), loadScheduledCandidates()])
-      setShowModal(false)
-      resetForm()
-    } catch (error) {
-      console.error('Error saving interview:', error)
-      showToast(`Failed to save interview: ${error instanceof Error ? error.message : 'Unknown error'}`, 'error')
-    }
-  }
-
-  const resetForm = () => {
-    setFormData({
-      candidate_id: '',
-      date_time: '',
-      attended: false,
-      outcome: '',
-    })
-    setCandidateSearch('')
-    setShowCandidateDropdown(false)
-    setSelectedInterview(null)
-  }
-
-  // Removed edit functionality as per requirements
-
-  const getInterviewStatus = (interview: Interview) => {
-    console.log('Interview outcome:', interview.outcome) // Debug log
-    if (interview.outcome === 'Interview_Won') return 'Interview_Won'
-    if (interview.outcome === 'Interview_Lost') return 'Interview_Lost'
-    if (interview.outcome === 'Missed_Interview') return 'Missed_Interview'
-    if (interview.outcome === 'Reschedule_Interview') return 'Reschedule_Interview'
-    if (interview.needsAttention) return 'needs-attention'
-    return 'scheduled'
-  }
-
-  const deleteInterview = async (interview: Interview) => {
-    if (!confirm('Delete this interview?')) return
-    try {
-      showToast('Deleting interview...', 'loading')
-      
-      const { error } = await supabase.from('interviews').delete().eq('id', interview.id)
-      if (error) throw error
-      
-      await supabase.from('updates').insert({
-        linked_to_type: 'interview',
-        linked_to_id: interview.id,
-        user_id: user?.id,
-        update_text: `Deleted interview for ${interview.candidates?.name || ''}`,
-      })
-      
-      await loadInterviews()
-      showToast('Interview deleted successfully', 'success')
-    } catch (error) {
-      console.error('Error deleting interview:', error)
-      showToast('Failed to delete interview', 'error')
-    }
-  }
-
-  // setPending function removed as we no longer use PENDING status
-
-  const setOutcome = async (interview: Interview, outcome: 'Interview_Won' | 'Interview_Lost' | 'Missed_Interview' | 'Reschedule_Interview') => {
-    try {
-      showToast(`Setting outcome to ${outcome}...`, 'loading')
-      
-      // Update interview outcome
-      const { error } = await supabase
-        .from('interviews')
-        .update({ attended: outcome !== 'Missed', outcome })
-        .eq('id', interview.id)
-      if (error) throw error
-
-      // Update candidate status
-      const candidateStatus = outcome === 'Interview_Won' ? 'WON' : 
-                             outcome === 'Interview_Lost' ? 'Lost - Interview Lost' :
-                             outcome === 'Missed_Interview' ? 'Lost - Missed Interview' : 'INTERVIEW_SCHEDULED'
-      const { error: candidateError } = await supabase
-        .from('candidates')
-        .update({ status: candidateStatus })
-        .eq('id', interview.candidate_id)
-      
-      if (candidateError) {
-        console.error('Error updating candidate status:', candidateError)
-        throw candidateError
-      }
-
-      // Log to activity_logs
-      await supabase.from('activity_logs').insert({
-        activity_type: 'interview_outcome',
-        entity_type: 'interview',
-        entity_id: interview.id,
-        performed_by: staff?.name || user?.email || 'Unknown',
-        action_description: `set interview outcome to ${outcome} for ${interview.candidates?.name}`,
-        metadata: {
-          candidate_id: interview.candidate_id,
-          candidate_name: interview.candidates?.name,
-          previous_outcome: interview.outcome,
-          new_outcome: outcome
-        }
-      })
-      
-      // Refresh data
-      await Promise.all([loadInterviews(), loadScheduledCandidates()])
-      showToast(`Interview outcome set to ${outcome}`, 'success')
-    } catch (error) {
-      console.error('Error setting outcome:', error)
-      showToast(`Failed to update outcome: ${error instanceof Error ? error.message : 'Unknown error'}`, 'error')
-    }
-  }
-
-  const openReschedule = (interview: Interview) => {
-    setReschedule({ open: true, interview, dateTime: '' })
-  }
-
-  const confirmReschedule = async () => {
-    if (!reschedule.interview || !reschedule.dateTime) return
-    const interview = reschedule.interview
-    try {
-      // Reset interview status and outcome when rescheduling
-      const updates = {
-        date_time: reschedule.dateTime,
-        status: 'scheduled',
-        attended: false,
-        outcome: null
-      }
-      showToast('Rescheduling interview...', 'loading')
-      
-      // Set time to 2:00 PM (14:00)
-      const d = new Date(reschedule.dateTime)
-      d.setHours(14, 0, 0, 0)
-      const iso = d.toISOString()
-      
-      const { error } = await supabase
-        .from('interviews')
-        .update({ date_time: iso, attended: false, outcome: null })
-        .eq('id', interview.id)
-      if (error) throw error
-
-      // Update candidate status to INTERVIEW_SCHEDULED
-      const { error: candidateError } = await supabase
-        .from('candidates')
-        .update({ 
-          status: 'INTERVIEW_SCHEDULED',
-          scheduled_date: iso
-        })
-        .eq('id', interview.candidate_id)
-      
-      if (candidateError) {
-        console.error('Error updating candidate status:', candidateError)
-        throw candidateError
-      }
-
-      // Get candidate name from database since interview object might not have it
-      const { data: candidateData } = await supabase
-        .from('candidates')
-        .select('name')
-        .eq('id', interview.candidate_id)
-        .single()
-      
-      const candidateName = candidateData?.name || interview.candidates?.name || 'Unknown Candidate'
-      
-      // Log reschedule activity using ActivityLogger
-      if (staff?.id && staff?.name) {
-        await ActivityLogger.logReschedule(
-          staff.id,
-          'interview',
-          interview.id,
-          candidateName,
-          interview.date_time,
-          iso,
-          staff.name
-        )
-      }
-
-      setReschedule({ open: false, interview: null, dateTime: '' })
-      await loadInterviews()
-      showToast('Interview rescheduled successfully', 'success')
-    } catch (error) {
-      console.error('Error rescheduling interview:', error)
-      showToast('Failed to reschedule interview', 'error')
-    }
-  }
-
-  const now = useMemo(() => Date.now(), [])
-  const formatDisplayDate = (dateString: string) => {
-    const date = new Date(dateString)
-    const day = date.getDate()
-    const month = date.toLocaleString('default', { month: 'short' })
-    const year = date.getFullYear()
-    const dayOfWeek = date.toLocaleString('default', { weekday: 'short' })
-    const suffix = day === 1 || day === 21 || day === 31 ? 'st' :
-                   day === 2 || day === 22 ? 'nd' :
-                   day === 3 || day === 23 ? 'rd' : 'th'
-    return `${dayOfWeek} ${day}${suffix} ${month} ${year}`
-  }
-
-  const getCountdown = (interview: Interview) => {
-    // Stop countdown for completed interviews
-    if (interview.outcome === 'Interview_Won' || interview.outcome === 'Interview_Lost' || interview.outcome === 'Missed_Interview') {
-      return '-'
-    }
-    
-    const dateStr = interview.date_time
-    const diffMs = new Date(dateStr).getTime() - Date.now()
-    if (diffMs <= 0) return '-'
-    
-    const hours = Math.floor(diffMs / (1000 * 60 * 60))
-    const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60))
-    
-    // If more than 24 hours, show days and hours
-    if (hours >= 24) {
-      const days = Math.floor(hours / 24)
-      const remainingHours = hours % 24
-      return `${days}d ${remainingHours}h`
-    }
-    
-    return `${hours}h ${minutes}m`
-  }
-
-  const handleBulkStatusChange = async () => {
-    if (!bulkStatus || selectedInterviews.length === 0) return
-    
-    try {
-      const outcome = bulkStatus === 'WON' ? 'Won Interview' : bulkStatus === 'LOST' ? 'Lost Interview' : null
-      
-      const { error } = await supabase
-        .from('interviews')
-        .update({ 
-          attended: true, 
-          outcome: outcome
-        })
-        .in('id', selectedInterviews)
-      
-      if (error) throw error
-      
-      // Update candidate statuses
-      const candidateIds = filteredInterviews
-        .filter(i => selectedInterviews.includes(i.id))
-        .map(i => i.candidate_id)
-      
-      if (candidateIds.length > 0) {
-        const candidateStatus = bulkStatus === 'WON' ? 'WON' : 'LOST'
-        await supabase
-          .from('candidates')
-          .update({ status: candidateStatus })
-          .in('id', candidateIds)
-      }
-      
-      await loadInterviews()
-      setSelectedInterviews([])
-      setBulkStatus('')
-      showToast(`Updated ${selectedInterviews.length} interviews to ${outcome}`, 'success')
-    } catch (error) {
-      console.error('Error updating bulk status:', error)
-      showToast('Failed to update interviews', 'error')
-    }
-  }
-
-  const toggleSelectAll = () => {
-    if (selectedInterviews.length === filteredInterviews.length) {
-      setSelectedInterviews([])
-    } else {
-      setSelectedInterviews(filteredInterviews.map(i => i.id))
-    }
-  }
+  }, [interviews, searchTerm, filterStatus])
 
   if (loading) {
     return (
@@ -660,80 +510,49 @@ export function Interviews() {
 
   return (
     <div className="p-6">
-      {/* Header */}
       <div className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Interviews</h1>
           <p className="text-gray-600">Schedule and track candidate interviews</p>
         </div>
-        <button
-          onClick={() => setShowModal(true)}
-          className="flex items-center px-4 py-2 bg-nestalk-primary text-white rounded-lg hover:bg-nestalk-primary/90 transition-colors"
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          Schedule Interview
-        </button>
+        <div className="flex items-center space-x-3">
+          {selectedInterviews.length > 0 && (
+            <div className="flex items-center space-x-2">
+              <span className="text-sm text-gray-600">{selectedInterviews.length} selected</span>
+              <button
+                onClick={() => handleBulkStatusUpdate('Interview_Won')}
+                className="px-3 py-1 bg-green-100 text-green-800 rounded text-sm hover:bg-green-200"
+              >
+                Mark Won
+              </button>
+              <button
+                onClick={() => handleBulkStatusUpdate('Interview_Lost')}
+                className="px-3 py-1 bg-red-100 text-red-800 rounded text-sm hover:bg-red-200"
+              >
+                Mark Lost
+              </button>
+            </div>
+          )}
+          <button
+            onClick={() => setShowModal(true)}
+            className="flex items-center px-4 py-2 bg-nestalk-primary text-white rounded-lg hover:bg-nestalk-primary/90 transition-colors"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Schedule Interview
+          </button>
+        </div>
       </div>
-
-      {/* Search, Filter, Sort */}
-      <div className="flex flex-col gap-3">
+      
       <SearchFilter
         searchTerm={searchTerm}
         onSearchChange={setSearchTerm}
         filterStatus={filterStatus}
         onFilterChange={setFilterStatus}
         statusOptions={statusOptions}
-        placeholder="Search by candidate name or outcome..."
+        placeholder="Search interviews..."
       />
-        <div className="flex items-center gap-3">
-          <span className="text-sm text-gray-600">Sort by:</span>
-          <select
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as any)}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
-          >
-            <option value="created_at">Date Added</option>
-            <option value="date_time">Interview Date</option>
-            <option value="scheduled_date">Date Scheduled</option>
-          </select>
-        </div>
-      </div>
 
-      {/* Bulk Actions */}
-      {selectedInterviews.length > 0 && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-4">
-          <div className="flex items-center gap-4">
-            <span className="text-sm font-medium text-blue-900">
-              {selectedInterviews.length} selected
-            </span>
-            <select
-              value={bulkStatus}
-              onChange={(e) => setBulkStatus(e.target.value)}
-              className="px-3 py-1 border border-blue-300 rounded text-sm"
-            >
-              <option value="">Set outcome to...</option>
-              <option value="WON">Won</option>
-              <option value="LOST">Lost</option>
-            </select>
-            <button
-              onClick={handleBulkStatusChange}
-              disabled={!bulkStatus}
-              className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 disabled:opacity-50"
-            >
-              Update
-            </button>
-            <button
-              onClick={() => setSelectedInterviews([])}
-              className="px-3 py-1 bg-gray-500 text-white rounded text-sm hover:bg-gray-600"
-            >
-              Clear
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Interviews Grid */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+      <div className="bg-white rounded-lg shadow overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
@@ -742,290 +561,285 @@ export function Interviews() {
                   <input
                     type="checkbox"
                     checked={selectedInterviews.length === filteredInterviews.length && filteredInterviews.length > 0}
-                    onChange={toggleSelectAll}
-                    className="rounded border-gray-300"
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedInterviews(filteredInterviews.map(i => i.id))
+                      } else {
+                        setSelectedInterviews([])
+                      }
+                    }}
+                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                   />
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Candidate</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date & Time</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Countdown</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  #
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Candidate
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Date & Time
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Status
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Countdown
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Actions
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Reminder
+                </th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {filteredInterviews.map((interview, index) => (
-                <tr key={interview.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <input
-                      type="checkbox"
-                      checked={selectedInterviews.includes(interview.id)}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setSelectedInterviews(prev => [...prev, interview.id])
-                        } else {
-                          setSelectedInterviews(prev => prev.filter(id => id !== interview.id))
-                        }
-                      }}
-                      className="rounded border-gray-300"
-                    />
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{index + 1}</td>
-                  <td className={`px-6 py-4 whitespace-nowrap ${
-                    getInterviewStatus(interview) === 'won' ? 'bg-green-50' :
-                    getInterviewStatus(interview) === 'lost' ? 'bg-red-50' :
-                    getInterviewStatus(interview) === 'no-show' ? 'bg-red-50' :
-                    ''
-                  }`}>
-                    <div>
-                      <div className="text-sm font-medium text-gray-900">{interview.candidates?.name}</div>
-                      <div className="text-sm text-gray-500">{interview.candidates?.phone}</div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    <div>
-                      <div>{formatDisplayDate(interview.date_time)}</div>
-                      <div className="text-gray-500">
-                        {new Date(interview.date_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <StatusBadge 
-                      status={getInterviewStatus(interview)} 
-                      type="interview" 
-                    />
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{getCountdown(interview)}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                    <div className="relative inline-flex items-center gap-2">
-                      <select
+              {filteredInterviews.map((interview, index) => {
+                const smsState = smsStates[interview.id] || 'idle'
+                const canSend = canSendSMS(interview.date_time)
+                
+                return (
+                  <tr key={interview.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <input
+                        type="checkbox"
+                        checked={selectedInterviews.includes(interview.id)}
                         onChange={(e) => {
-                          const v = e.target.value;
-                          if (v === 'WON') setOutcome(interview, 'Interview_Won');
-                          if (v === 'LOST') setOutcome(interview, 'Interview_Lost');
-                          if (v === 'MISSED') setOutcome(interview, 'Missed_Interview');
-                          if (v === 'RESCHEDULE') openReschedule(interview);
-                          e.currentTarget.selectedIndex = 0;
+                          if (e.target.checked) {
+                            setSelectedInterviews([...selectedInterviews, interview.id])
+                          } else {
+                            setSelectedInterviews(selectedInterviews.filter(id => id !== interview.id))
+                          }
                         }}
-                        className="px-2 py-1 border border-gray-300 rounded text-sm bg-white"
-                        defaultValue=""
-                        title="Actions"
-                      >
-                        <option value="" disabled>Set Status</option>
-                        <option value="WON">Interview Won</option>
-                        <option value="LOST">Interview Lost</option>
-                        <option value="MISSED">Missed Interview</option>
-                        <option value="RESCHEDULE">Reschedule Interview</option>
-                      </select>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {index + 1}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div>
+                        <div className="text-sm font-medium text-gray-900">
+                          {interview.candidates?.name || 'Unknown'}
+                        </div>
+                        <div className="text-sm text-gray-500">
+                          {interview.candidates?.phone}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-900">
+                        {new Date(interview.date_time).toLocaleDateString()}
+                      </div>
+                      <div className="text-sm text-gray-500">
+                        {new Date(interview.date_time).toLocaleTimeString()}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {getStatusDisplay(interview)}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-900">
+                        {getCountdown(interview.date_time)}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center space-x-2">
+                        <select
+                          value={getDropdownValue(interview)}
+                          onChange={(e) => handleStatusChange(interview, e.target.value)}
+                          className="text-sm font-semibold border border-gray-300 rounded px-3 py-1 focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                        >
+                          <option value="" disabled>- Set Status</option>
+                          <option value="Interview_Won">Interview Won</option>
+                          <option value="Interview_Lost">Interview Lost</option>
+                          <option value="Missed_Interview">Missed Interview</option>
+                          <option value="Reschedule_Interview">Reschedule Interview</option>
+                        </select>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {canSend ? (
+                        <button
+                          onClick={() => handleSendSMS(interview)}
+                          disabled={smsState === 'sending' || smsState === 'sent'}
+                          className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium transition-colors ${
+                            smsState === 'sent'
+                              ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                              : smsState === 'sending'
+                              ? 'bg-blue-100 text-blue-600 cursor-not-allowed'
+                              : smsState === 'failed'
+                              ? 'bg-red-100 text-red-600 hover:bg-red-200'
+                              : 'bg-blue-100 text-blue-600 hover:bg-blue-200'
+                          }`}
+                        >
+                          {smsState === 'sending' ? (
+                            <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                          ) : (
+                            <MessageSquare className="w-3 h-3 mr-1" />
+                          )}
+                          {smsState === 'sending' ? 'Sending...' :
+                           smsState === 'sent' ? 'Sent' :
+                           smsState === 'failed' ? 'Retry' : 'SMS'}
+                        </button>
+                      ) : (
+                        <span className="text-gray-400 text-xs">-</span>
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
+        
+        {filteredInterviews.length === 0 && (
+          <div className="text-center py-12">
+            <Calendar className="mx-auto h-12 w-12 text-gray-400" />
+            <h3 className="mt-2 text-sm font-medium text-gray-900">No interviews found</h3>
+            <p className="mt-1 text-sm text-gray-500">
+              {searchTerm || filterStatus !== 'all' 
+                ? 'Try adjusting your search or filters'
+                : 'Schedule your first interview to get started'
+              }
+            </p>
+          </div>
+        )}
       </div>
-
-      {filteredInterviews.length === 0 && (
-        <div className="text-center py-12">
-          <Calendar className="mx-auto h-12 w-12 text-gray-400" />
-          <h3 className="mt-2 text-sm font-medium text-gray-900">No interviews found</h3>
-          <p className="mt-1 text-sm text-gray-500">
-            {searchTerm || filterStatus !== 'all' 
-              ? 'Try adjusting your search or filter criteria.'
-              : 'Get started by scheduling your first interview.'
-            }
-          </p>
-        </div>
-      )}
-
-      {/* Modal */}
+      
+      {/* Schedule Interview Modal */}
       {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-md w-full max-h-screen overflow-y-auto">
-            <div className="p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">
-                {selectedInterview ? 'Edit Interview' : 'Schedule New Interview'}
-              </h2>
-
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="relative">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Candidate</label>
-                  {selectedInterview ? (
-                    <input
-                      type="text"
-                      value={candidates.find(c => c.id === formData.candidate_id)?.name || ''}
-                      disabled
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-500"
-                    />
-                  ) : (
-                    <>
-                      <input
-                        type="text"
-                        required
-                        value={candidateSearch}
-                        onChange={(e) => {
-                          setCandidateSearch(e.target.value)
-                          setShowCandidateDropdown(true)
-                          // Clear selected candidate if search changes
-                          if (formData.candidate_id) {
-                            setFormData({ ...formData, candidate_id: '' })
-                          }
-                        }}
-                        onFocus={() => setShowCandidateDropdown(true)}
-                        onBlur={() => {
-                          // Delay hiding dropdown to allow for clicks
-                          setTimeout(() => setShowCandidateDropdown(false), 150)
-                        }}
-                        placeholder="Search pending candidates..."
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
-                      />
-                      {showCandidateDropdown && (
-                        <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                          {candidates.length === 0 ? (
-                            <div className="px-3 py-2 text-gray-500 text-sm">
-                              No pending candidates available
-                            </div>
-                          ) : (
-                            candidates
-                              .filter(candidate => 
-                                candidate.name.toLowerCase().includes(candidateSearch.toLowerCase())
-                              )
-                              .map(candidate => (
-                                <div
-                                  key={candidate.id}
-                                  onClick={() => {
-                                    setFormData({ ...formData, candidate_id: candidate.id })
-                                    setCandidateSearch(candidate.name)
-                                    setShowCandidateDropdown(false)
-                                  }}
-                                  className="px-3 py-2 hover:bg-gray-100 cursor-pointer border-b border-gray-100 last:border-b-0 text-sm"
-                                >
-                                  {candidate.name}
-                                </div>
-                              ))
-                          )}
-                          {candidates.length > 0 && candidates.filter(candidate => 
-                            candidate.name.toLowerCase().includes(candidateSearch.toLowerCase())
-                          ).length === 0 && (
-                            <div className="px-3 py-2 text-gray-500 text-sm">
-                              No candidates match your search
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </>
-                  )}
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-[500px] max-h-96 overflow-y-auto relative">
+            <button
+              onClick={() => {
+                setShowModal(false)
+                setFormData({ candidate_id: '', date_time: '', attended: false, outcome: '' })
+                setCandidateSearch('')
+                setShowCandidateDropdown(false)
+              }}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 text-xl font-bold"
+            >
+              ×
+            </button>
+            <h3 className="text-lg font-medium mb-4">Schedule Interview</h3>
+            
+            <div className="mb-4 relative">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Search Candidate
+              </label>
+              <input
+                type="text"
+                value={candidateSearch}
+                onChange={(e) => {
+                  setCandidateSearch(e.target.value)
+                  setShowCandidateDropdown(true)
+                }}
+                onFocus={() => setShowCandidateDropdown(true)}
+                placeholder="Type candidate name..."
+                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+              
+              {showCandidateDropdown && filteredCandidates.length > 0 && (
+                <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-40 overflow-y-auto">
+                  {filteredCandidates.slice(0, 10).map((candidate) => (
+                    <button
+                      key={candidate.id}
+                      onClick={() => {
+                        setFormData({ ...formData, candidate_id: candidate.id })
+                        setCandidateSearch(candidate.name)
+                        setShowCandidateDropdown(false)
+                      }}
+                      className="w-full text-left px-3 py-2 hover:bg-gray-100 focus:bg-gray-100"
+                    >
+                      {candidate.name}
+                    </button>
+                  ))}
                 </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Date (Time will be set to 2:00 PM)</label>
-                  <input
-                    type="date"
-                    required
-                    value={formData.date_time}
-                    onChange={(e) => {
-                      // Create a date object and set time to 2:00 PM
-                      const date = new Date(e.target.value);
-                      date.setHours(14, 0, 0, 0);
-                      setFormData({ ...formData, date_time: date.toISOString().split('T')[0] });
-                    }}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
-                  />
-                </div>
-
-
-
-                {selectedInterview && (
-                  <>
-                    <div className="flex items-center">
-                      <input
-                        type="checkbox"
-                        id="attended"
-                        checked={formData.attended}
-                        onChange={(e) => setFormData({ ...formData, attended: e.target.checked })}
-                        className="h-4 w-4 text-nestalk-primary focus:ring-nestalk-primary border-gray-300 rounded"
-                      />
-                      <label htmlFor="attended" className="ml-2 block text-sm font-medium text-gray-700">
-                        Candidate attended
-                      </label>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Outcome</label>
-                      <select
-                        value={formData.outcome}
-                        onChange={(e) => setFormData({ ...formData, outcome: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
-                      >
-                        <option value="">Select outcome</option>
-                        {outcomeOptions.map(outcome => (
-                          <option key={outcome} value={outcome}>{outcome}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </>
-                )}
-
-                <div className="flex gap-3 pt-4">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowModal(false)
-                      resetForm()
-                    }}
-                    className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="flex-1 px-4 py-2 bg-nestalk-primary text-white rounded-lg hover:bg-nestalk-primary/90 transition-colors"
-                  >
-                    {selectedInterview ? 'Update' : 'Schedule'} Interview
-                  </button>
-                </div>
-              </form>
+              )}
+            </div>
+            
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Interview Date (Time will be set to 9:00 AM)
+              </label>
+              <input
+                type="date"
+                value={formData.date_time ? formData.date_time.split('T')[0] : ''}
+                onChange={(e) => {
+                  if (e.target.value) {
+                    const date = new Date(e.target.value)
+                    date.setHours(9, 0, 0, 0)
+                    setFormData({ ...formData, date_time: date.toISOString().slice(0, 16) })
+                  } else {
+                    setFormData({ ...formData, date_time: '' })
+                  }
+                }}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+            
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => {
+                  setShowModal(false)
+                  setFormData({ candidate_id: '', date_time: '', attended: false, outcome: '' })
+                  setCandidateSearch('')
+                  setShowCandidateDropdown(false)
+                }}
+                className="px-4 py-2 text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleScheduleInterview}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+              >
+                Schedule
+              </button>
             </div>
           </div>
         </div>
       )}
-
+      
       {/* Reschedule Modal */}
       {reschedule.open && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50" onClick={() => setReschedule({ open: false, interview: null, dateTime: '' })}>
-          <div className="bg-white rounded-lg max-w-md w-full" onClick={(e) => e.stopPropagation()}>
-            <div className="p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">Reschedule Interview</h2>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">New Date (Time will be set to 2:00 PM)</label>
-                  <input
-                    type="date"
-                    value={reschedule.dateTime}
-                    onChange={(e) => setReschedule(prev => ({ ...prev, dateTime: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
-                  />
-                </div>
-                <div className="flex gap-3 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setReschedule({ open: false, interview: null, dateTime: '' })}
-                    className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={confirmReschedule}
-                    className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors inline-flex items-center justify-center gap-2"
-                  >
-                    <CheckCircle className="w-4 h-4" /> Confirm
-                  </button>
-                </div>
-              </div>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-96">
+            <h3 className="text-lg font-medium mb-4">Reschedule Interview</h3>
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                New Date (Time will be set to 9:00 AM)
+              </label>
+              <input
+                type="date"
+                value={reschedule.dateTime ? reschedule.dateTime.split('T')[0] : ''}
+                onChange={(e) => {
+                  if (e.target.value) {
+                    const date = new Date(e.target.value)
+                    date.setHours(9, 0, 0, 0)
+                    setReschedule(prev => ({ ...prev, dateTime: date.toISOString().slice(0, 16) }))
+                  } else {
+                    setReschedule(prev => ({ ...prev, dateTime: '' }))
+                  }
+                }}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => setReschedule({ open: false, interview: null, dateTime: '' })}
+                className="px-4 py-2 text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => reschedule.interview && handleReschedule(reschedule.interview, reschedule.dateTime)}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+              >
+                Reschedule
+              </button>
             </div>
           </div>
         </div>
