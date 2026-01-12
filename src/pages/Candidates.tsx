@@ -195,9 +195,10 @@ export function Candidates() {
     try {
       const { data, error } = await supabase
         .from('candidates')
-        .select('*')
+        .select('id, name, phone, source, role, inquiry_date, status, scheduled_date, assigned_to, created_at, added_by')
         .neq('status', 'ARCHIVED')
         .order('inquiry_date', { ascending: false })
+        .limit(500)
 
       if (error) throw error
       setCandidates(data || [])
@@ -1986,7 +1987,7 @@ John Smith,0723456789,Facebook,Driver,PENDING,2025-01-14`
                         const isoDateTime = date.toISOString()
                         
                         // Create interview
-                        const { error: interviewError } = await supabase
+                        const { data: interviewData, error: interviewError } = await supabase
                           .from('interviews')
                           .insert({
                             candidate_id: scheduleModal.candidate.id,
@@ -1994,10 +1995,16 @@ John Smith,0723456789,Facebook,Driver,PENDING,2025-01-14`
                             location: 'Office',
                             assigned_staff: user?.id,
                             attended: false,
-                            outcome: null,
-                            status: 'scheduled'
+                            outcome: null
                           })
-                        if (interviewError) throw interviewError
+                          .select()
+                        
+                        if (interviewError) {
+                          console.error('Interview creation error:', interviewError)
+                          throw interviewError
+                        }
+                        
+                        console.log('Interview created successfully:', interviewData)
                         
                         // Update candidate status
                         const { error: candidateError } = await supabase

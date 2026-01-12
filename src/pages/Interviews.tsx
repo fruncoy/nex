@@ -355,15 +355,38 @@ export function Interviews() {
     const finalDateTime = selectedDate.toISOString()
 
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('interviews')
         .insert({
           candidate_id: formData.candidate_id,
           date_time: finalDateTime,
-          assigned_staff: staff?.id || user?.id
+          location: 'Office',
+          assigned_staff: staff?.id || user?.id,
+          attended: false,
+          outcome: null
         })
+        .select()
 
-      if (error) throw error
+      if (error) {
+        console.error('Interview scheduling error:', error)
+        throw error
+      }
+      
+      console.log('Interview scheduled:', data)
+
+      // Update candidate status to INTERVIEW_SCHEDULED
+      const { error: candidateError } = await supabase
+        .from('candidates')
+        .update({ 
+          status: 'INTERVIEW_SCHEDULED',
+          scheduled_date: finalDateTime
+        })
+        .eq('id', formData.candidate_id)
+      
+      if (candidateError) {
+        console.error('Candidate update error:', candidateError)
+        throw candidateError
+      }
 
       showToast('Interview scheduled successfully', 'success')
       setShowModal(false)
@@ -371,6 +394,7 @@ export function Interviews() {
       setCandidateSearch('')
       fetchInterviews()
     } catch (error) {
+      console.error('Failed to schedule interview:', error)
       showToast('Failed to schedule interview', 'error')
     }
   }
@@ -440,7 +464,13 @@ export function Interviews() {
       const { data, error } = await supabase
         .from('interviews')
         .select(`
-          *,
+          id,
+          candidate_id,
+          date_time,
+          assigned_staff,
+          attended,
+          outcome,
+          created_at,
           candidates (
             name,
             phone,
@@ -448,10 +478,17 @@ export function Interviews() {
           )
         `)
         .order('date_time', { ascending: false })
+        .limit(200)
 
-      if (error) throw error
+      if (error) {
+        console.error('Error fetching interviews:', error)
+        throw error
+      }
+      
+      console.log('Fetched interviews:', data)
       setInterviews(data || [])
     } catch (error) {
+      console.error('Failed to fetch interviews:', error)
       showToast('Failed to fetch interviews', 'error')
     } finally {
       setLoading(false)
