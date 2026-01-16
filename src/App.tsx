@@ -19,6 +19,9 @@ import { Reports as ReportingReports } from './pages/reporting/Reports'
 import { Reports } from './pages/Reports'
 import { Dashboards } from './pages/reporting/Dashboards'
 import { Insights } from './pages/Insights'
+import { Niche } from './pages/Niche'
+import { NicheCourses } from './pages/NicheCourses'
+import { NicheTraining } from './pages/NicheTraining'
 import { Vetting } from './pages/Vetting'
 import { Staff } from './pages/Staff'
 import { LeadTracker } from './pages/LeadTracker'
@@ -62,17 +65,10 @@ function AppRoutes() {
       <Route path="/wrapped" element={<Wrapped2025 />} />
       <Route path="/" element={<ProtectedLayout />}>
         <Route index element={<Dashboard />} />
-        <Route path="candidates" element={<Candidates />} />
-        <Route path="vetting" element={<Vetting />} />
-        <Route path="clients" element={<Clients />} />
-        <Route path="leads" element={<Leads />} />
-        <Route path="converted-clients" element={<ConvertedClients />} />
-        <Route path="placements" element={<Placements />} />
-        <Route path="staff" element={<Staff />} />
-        <Route path="blacklisted" element={<Blacklisted />} />
-        <Route path="training" element={<TrainingLeads />} />
-        <Route path="lead-tracker" element={<LeadTracker />} />
+        <Route path="niche" element={<Niche />} />
+        <Route path="niche-courses" element={<NicheCourses />} />
         <Route path="interviews" element={<Interviews />} />
+        <Route path="niche-training" element={<NicheTraining />} />
         <Route path="insights" element={<Insights />} />
         <Route path="calendar" element={<Calendar />} />
         <Route path="sms" element={<SMSManagement />} />
@@ -87,6 +83,9 @@ function AppRoutes() {
           <Route path="reports" element={<ReportingReports />} />
           <Route path="dashboards" element={<Dashboards />} />
         </Route>
+        <Route path="staff" element={<Staff />} />
+        <Route path="blacklisted" element={<Blacklisted />} />
+        <Route path="vetting" element={<Vetting />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

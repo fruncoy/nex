@@ -22,7 +22,8 @@ import {
   CheckCircle,
   Brain,
   Clock,
-  Gift
+  Gift,
+  UserX
 } from 'lucide-react'
 
 export function Layout() {
@@ -31,7 +32,7 @@ export function Layout() {
   const navigate = useNavigate()
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
   const [isCollapsed, setIsCollapsed] = useState(false)
-  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set(['Candidates', 'Leads (All)', 'Training Leads', 'Updates', 'Insights']))
+  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set(['Candidates', 'NICHE', 'Leads (All)', 'Training Leads', 'Updates', 'Insights']))
 
   console.log('Layout rendering - user:', user, 'staff:', staff, 'location:', location.pathname)
 
@@ -79,14 +80,23 @@ export function Layout() {
   const navigation = [
     { name: 'Dashboard', href: '/', icon: Home },
     { 
+      name: 'NICHE', 
+      href: '/niche', 
+      icon: GraduationCap,
+      subItems: [
+        { name: 'NICHE Training', href: '/niche-training', icon: GraduationCap },
+        { name: 'NICHE Courses', href: '/niche-courses', icon: GraduationCap }
+      ]
+    },
+    { 
       name: 'Candidates', 
       href: '/candidates', 
       icon: Users,
       subItems: [
-        { name: 'Vetting', href: '/vetting', icon: Shield },
         { name: 'Interviews', href: '/interviews', icon: Calendar },
         { name: 'Staff', href: '/staff', icon: UserCheck },
-        { name: 'Blacklisted', href: '/blacklisted', icon: Users }
+        { name: 'Blacklisted', href: '/blacklisted', icon: UserX },
+        { name: 'Vetting', href: '/vetting', icon: Shield }
       ]
     },
     { 
