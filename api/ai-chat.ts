@@ -390,6 +390,7 @@ async function getUserMeetingNotes(userName: string) {
   } catch (error) {
     return `Sorry, I couldn't retrieve ${userName}'s meeting notes.`
   }
+}
 
 async function getFinancialSummary() {
   try {
@@ -401,31 +402,31 @@ async function getFinancialSummary() {
       return "No financial data available."
     }
     
-    const currentMonth = new Date().getMonth()
-    const currentYear = new Date().getFullYear()
+    const currentMonth1 = new Date().getMonth()
+    const currentYear1 = new Date().getFullYear()
     
     const thisMonth = convertedClients.filter(client => {
       const clientDate = new Date(client.placement_date || client.created_at)
-      return clientDate.getMonth() === currentMonth && clientDate.getFullYear() === currentYear
+      return clientDate.getMonth() === currentMonth1 && clientDate.getFullYear() === currentYear1
     })
     
     const totalThisMonth = thisMonth.reduce((sum, client) => sum + (client.placement_fee || 0), 0)
     const totalAllTime = convertedClients.reduce((sum, client) => sum + (client.placement_fee || 0), 0)
     
-    const [clientsRes, convertedRes] = await Promise.all([
+    const [clientsRes2, convertedRes2] = await Promise.all([
       supabase.from('clients').select('*'),
       supabase.from('converted_clients').select('*')
     ])
     
-    const clients = clientsRes.data || []
-    const convertedClients = convertedRes.data || []
+    const clients = clientsRes2.data || []
+    const convertedClients2 = convertedRes2.data || []
     
-    if (clients.length === 0 && convertedClients.length === 0) {
+    if (clients.length === 0 && convertedClients2.length === 0) {
       return "No financial data available."
     }
     
-    const currentMonth = new Date().getMonth()
-    const currentYear = new Date().getFullYear()
+    const currentMonth2 = new Date().getMonth()
+    const currentYear2 = new Date().getFullYear()
     
     // Active clients (paid PAF)
     const activeClients = clients.filter(c => c.status === 'Active')
@@ -435,22 +436,22 @@ async function getFinancialSummary() {
     const wonClients = clients.filter(c => c.status === 'Won')
     
     // Placement fees from converted clients
-    const thisMonthPlacements = convertedClients.filter(client => {
+    const thisMonthPlacements = convertedClients2.filter(client => {
       const clientDate = new Date(client.placement_date || client.created_at)
-      return clientDate.getMonth() === currentMonth && clientDate.getFullYear() === currentYear
+      return clientDate.getMonth() === currentMonth2 && clientDate.getFullYear() === currentYear2
     })
     
     const placementFeesThisMonth = thisMonthPlacements.reduce((sum, client) => sum + (client.placement_fee || 0), 0)
-    const totalPlacementFees = convertedClients.reduce((sum, client) => sum + (client.placement_fee || 0), 0)
+    const totalPlacementFees = convertedClients2.reduce((sum, client) => sum + (client.placement_fee || 0), 0)
     
     // Refunds (assuming negative placement_fee or refund field)
-    const refunds = convertedClients.filter(c => c.placement_fee < 0 || c.refund_amount > 0)
+    const refunds = convertedClients2.filter(c => c.placement_fee < 0 || c.refund_amount > 0)
     const totalRefunds = refunds.reduce((sum, client) => sum + Math.abs(client.refund_amount || client.placement_fee || 0), 0)
     
     const totalRevenue = pafRevenue + totalPlacementFees - totalRefunds
     const thisMonthRevenue = placementFeesThisMonth
     
-    return `💰 NESTARA FINANCIAL ANALYSIS:\n\n📅 THIS MONTH:\nKSH ${thisMonthRevenue.toLocaleString()} (${thisMonthPlacements.length} placements)\n\n📊 REVENUE BREAKDOWN:\n• PAF Fees: KSH ${pafRevenue.toLocaleString()} (${activeClients.length} active clients)\n• Placement Fees: KSH ${totalPlacementFees.toLocaleString()} (${convertedClients.length} placements)\n• Refunds: -KSH ${totalRefunds.toLocaleString()} (${refunds.length} refunds)\n\n💵 NET REVENUE: KSH ${totalRevenue.toLocaleString()}\n\n🎯 CLIENT STATUS:\n• Active (Paid PAF): ${activeClients.length}\n• Won: ${wonClients.length}\n• Total Placements: ${convertedClients.length}`
+    return `💰 NESTARA FINANCIAL ANALYSIS:\n\n📅 THIS MONTH:\nKSH ${thisMonthRevenue.toLocaleString()} (${thisMonthPlacements.length} placements)\n\n📊 REVENUE BREAKDOWN:\n• PAF Fees: KSH ${pafRevenue.toLocaleString()} (${activeClients.length} active clients)\n• Placement Fees: KSH ${totalPlacementFees.toLocaleString()} (${convertedClients2.length} placements)\n• Refunds: -KSH ${totalRefunds.toLocaleString()} (${refunds.length} refunds)\n\n💵 NET REVENUE: KSH ${totalRevenue.toLocaleString()}\n\n🎯 CLIENT STATUS:\n• Active (Paid PAF): ${activeClients.length}\n• Won: ${wonClients.length}\n• Total Placements: ${convertedClients2.length}`
     
   } catch (error) {
     return `Failed to get financial data: ${error}`
