@@ -65,6 +65,7 @@ function AppRoutes() {
       <Route path="/wrapped" element={<Wrapped2025 />} />
       <Route path="/" element={<ProtectedLayout />}>
         <Route index element={<Dashboard />} />
+        <Route path="candidates" element={<Candidates />} />
         <Route path="niche" element={<Niche />} />
         <Route path="niche-courses" element={<NicheCourses />} />
         <Route path="interviews" element={<Interviews />} />
