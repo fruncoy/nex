@@ -46,6 +46,7 @@ interface ActiveStudent {
 export function NicheFees() {
   const [fees, setFees] = useState<NicheFee[]>([])
   const [filteredFees, setFilteredFees] = useState<NicheFee[]>([])
+  const [payments, setPayments] = useState<Payment[]>([])
   const [searchTerm, setSearchTerm] = useState('')
   const [filterStatus, setFilterStatus] = useState('all')
   const [loading, setLoading] = useState(true)
