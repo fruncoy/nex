@@ -539,9 +539,9 @@ export function Candidates() {
   }
 
   const downloadTemplate = () => {
-    const csvContent = `Name,Phone,Source,Role,Status,Inquiry Date (YYYY-MM-DD)
-Jane Doe,0712345678,TikTok,Nanny,PENDING,2025-01-15
-John Smith,0723456789,Facebook,Driver,PENDING,2025-01-14`
+    const csvContent = `Name,Phone,Source,Role,Status,Inquiry Date (YYYY-MM-DD),Email
+Jane Doe,0712345678,TikTok,Nanny,PENDING,2025-01-15,jane.doe@email.com
+John Smith,0723456789,Facebook,Driver,PENDING,2025-01-14,john.smith@email.com`
     const blob = new Blob([csvContent], { type: 'text/csv' })
     const url = window.URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -597,6 +597,7 @@ John Smith,0723456789,Facebook,Driver,PENDING,2025-01-14`
         let role = (parts[3]?.trim() || 'Caregiver')
         let status = (parts[4]?.trim() || 'PENDING')
         const inquiry_date = parts[5]?.trim() || new Date().toISOString().split('T')[0]
+        const email = parts[6]?.trim() || null
         
         console.log(`Processing row ${i + 1}:`, { name, phone, source, role, status, inquiry_date })
 
@@ -689,6 +690,7 @@ John Smith,0723456789,Facebook,Driver,PENDING,2025-01-14`
           status, 
           assigned_to: user?.id, 
           inquiry_date,
+          email,
           added_by: 'System'
         }
         

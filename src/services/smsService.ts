@@ -10,7 +10,7 @@ interface SMSRequest {
   sentBy: string
 }
 
-interface TextSMSResponse {
+interface CelecomResponse {
   responses: Array<{
     'respose-code': number
     'response-description': string
@@ -21,10 +21,10 @@ interface TextSMSResponse {
 }
 
 class SMSService {
-  private apiKey = import.meta.env.VITE_TEXTSMS_API_KEY
-  private partnerID = import.meta.env.VITE_TEXTSMS_PARTNER_ID
-  private endpoint = 'https://sms.textsms.co.ke/api/services/sendsms/'
-  private balanceEndpoint = 'https://sms.textsms.co.ke/api/services/getbalance/'
+  private apiKey = import.meta.env.VITE_CELECOM_API_KEY
+  private partnerID = import.meta.env.VITE_CELECOM_PARTNER_ID
+  private endpoint = 'https://isms.celcomafrica.com/api/services/sendsms/'
+  private balanceEndpoint = 'https://isms.celcomafrica.com/api/services/getbalance/'
 
   private formatPhoneNumber(phone: string): string {
     return phone.replace('+', '')

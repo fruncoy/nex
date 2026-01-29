@@ -85,7 +85,8 @@ export function Layout() {
       icon: GraduationCap,
       subItems: [
         { name: 'NICHE Training', href: '/niche-training', icon: GraduationCap },
-        { name: 'NICHE Courses', href: '/niche-courses', icon: GraduationCap }
+        { name: 'NICHE Courses', href: '/niche-courses', icon: GraduationCap },
+        { name: 'NICHE Fees', href: '/niche-fees', icon: GraduationCap }
       ]
     },
     { 

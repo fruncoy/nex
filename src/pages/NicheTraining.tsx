@@ -533,39 +533,6 @@ export function NicheTraining() {
 
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Select Candidate (Optional)
-                    </label>
-                    <div className="relative">
-                      <input
-                        type="text"
-                        value={candidateSearch}
-                        onChange={(e) => {
-                          setCandidateSearch(e.target.value)
-                          setShowCandidateDropdown(true)
-                        }}
-                        onFocus={() => setShowCandidateDropdown(true)}
-                        placeholder="Search candidate or enter manually below..."
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
-                      />
-                      {showCandidateDropdown && filteredCandidates.length > 0 && (
-                        <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-40 overflow-y-auto">
-                          {filteredCandidates.slice(0, 10).map((candidate) => (
-                            <button
-                              key={candidate.id}
-                              type="button"
-                              onClick={() => handleCandidateSelect(candidate)}
-                              className="w-full text-left px-3 py-2 hover:bg-gray-100"
-                            >
-                              <div className="font-medium">{candidate.name}</div>
-                              <div className="text-sm text-gray-500">{candidate.phone} - {candidate.role}</div>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
@@ -590,12 +557,20 @@ export function NicheTraining() {
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
-                    <input
-                      type="text"
+                    <select
                       value={formData.role}
                       onChange={(e) => setFormData({ ...formData, role: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
-                    />
+                    >
+                      <option value="">Select role</option>
+                      <option value="Nanny">Nanny</option>
+                      <option value="House Manager">House Manager</option>
+                      <option value="Chef">Chef</option>
+                      <option value="Driver">Driver</option>
+                      <option value="Night Nurse">Night Nurse</option>
+                      <option value="Caregiver">Caregiver</option>
+                      <option value="Housekeeper">Housekeeper</option>
+                    </select>
                   </div>
 
                   <div>

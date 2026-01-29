@@ -33,6 +33,7 @@ export function Interviews() {
   const [interviews, setInterviews] = useState<Interview[]>([])
   const [filteredInterviews, setFilteredInterviews] = useState<Interview[]>([])
   const [candidates, setCandidates] = useState<Candidate[]>([])
+  const [smsCountsMap, setSmsCountsMap] = useState<Record<string, number>>({})
   const [searchTerm, setSearchTerm] = useState('')
   const [filterStatus, setFilterStatus] = useState('all')
   const [sortBy, setSortBy] = useState<'created_at' | 'date_time' | 'scheduled_date'>('created_at')
@@ -444,6 +445,11 @@ export function Interviews() {
       if (result.success) {
         setSmsStates(prev => ({ ...prev, [interview.id]: 'sent' }))
         showToast('SMS sent successfully', 'success')
+        // Update SMS count
+        setSmsCountsMap(prev => ({
+          ...prev,
+          [interview.candidate_id]: (prev[interview.candidate_id] || 0) + 1
+        }))
       } else {
         setSmsStates(prev => ({ ...prev, [interview.id]: 'failed' }))
         showToast(`SMS failed: ${result.error}`, 'error')
@@ -457,6 +463,7 @@ export function Interviews() {
   useEffect(() => {
     fetchInterviews()
     fetchCandidates()
+    fetchSMSCounts()
   }, [])
 
   const fetchInterviews = async () => {
@@ -492,6 +499,30 @@ export function Interviews() {
       showToast('Failed to fetch interviews', 'error')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const fetchSMSCounts = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('sms_logs')
+        .select('recipient_id')
+        .eq('recipient_type', 'candidate')
+        .eq('status', 'sent')
+
+      if (error) throw error
+
+      // Count SMS per candidate
+      const counts: Record<string, number> = {}
+      data?.forEach(log => {
+        if (log.recipient_id) {
+          counts[log.recipient_id] = (counts[log.recipient_id] || 0) + 1
+        }
+      })
+      
+      setSmsCountsMap(counts)
+    } catch (error) {
+      console.error('Failed to fetch SMS counts:', error)
     }
   }
 
@@ -698,28 +729,35 @@ export function Interviews() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       {canSend ? (
-                        <button
-                          onClick={() => handleSendSMS(interview)}
-                          disabled={smsState === 'sending' || smsState === 'sent'}
-                          className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium transition-colors ${
-                            smsState === 'sent'
-                              ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                              : smsState === 'sending'
-                              ? 'bg-blue-100 text-blue-600 cursor-not-allowed'
-                              : smsState === 'failed'
-                              ? 'bg-red-100 text-red-600 hover:bg-red-200'
-                              : 'bg-blue-100 text-blue-600 hover:bg-blue-200'
-                          }`}
-                        >
-                          {smsState === 'sending' ? (
-                            <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                          ) : (
-                            <MessageSquare className="w-3 h-3 mr-1" />
+                        <div className="relative inline-block">
+                          <button
+                            onClick={() => handleSendSMS(interview)}
+                            disabled={smsState === 'sending' || smsState === 'sent'}
+                            className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium transition-colors ${
+                              smsState === 'sent'
+                                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                : smsState === 'sending'
+                                ? 'bg-blue-100 text-blue-600 cursor-not-allowed'
+                                : smsState === 'failed'
+                                ? 'bg-red-100 text-red-600 hover:bg-red-200'
+                                : 'bg-blue-100 text-blue-600 hover:bg-blue-200'
+                            }`}
+                          >
+                            {smsState === 'sending' ? (
+                              <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                            ) : (
+                              <MessageSquare className="w-3 h-3 mr-1" />
+                            )}
+                            {smsState === 'sending' ? 'Sending...' :
+                             smsState === 'sent' ? 'Sent' :
+                             smsState === 'failed' ? 'Retry' : 'SMS'}
+                          </button>
+                          {smsCountsMap[interview.candidate_id] > 0 && (
+                            <span className="absolute -top-0.5 -right-0.5 inline-flex items-center justify-center w-3 h-3 text-xs font-bold text-white bg-red-500 rounded-full" style={{fontSize: '8px'}}>
+                              {smsCountsMap[interview.candidate_id]}
+                            </span>
                           )}
-                          {smsState === 'sending' ? 'Sending...' :
-                           smsState === 'sent' ? 'Sent' :
-                           smsState === 'failed' ? 'Retry' : 'SMS'}
-                        </button>
+                        </div>
                       ) : (
                         <span className="text-gray-400 text-xs">-</span>
                       )}

@@ -2,7 +2,7 @@ import React from 'react'
 
 interface StatusBadgeProps {
   status: string
-  type?: 'candidate' | 'client' | 'training' | 'interview' | 'lead'
+  type?: 'candidate' | 'client' | 'training' | 'interview' | 'lead' | 'payment'
 }
 
 export function StatusBadge({ status, type = 'candidate' }: StatusBadgeProps) {
@@ -122,12 +122,20 @@ export function StatusBadge({ status, type = 'candidate' }: StatusBadgeProps) {
       'NEEDS-ATTENTION': 'bg-red-100 text-red-800 border border-red-500',
     }
 
+    const paymentStatusColors: Record<string, string> = {
+      'PENDING': 'bg-yellow-100 text-yellow-800',
+      'PARTIAL': 'bg-orange-100 text-orange-800',
+      'PAID': 'bg-green-100 text-green-800',
+      'OVERDUE': 'bg-red-100 text-red-800',
+    }
+
     const mapByType: Record<string, Record<string, string>> = {
       candidate: candidateStatusColors,
       lead: leadStatusColors,
       client: clientStatusColors,
       training: trainingStatusColors,
       interview: interviewStatusColors,
+      payment: paymentStatusColors,
     }
 
     const colors = mapByType[type] || candidateStatusColors

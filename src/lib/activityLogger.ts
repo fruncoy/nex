@@ -3,7 +3,7 @@ import { supabase } from './supabase'
 interface ActivityLogParams {
   userId: string
   actionType: 'status_change' | 'edit' | 'create' | 'delete' | 'reschedule' | 'bulk_upload'
-  entityType?: 'candidate' | 'client' | 'training_lead' | 'interview' | 'meeting_note'
+  entityType?: 'candidate' | 'client' | 'training_lead' | 'interview' | 'meeting_note' | 'niche_training' | 'niche_fees'
   entityId?: string
   entityName?: string
   oldValue?: string
@@ -78,7 +78,7 @@ export class ActivityLogger {
 
   static async logEdit(
     userId: string,
-    entityType: 'candidate' | 'client' | 'training_lead' | 'meeting_note',
+    entityType: 'candidate' | 'client' | 'training_lead' | 'meeting_note' | 'niche_training' | 'niche_fees',
     entityId: string,
     entityName: string,
     userName: string
@@ -99,7 +99,7 @@ export class ActivityLogger {
 
   static async logCreate(
     userId: string,
-    entityType: 'candidate' | 'client' | 'training_lead' | 'meeting_note',
+    entityType: 'candidate' | 'client' | 'training_lead' | 'meeting_note' | 'niche_training' | 'niche_fees',
     entityId: string,
     entityName: string,
     userName: string
