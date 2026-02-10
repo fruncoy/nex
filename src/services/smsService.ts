@@ -114,7 +114,7 @@ class SMSService {
 
   generateInterviewReminderMessage(candidateName: string, interviewDay: string): string {
     const firstName = candidateName.split(' ')[0]
-    return `${firstName}, this is a reminder from Nestara. Your interview is scheduled for ${interviewDay} at 9:00 AM. Venue: Karen Plains Arcade, 1st Flr\n\nDirections: Take a bus to Karen, alight at Kabwagi. From there, walk or take a motorbike, KES 50\n\nSee you`
+    return `${firstName}, this is a reminder from Nestara. Your interview is scheduled for ${interviewDay} at 9:00 AM. Venue: Nestara Institute of Care and Hospitality Excellence.\n\nDirections: Alight Stage ya Corner, Ngong Road. Call 0714681893 for further direction.\nSee you!`
   }
 }
 
