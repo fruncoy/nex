@@ -29,9 +29,10 @@ export function Dashboard() {
     todayInterviews: 0,
   })
   const [dateRange, setDateRange] = useState({
-    startDate: new Date().toISOString().split('T')[0],
-    endDate: new Date().toISOString().split('T')[0]
+    startDate: new Date().getFullYear() + '-01-01',
+    endDate: new Date().getFullYear() + '-12-31'
   })
+  const [showAllTime, setShowAllTime] = useState(false)
   const [recentActivity, setRecentActivity] = useState<any[]>([])
   const [placementFollowups, setPlacementFollowups] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -74,13 +75,20 @@ export function Dashboard() {
       interviewsSubscription.unsubscribe()
       activitySubscription.unsubscribe()
     }
-  }, [dateRange])
+  }, [dateRange, showAllTime])
 
   const loadDashboardData = async () => {
     try {
       const today = new Date().toISOString().split('T')[0]
-      const startDate = dateRange.startDate + 'T00:00:00'
-      const endDate = dateRange.endDate + 'T23:59:59'
+      let startDate, endDate
+      
+      if (showAllTime) {
+        startDate = '1900-01-01T00:00:00'
+        endDate = '2099-12-31T23:59:59'
+      } else {
+        startDate = dateRange.startDate + 'T00:00:00'
+        endDate = dateRange.endDate + 'T23:59:59'
+      }
 
       const thisMonth = new Date().toISOString().slice(0, 7) + '-01T00:00:00'
       
@@ -185,7 +193,17 @@ export function Dashboard() {
       ...prev,
       [type === 'start' ? 'startDate' : 'endDate']: value
     }))
-    loadDashboardData()
+  }
+
+  const handleAllTimeToggle = () => {
+    setShowAllTime(!showAllTime)
+    if (!showAllTime) {
+      // Reset to current year when switching to all time
+      setDateRange({
+        startDate: new Date().getFullYear() + '-01-01',
+        endDate: new Date().getFullYear() + '-12-31'
+      })
+    }
   }
 
   const statCards = [
@@ -356,24 +374,44 @@ export function Dashboard() {
       {/* Stats Cards */}
       {/* Date Range Selector */}
       <div className="mb-6 flex flex-col sm:flex-row gap-3 sm:gap-4 sm:items-center">
-        <div className="flex items-center gap-2">
-          <label className="text-sm text-gray-600 min-w-0 flex-shrink-0">From:</label>
-          <input
-            type="date"
-            value={dateRange.startDate}
-            onChange={(e) => handleDateRangeChange('start', e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm w-full sm:w-auto"
-          />
+        <div className="flex items-center gap-3">
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={showAllTime}
+              onChange={handleAllTimeToggle}
+              className="rounded border-gray-300 text-nestalk-primary focus:ring-nestalk-primary"
+            />
+            <span className="text-sm text-gray-700 font-medium">All Time</span>
+          </label>
         </div>
-        <div className="flex items-center gap-2">
-          <label className="text-sm text-gray-600 min-w-0 flex-shrink-0">To:</label>
-          <input
-            type="date"
-            value={dateRange.endDate}
-            onChange={(e) => handleDateRangeChange('end', e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm w-full sm:w-auto"
-          />
-        </div>
+        
+        {!showAllTime && (
+          <>
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-gray-600 min-w-0 flex-shrink-0">From:</label>
+              <input
+                type="date"
+                value={dateRange.startDate}
+                onChange={(e) => handleDateRangeChange('start', e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-lg text-sm w-full sm:w-auto"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-gray-600 min-w-0 flex-shrink-0">To:</label>
+              <input
+                type="date"
+                value={dateRange.endDate}
+                onChange={(e) => handleDateRangeChange('end', e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-lg text-sm w-full sm:w-auto"
+              />
+            </div>
+          </>
+        )}
+        
+        {showAllTime && (
+          <span className="text-sm text-gray-500 italic">Showing data for all time periods</span>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 mb-8">

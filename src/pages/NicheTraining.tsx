@@ -47,7 +47,7 @@ export function NicheTraining() {
   const [candidates, setCandidates] = useState<Candidate[]>([])
   const [courses, setCourses] = useState<NicheCourse[]>([])
   const [searchTerm, setSearchTerm] = useState('')
-  const [filterStatus, setFilterStatus] = useState('all')
+  const [filterCourse, setFilterCourse] = useState('all')
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [showImportModal, setShowImportModal] = useState(false)
@@ -71,7 +71,7 @@ export function NicheTraining() {
   const { user, staff } = useAuth()
   const { showToast } = useToast()
 
-  const statusOptions = ['all', 'Pending', 'Active', 'Suspended', 'Expelled']
+  const [courseFilterOptions, setCourseFilterOptions] = useState<string[]>(['all'])
 
   useEffect(() => {
     loadTrainingRecords()
@@ -81,7 +81,7 @@ export function NicheTraining() {
 
   useEffect(() => {
     filterRecords()
-  }, [trainingRecords, searchTerm, filterStatus])
+  }, [trainingRecords, searchTerm, filterCourse])
 
   const loadTrainingRecords = async () => {
     try {
@@ -92,6 +92,10 @@ export function NicheTraining() {
 
       if (error) throw error
       setTrainingRecords(data || [])
+      
+      // Extract unique courses for filter options
+      const uniqueCourses = [...new Set(data?.map(record => record.course).filter(Boolean))]
+      setCourseFilterOptions(['all', ...uniqueCourses])
     } catch (error) {
       console.error('Error loading training records:', error)
       showToast('Failed to load training records', 'error')
@@ -140,8 +144,8 @@ export function NicheTraining() {
       )
     }
 
-    if (filterStatus !== 'all') {
-      filtered = filtered.filter(record => record.status === filterStatus)
+    if (filterCourse !== 'all') {
+      filtered = filtered.filter(record => record.course === filterCourse)
     }
 
     setFilteredRecords(filtered)
@@ -361,14 +365,28 @@ export function NicheTraining() {
         </div>
       </div>
 
-      <SearchFilter
-        searchTerm={searchTerm}
-        onSearchChange={setSearchTerm}
-        filterStatus={filterStatus}
-        onFilterChange={setFilterStatus}
-        statusOptions={statusOptions}
-        placeholder="Search by name, course, or role..."
-      />
+      <div className="flex flex-col gap-3">
+        <div className="flex gap-3">
+          <input
+            type="text"
+            placeholder="Search by name, course, or role..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
+          />
+          
+          <select
+            value={filterCourse}
+            onChange={(e) => setFilterCourse(e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
+          >
+            <option value="all">All Courses</option>
+            {courseFilterOptions.slice(1).map(course => (
+              <option key={course} value={course}>{course}</option>
+            ))}
+          </select>
+        </div>
+      </div>
 
       <div className="bg-white rounded-lg shadow overflow-hidden">
         <div className="overflow-x-auto">
@@ -416,7 +434,7 @@ export function NicheTraining() {
             <Users className="mx-auto h-12 w-12 text-gray-400" />
             <h3 className="mt-2 text-sm font-medium text-gray-900">No training records found</h3>
             <p className="mt-1 text-sm text-gray-500">
-              {searchTerm || filterStatus !== 'all'
+              {searchTerm || filterCourse !== 'all'
                 ? 'Try adjusting your search or filter criteria.'
                 : 'Get started by adding your first training record.'}
             </p>

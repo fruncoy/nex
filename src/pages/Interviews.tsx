@@ -51,6 +51,7 @@ export function Interviews() {
   const [selectedInterviews, setSelectedInterviews] = useState<string[]>([])
   const [bulkStatus, setBulkStatus] = useState('')
   const [smsStates, setSmsStates] = useState<Record<string, 'idle' | 'sending' | 'sent' | 'failed'>>({})
+  const [fixingMissing, setFixingMissing] = useState(false)
 
   // reschedule state
   const [reschedule, setReschedule] = useState<{ open: boolean; interview: Interview | null; dateTime: string }>({
@@ -460,6 +461,77 @@ export function Interviews() {
     }
   }
 
+  const fixMissingInterviews = async () => {
+    setFixingMissing(true)
+    try {
+      // Get candidates with INTERVIEW_SCHEDULED status
+      const { data: candidates, error: candidatesError } = await supabase
+        .from('candidates')
+        .select('id, name, phone, scheduled_date, status')
+        .eq('status', 'INTERVIEW_SCHEDULED')
+      
+      if (candidatesError) throw candidatesError
+      
+      if (candidates.length === 0) {
+        showToast('No candidates with INTERVIEW_SCHEDULED status found', 'info')
+        return
+      }
+      
+      // Check which ones don't have interview records
+      const candidateIds = candidates.map(c => c.id)
+      const { data: existingInterviews, error: interviewsError } = await supabase
+        .from('interviews')
+        .select('candidate_id')
+        .in('candidate_id', candidateIds)
+      
+      if (interviewsError) throw interviewsError
+      
+      const existingCandidateIds = new Set(existingInterviews.map(i => i.candidate_id))
+      const missingInterviews = candidates.filter(c => !existingCandidateIds.has(c.id))
+      
+      if (missingInterviews.length === 0) {
+        showToast('All candidates with INTERVIEW_SCHEDULED status have interview records', 'success')
+        return
+      }
+      
+      // Create interview records for missing ones
+      const interviewsToCreate = missingInterviews.map(candidate => {
+        let interviewDate
+        if (candidate.scheduled_date) {
+          interviewDate = new Date(candidate.scheduled_date)
+        } else {
+          interviewDate = new Date()
+          interviewDate.setDate(interviewDate.getDate() + 1)
+          interviewDate.setHours(9, 0, 0, 0)
+        }
+        
+        return {
+          candidate_id: candidate.id,
+          date_time: interviewDate.toISOString(),
+          location: 'Office',
+          assigned_staff: staff?.id || user?.id,
+          attended: false,
+          outcome: null
+        }
+      })
+      
+      const { error: createError } = await supabase
+        .from('interviews')
+        .insert(interviewsToCreate)
+      
+      if (createError) throw createError
+      
+      showToast(`Fixed ${missingInterviews.length} missing interview records`, 'success')
+      fetchInterviews() // Refresh the list
+      
+    } catch (error) {
+      console.error('Error fixing missing interviews:', error)
+      showToast('Failed to fix missing interviews', 'error')
+    } finally {
+      setFixingMissing(false)
+    }
+  }
+
   useEffect(() => {
     fetchInterviews()
     fetchCandidates()
@@ -607,6 +679,18 @@ export function Interviews() {
           >
             <Plus className="w-4 h-4 mr-2" />
             Schedule Interview
+          </button>
+          <button
+            onClick={fixMissingInterviews}
+            disabled={fixingMissing}
+            className="flex items-center px-3 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors disabled:opacity-50"
+            title="Fix missing interview records for candidates with INTERVIEW_SCHEDULED status"
+          >
+            {fixingMissing ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <CheckCircle className="w-4 h-4" />
+            )}
           </button>
         </div>
       </div>

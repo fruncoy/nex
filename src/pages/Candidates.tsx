@@ -8,6 +8,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
 import { ActivityLogger } from '../lib/activityLogger'
 import { formatDateTime } from '../utils/dateFormat'
+import * as XLSX from 'xlsx'
 
 
 interface Candidate {
@@ -69,7 +70,10 @@ export function Candidates() {
   const [filteredCandidates, setFilteredCandidates] = useState<Candidate[]>([])
   const [searchTerm, setSearchTerm] = useState('')
   const [filterStatus, setFilterStatus] = useState('all')
-  const [dateRange, setDateRange] = useState<{ start: string; end: string }>({ start: '', end: '' })
+  const [dateRange, setDateRange] = useState<{ start: string; end: string }>({ 
+    start: new Date().getFullYear() + '-01-01', 
+    end: new Date().getFullYear() + '-12-31' 
+  })
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [selectedCandidate, setSelectedCandidate] = useState<Candidate | null>(null)
@@ -148,6 +152,8 @@ export function Candidates() {
   const [scheduleModal, setScheduleModal] = useState<{ open: boolean; candidate: Candidate | null; dateOnly: string }>({ open: false, candidate: null, dateOnly: '' })
   const [showProfileModal, setShowProfileModal] = useState(false)
   const [selectedCandidateForProfile, setSelectedCandidateForProfile] = useState<Candidate | null>(null)
+  const [showDownloadModal, setShowDownloadModal] = useState(false)
+  const [downloadDateRange, setDownloadDateRange] = useState<{ start: string; end: string }>({ start: '', end: '' })
 
   const { user, staff } = useAuth()
   const { showToast } = useToast()
@@ -551,6 +557,122 @@ John Smith,0723456789,Facebook,Driver,PENDING,2025-01-14,john.smith@email.com`
     window.URL.revokeObjectURL(url)
   }
 
+  const downloadExcel = async () => {
+    try {
+      let candidatesToDownload = [...filteredCandidates]
+      
+      // Apply date filter if specified
+      if (downloadDateRange.start || downloadDateRange.end) {
+        candidatesToDownload = candidatesToDownload.filter(c => {
+          const d = c.inquiry_date
+          if (downloadDateRange.start && downloadDateRange.end) {
+            return d >= downloadDateRange.start && d <= downloadDateRange.end
+          } else if (downloadDateRange.start) {
+            return d >= downloadDateRange.start
+          } else if (downloadDateRange.end) {
+            return d <= downloadDateRange.end
+          }
+          return true
+        })
+      }
+
+      if (candidatesToDownload.length === 0) {
+        showToast('No candidates found for the selected period', 'error')
+        return
+      }
+
+      // Get full candidate data for selected candidates
+      const { data: fullCandidates, error } = await supabase
+        .from('candidates')
+        .select('*')
+        .in('id', candidatesToDownload.map(c => c.id))
+        .order('inquiry_date', { ascending: false })
+
+      if (error) throw error
+
+      // Prepare data for Excel
+      const excelData = fullCandidates.map((candidate, index) => ({
+        '#': index + 1,
+        'Name': candidate.name,
+        'Phone': candidate.phone,
+        'Source': candidate.source || 'N/A',
+        'Role': candidate.role,
+        'Status': candidate.status,
+        'Inquiry Date': candidate.inquiry_date,
+        'Age': candidate.age || 'N/A',
+        'Email': candidate.email || 'N/A',
+        'ID Number': candidate.id_number || 'N/A',
+        'County': candidate.county || 'N/A',
+        'Town': candidate.town || 'N/A',
+        'Estate': candidate.estate || 'N/A',
+        'Marital Status': candidate.marital_status || 'N/A',
+        'Has Kids': candidate.has_kids === null ? 'N/A' : (candidate.has_kids ? `Yes (${candidate.kids_count || 0})` : 'No'),
+        'Education Level': candidate.education_level || 'N/A',
+        'Total Experience (Years)': candidate.total_years_experience || 'N/A',
+        'Kenya Experience (Years)': candidate.kenya_years || 'N/A',
+        'Good Conduct Status': candidate.good_conduct_status || 'N/A',
+        'Expected Salary': candidate.expected_salary ? `KSh ${candidate.expected_salary.toLocaleString()}` : 'N/A',
+        'Live Arrangement': candidate.live_arrangement || 'N/A',
+        'Work Schedule': candidate.work_schedule || 'N/A',
+        'Employment Type': candidate.employment_type || 'N/A',
+        'Address': candidate.address || 'N/A',
+        'Next of Kin 1 Name': candidate.next_of_kin_1_name || 'N/A',
+        'Next of Kin 1 Phone': candidate.next_of_kin_1_phone || 'N/A',
+        'Next of Kin 2 Name': candidate.next_of_kin_2_name || 'N/A',
+        'Next of Kin 2 Phone': candidate.next_of_kin_2_phone || 'N/A',
+        'Referee 1 Name': candidate.referee_1_name || 'N/A',
+        'Referee 1 Phone': candidate.referee_1_phone || 'N/A',
+        'Referee 2 Name': candidate.referee_2_name || 'N/A',
+        'Referee 2 Phone': candidate.referee_2_phone || 'N/A',
+        'Qualification Score': candidate.qualification_score || 'N/A',
+        'Notes': candidate.qualification_notes || 'N/A',
+        'Added By': candidate.added_by || 'N/A',
+        'Created At': candidate.created_at ? new Date(candidate.created_at).toLocaleDateString() : 'N/A'
+      }))
+
+      // Create workbook and worksheet
+      const wb = XLSX.utils.book_new()
+      const ws = XLSX.utils.json_to_sheet(excelData)
+
+      // Auto-size columns
+      const colWidths = []
+      const headers = Object.keys(excelData[0] || {})
+      headers.forEach((header, i) => {
+        const maxLength = Math.max(
+          header.length,
+          ...excelData.map(row => String(row[header] || '').length)
+        )
+        colWidths[i] = { wch: Math.min(maxLength + 2, 50) }
+      })
+      ws['!cols'] = colWidths
+
+      // Add worksheet to workbook
+      XLSX.utils.book_append_sheet(wb, ws, 'Candidates')
+
+      // Generate filename with date range
+      const today = new Date().toISOString().split('T')[0]
+      let filename = `candidates_${today}.xlsx`
+      if (downloadDateRange.start && downloadDateRange.end) {
+        filename = `candidates_${downloadDateRange.start}_to_${downloadDateRange.end}.xlsx`
+      } else if (downloadDateRange.start) {
+        filename = `candidates_from_${downloadDateRange.start}.xlsx`
+      } else if (downloadDateRange.end) {
+        filename = `candidates_until_${downloadDateRange.end}.xlsx`
+      }
+
+      // Download file
+      XLSX.writeFile(wb, filename)
+      
+      showToast(`Downloaded ${candidatesToDownload.length} candidates to Excel`, 'success')
+      setShowDownloadModal(false)
+      setDownloadDateRange({ start: '', end: '' })
+      
+    } catch (error) {
+      console.error('Error downloading Excel:', error)
+      showToast('Failed to download Excel file', 'error')
+    }
+  }
+
   const handlePreview = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!uploadFile) {
@@ -812,6 +934,13 @@ John Smith,0723456789,Facebook,Driver,PENDING,2025-01-14,john.smith@email.com`
           <p className="text-gray-600">Track candidate inquiries and outreach progress</p>
         </div>
         <div className="flex space-x-2">
+          <button
+            onClick={() => setShowDownloadModal(true)}
+            className="flex items-center px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+            title="Download Excel"
+          >
+            <Download className="w-4 h-4" />
+          </button>
           <button
             onClick={() => setShowBulkUpload(true)}
             className="flex items-center px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
@@ -1149,12 +1278,7 @@ John Smith,0723456789,Facebook,Driver,PENDING,2025-01-14,john.smith@email.com`
                           }
                           e.target.selectedIndex = 0
                         }}
-                        disabled={candidate.status === 'WON' || candidate.status === 'INTERVIEW_SCHEDULED'}
-                        className={`px-2 py-1 border border-gray-300 rounded text-sm ${
-                          candidate.status === 'WON' || candidate.status === 'INTERVIEW_SCHEDULED' 
-                            ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
-                            : 'bg-white'
-                        }`}
+                        className="px-2 py-1 border border-gray-300 rounded text-sm bg-white"
                         defaultValue=""
                       >
                         <option value="" disabled>Update Status</option>
@@ -1263,12 +1387,7 @@ John Smith,0723456789,Facebook,Driver,PENDING,2025-01-14,john.smith@email.com`
                   <select
                     value={formData.status}
                     onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
-                    disabled={selectedCandidate && (selectedCandidate.status === 'WON' || selectedCandidate.status === 'INTERVIEW_SCHEDULED')}
-                    className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent ${
-                      selectedCandidate && (selectedCandidate.status === 'WON' || selectedCandidate.status === 'INTERVIEW_SCHEDULED')
-                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                        : ''
-                    }`}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
                   >
                     {statusOptions.map(status => (
                       <option key={status} value={status}>
@@ -1276,9 +1395,6 @@ John Smith,0723456789,Facebook,Driver,PENDING,2025-01-14,john.smith@email.com`
                       </option>
                     ))}
                   </select>
-                  {selectedCandidate && (selectedCandidate.status === 'WON' || selectedCandidate.status === 'INTERVIEW_SCHEDULED') && (
-                    <p className="text-xs text-gray-500 mt-1">Status locked - Use Staff or Interviews page to modify</p>
-                  )}
                 </div>
 
                 {formData.status === 'INTERVIEW_SCHEDULED' && (
@@ -2003,10 +2119,11 @@ John Smith,0723456789,Facebook,Driver,PENDING,2025-01-14,john.smith@email.com`
                         
                         if (interviewError) {
                           console.error('Interview creation error:', interviewError)
-                          throw interviewError
+                          // Don't throw error, just log it - candidate status should still update
+                          console.log('Failed to create interview record, but candidate status will be updated')
+                        } else {
+                          console.log('Interview created successfully:', interviewData)
                         }
-                        
-                        console.log('Interview created successfully:', interviewData)
                         
                         // Update candidate status
                         const { error: candidateError } = await supabase
@@ -2517,6 +2634,71 @@ John Smith,0723456789,Facebook,Driver,PENDING,2025-01-14,john.smith@email.com`
                 >
                   {submitting ? 'Uploading...' : `Confirm Upload (${previewData.filter(p => p.type === 'add').length})`}
                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Download Excel Modal */}
+      {showDownloadModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-md w-full">
+            <div className="p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">
+                Download Candidates Excel
+              </h2>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Select Date Range (Optional)
+                  </label>
+                  <div className="space-y-2">
+                    <input
+                      type="date"
+                      value={downloadDateRange.start}
+                      onChange={(e) => setDownloadDateRange(prev => ({ ...prev, start: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
+                      placeholder="Start date"
+                    />
+                    <input
+                      type="date"
+                      value={downloadDateRange.end}
+                      onChange={(e) => setDownloadDateRange(prev => ({ ...prev, end: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
+                      placeholder="End date"
+                    />
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Leave empty to download all {filteredCandidates.length} candidates
+                  </p>
+                </div>
+
+                <div className="bg-blue-50 p-3 rounded-lg">
+                  <p className="text-sm text-blue-800">
+                    📊 Excel will include: Name, Phone, Source, Role, Status, Personal Details, Experience, References, and more.
+                  </p>
+                </div>
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => {
+                      setShowDownloadModal(false)
+                      setDownloadDateRange({ start: '', end: '' })
+                    }}
+                    className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={downloadExcel}
+                    className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center"
+                  >
+                    <Download className="w-4 h-4 mr-2" />
+                    Download Excel
+                  </button>
+                </div>
               </div>
             </div>
           </div>
