@@ -16,6 +16,14 @@ interface NicheCourse {
   is_active: boolean
 }
 
+interface NicheCohort {
+  id: string
+  cohort_number: number
+  start_date: string
+  end_date: string
+  status: 'upcoming' | 'active' | 'completed'
+}
+
 interface NicheTraining {
   id: string
   candidate_id?: string
@@ -28,10 +36,15 @@ interface NicheTraining {
   date_started?: string
   date_completed?: string
   notes?: string
+  cohort_id?: string
+  training_type?: '2week' | 'weekend' | 'refresher'
+  accommodation_type?: 'live_in' | 'live_out'
+  enrolled_courses?: string[]
   created_at: string
   updated_at: string
   created_by?: string
   updated_by?: string
+  cohorts?: NicheCohort
 }
 
 interface Candidate {
@@ -46,8 +59,10 @@ export function NicheTraining() {
   const [filteredRecords, setFilteredRecords] = useState<NicheTraining[]>([])
   const [candidates, setCandidates] = useState<Candidate[]>([])
   const [courses, setCourses] = useState<NicheCourse[]>([])
+  const [cohorts, setCohorts] = useState<NicheCohort[]>([])
   const [searchTerm, setSearchTerm] = useState('')
   const [filterCourse, setFilterCourse] = useState('all')
+  const [filterCohort, setFilterCohort] = useState('active')
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [showImportModal, setShowImportModal] = useState(false)
@@ -62,10 +77,10 @@ export function NicheTraining() {
     role: '',
     status: 'Pending' as 'Pending' | 'Active' | 'Suspended' | 'Expelled',
     course: '',
-    description: '',
-    date_started: '',
-    date_completed: '',
-    notes: ''
+    cohort_id: '',
+    training_type: '2week' as '2week' | 'weekend' | 'refresher',
+    accommodation_type: '' as '' | 'live_in' | 'live_out',
+    enrolled_courses: [] as string[]
   })
 
   const { user, staff } = useAuth()
@@ -77,17 +92,21 @@ export function NicheTraining() {
     loadTrainingRecords()
     loadCandidates()
     loadCourses()
+    loadCohorts()
   }, [])
 
   useEffect(() => {
     filterRecords()
-  }, [trainingRecords, searchTerm, filterCourse])
+  }, [trainingRecords, searchTerm, filterCourse, filterCohort])
 
   const loadTrainingRecords = async () => {
     try {
       const { data, error } = await supabase
         .from('niche_training')
-        .select('*')
+        .select(`
+          *,
+          cohorts:niche_cohorts(id, cohort_number, start_date, end_date, status)
+        `)
         .order('created_at', { ascending: false })
 
       if (error) throw error
@@ -133,6 +152,20 @@ export function NicheTraining() {
     }
   }
 
+  const loadCohorts = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('niche_cohorts')
+        .select('*')
+        .order('cohort_number')
+
+      if (error) throw error
+      setCohorts(data || [])
+    } catch (error) {
+      console.error('Error loading cohorts:', error)
+    }
+  }
+
   const filterRecords = () => {
     let filtered = [...trainingRecords]
 
@@ -146,6 +179,12 @@ export function NicheTraining() {
 
     if (filterCourse !== 'all') {
       filtered = filtered.filter(record => record.course === filterCourse)
+    }
+
+    if (filterCohort === 'active') {
+      filtered = filtered.filter(record => record.cohorts?.status === 'active')
+    } else if (filterCohort !== 'all') {
+      filtered = filtered.filter(record => record.cohort_id === filterCohort)
     }
 
     setFilteredRecords(filtered)
@@ -162,10 +201,10 @@ export function NicheTraining() {
         role: formData.role || null,
         status: formData.status,
         course: formData.course || null,
-        description: formData.description.trim() || null,
-        date_started: formData.date_started || null,
-        date_completed: formData.date_completed || null,
-        notes: formData.notes.trim() || null,
+        cohort_id: formData.cohort_id || null,
+        training_type: formData.training_type,
+        accommodation_type: formData.accommodation_type || null,
+        enrolled_courses: formData.enrolled_courses.length > 0 ? formData.enrolled_courses : null,
         updated_by: staff?.name || user?.email || 'Unknown'
       }
 
@@ -228,10 +267,10 @@ export function NicheTraining() {
       role: '',
       status: 'Pending',
       course: '',
-      description: '',
-      date_started: '',
-      date_completed: '',
-      notes: ''
+      cohort_id: '',
+      training_type: '2week',
+      accommodation_type: '',
+      enrolled_courses: []
     })
     setSelectedRecord(null)
     setCandidateSearch('')
@@ -246,10 +285,10 @@ export function NicheTraining() {
       role: record.role || '',
       status: record.status,
       course: record.course || '',
-      description: record.description || '',
-      date_started: record.date_started || '',
-      date_completed: record.date_completed || '',
-      notes: record.notes || ''
+      cohort_id: record.cohort_id || '',
+      training_type: (record as any).training_type || '2week',
+      accommodation_type: (record as any).accommodation_type || '',
+      enrolled_courses: (record as any).enrolled_courses || [record.course].filter(Boolean)
     })
     setCandidateSearch(record.name)
     setShowModal(true)
@@ -270,6 +309,37 @@ export function NicheTraining() {
   const filteredCandidates = candidates.filter(candidate =>
     candidate.name.toLowerCase().includes(candidateSearch.toLowerCase())
   )
+
+  const getRomanNumeral = (num: number) => {
+    const romanNumerals = ['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X']
+    return romanNumerals[num] || num.toString()
+  }
+
+  const getVisibleCohorts = () => {
+    const today = new Date()
+    return cohorts.filter(cohort => {
+      const startDate = new Date(cohort.start_date)
+      return today >= startDate || cohort.status === 'active'
+    })
+  }
+
+  const createNextCohorts = async () => {
+    try {
+      // Update existing cohort statuses first
+      await supabase.rpc('update_cohort_statuses')
+      
+      // Create 5 new cohorts
+      const { data, error } = await supabase.rpc('create_next_cohorts', { num_cohorts: 5 })
+      
+      if (error) throw error
+      
+      showToast(`Created ${data?.length || 5} new cohorts successfully`, 'success')
+      loadCohorts() // Reload cohorts
+    } catch (error: any) {
+      console.error('Error creating cohorts:', error)
+      showToast(`Error: ${error?.message || 'Failed to create cohorts'}`, 'error')
+    }
+  }
 
   const handleImportTrainees = async () => {
     if (selectedCandidates.length === 0) {
@@ -385,6 +455,22 @@ export function NicheTraining() {
               <option key={course} value={course}>{course}</option>
             ))}
           </select>
+          
+          <select
+            value={filterCohort}
+            onChange={(e) => setFilterCohort(e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
+          >
+            <option value="all">All Cohorts</option>
+            {getVisibleCohorts().map(cohort => {
+              const isActive = cohort.status === 'active'
+              return (
+                <option key={cohort.id} value={isActive ? 'active' : cohort.id}>
+                  Cohort {getRomanNumeral(cohort.cohort_number)}{isActive ? ' (active)' : ''}
+                </option>
+              )
+            })}
+          </select>
         </div>
       </div>
 
@@ -398,6 +484,7 @@ export function NicheTraining() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Course</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cohort</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
@@ -414,6 +501,9 @@ export function NicheTraining() {
                     <StatusBadge status={record.status} type="training" />
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{record.course || 'Not assigned'}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {record.cohorts ? `${getRomanNumeral(record.cohorts.cohort_number)}` : 'No cohort'}
+                  </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     <button
                       onClick={() => handleEdit(record)}
@@ -605,61 +695,81 @@ export function NicheTraining() {
                     </select>
                   </div>
 
-                  <div className="col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Course</label>
+                  {formData.training_type === '2week' && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Accommodation</label>
+                      <select
+                        value={formData.accommodation_type}
+                        onChange={(e) => setFormData({ ...formData, accommodation_type: e.target.value as any })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
+                      >
+                        <option value="">Select accommodation</option>
+                        <option value="live_in">Live In</option>
+                        <option value="live_out">Live Out</option>
+                      </select>
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Cohort *</label>
                     <select
-                      value={formData.course}
-                      onChange={(e) => setFormData({ ...formData, course: e.target.value })}
+                      required
+                      value={formData.cohort_id}
+                      onChange={(e) => setFormData({ ...formData, cohort_id: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
                     >
-                      <option value="">Select course</option>
-                      {courses.map(course => (
-                        <option key={course.id} value={course.name}>{course.name}</option>
+                      <option value="">Select cohort (dates auto-assigned)</option>
+                      {cohorts.map(cohort => (
+                        <option key={cohort.id} value={cohort.id}>
+                          Cohort {getRomanNumeral(cohort.cohort_number)} ({new Date(cohort.start_date).toLocaleDateString()} - {new Date(cohort.end_date).toLocaleDateString()}) - {cohort.status}
+                        </option>
                       ))}
                     </select>
                   </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Date Started</label>
-                    <input
-                      type="date"
-                      value={formData.date_started}
-                      onChange={(e) => setFormData({ ...formData, date_started: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Date Completed</label>
-                    <input
-                      type="date"
-                      value={formData.date_completed}
-                      onChange={(e) => setFormData({ ...formData, date_completed: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
-                    />
-                  </div>
-
                   <div className="col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-                    <textarea
-                      value={formData.description}
-                      onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                      rows={3}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
-                      placeholder="Training description or objectives..."
-                    />
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Enrolled Courses</label>
+                    <div className="space-y-2 max-h-32 overflow-y-auto border border-gray-300 rounded-lg p-2">
+                      {courses.map(course => (
+                        <label key={course.id} className="flex items-center space-x-2">
+                          <input
+                            type="checkbox"
+                            checked={formData.enrolled_courses.includes(course.name)}
+                            onChange={(e) => {
+                              let newCourses = [...formData.enrolled_courses]
+                              if (e.target.checked) {
+                                newCourses = [...newCourses, course.name]
+                              } else {
+                                newCourses = newCourses.filter(c => c !== course.name)
+                              }
+                              
+                              // Auto-detect training type based on courses
+                              let trainingType: '2week' | 'weekend' | 'refresher' = 'weekend'
+                              if (newCourses.includes('Refresher Training')) {
+                                trainingType = 'refresher'
+                              } else if (newCourses.includes('Professional Nanny Training Program') || 
+                                        newCourses.includes('Professional House Manager Training Program')) {
+                                trainingType = '2week'
+                              }
+                              
+                              setFormData({ 
+                                ...formData, 
+                                enrolled_courses: newCourses,
+                                training_type: trainingType,
+                                course: formData.course || course.name
+                              })
+                            }}
+                            className="rounded border-gray-300 text-nestalk-primary focus:ring-nestalk-primary"
+                          />
+                          <span className="text-sm text-gray-700">{course.name}</span>
+                        </label>
+                      ))}
+                    </div>
+                    <div className="mt-2 text-sm text-gray-600">
+                      Training Type: <span className="font-medium capitalize">{formData.training_type}</span>
+                    </div>
                   </div>
 
-                  <div className="col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
-                    <textarea
-                      value={formData.notes}
-                      onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                      rows={3}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
-                      placeholder="Additional notes..."
-                    />
-                  </div>
                 </div>
 
                 <div className="flex gap-3 pt-4">

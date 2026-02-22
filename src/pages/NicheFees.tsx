@@ -53,13 +53,16 @@ export function NicheFees() {
 
   const [showPaymentModal, setShowPaymentModal] = useState(false)
   const [showPaymentHistory, setShowPaymentHistory] = useState(false)
+  const [showSponsorModal, setShowSponsorModal] = useState(false)
   const [selectedFee, setSelectedFee] = useState<NicheFee | null>(null)
 
   const [paymentForm, setPaymentForm] = useState({
     amount: '',
-    payment_method: 'Cash',
-    reference_number: '',
-    notes: ''
+    payment_method: 'Cash'
+  })
+
+  const [sponsorForm, setSponsorForm] = useState({
+    amount: ''
   })
 
   const { user, staff } = useAuth()
@@ -196,6 +199,45 @@ export function NicheFees() {
 
 
 
+  const handleAddSponsor = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!selectedFee) return
+
+    try {
+      const amount = parseInt(sponsorForm.amount)
+      if (amount <= 0) {
+        showToast('Invalid sponsor amount', 'error')
+        return
+      }
+
+      const { error } = await supabase
+        .from('niche_fees')
+        .update({ 
+          sponsored_amount: amount,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', selectedFee.id)
+
+      if (error) throw error
+
+      // Log activity
+      await ActivityLogger.logCreate(
+        user?.id || '',
+        'niche_fees',
+        selectedFee.id,
+        `Sponsor amount of KSh ${amount.toLocaleString()} applied for ${selectedFee.student_name}`,
+        staff?.name || user?.email || 'Unknown'
+      )
+
+      showToast(`Sponsor amount of KSh ${amount.toLocaleString()} applied successfully`, 'success')
+      setShowSponsorModal(false)
+      setSponsorForm({ amount: '' })
+      loadFees()
+    } catch (error: any) {
+      console.error('Error adding sponsor:', error)
+      showToast(`Error: ${error?.message || 'Unknown error'}`, 'error')
+    }
+  }
   const handleAddPayment = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!selectedFee) return
@@ -213,8 +255,6 @@ export function NicheFees() {
           fee_id: selectedFee.id,
           amount,
           payment_method: paymentForm.payment_method,
-          reference_number: paymentForm.reference_number || null,
-          notes: paymentForm.notes || null,
           created_by: staff?.name || user?.email || 'Unknown'
         })
 
@@ -242,7 +282,7 @@ export function NicheFees() {
 
       showToast('Payment recorded successfully', 'success')
       setShowPaymentModal(false)
-      setPaymentForm({ amount: '', payment_method: 'Cash', reference_number: '', notes: '' })
+      setPaymentForm({ amount: '', payment_method: 'Cash' })
       loadFees()
     } catch (error: any) {
       console.error('Error adding payment:', error)
@@ -310,6 +350,7 @@ export function NicheFees() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Course</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Course Fee</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sponsored</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Paid</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Balance</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
@@ -342,11 +383,14 @@ export function NicheFees() {
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     KSh {fee.course_fee.toLocaleString()}
                   </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-blue-600">
+                    KSh {((fee as any).sponsored_amount || 0).toLocaleString()}
+                  </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-green-600">
                     KSh {fee.total_paid.toLocaleString()}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-red-600">
-                    KSh {(fee.course_fee - fee.total_paid).toLocaleString()}
+                    KSh {(fee.course_fee - ((fee as any).sponsored_amount || 0) - fee.total_paid).toLocaleString()}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <StatusBadge status={fee.payment_status} type="payment" />
@@ -364,83 +408,23 @@ export function NicheFees() {
                       >
                         <Eye className="w-4 h-4" />
                       </button>
-                      <input
-                        type="number"
-                        placeholder="Amount"
-                        className="w-20 px-2 py-1 text-xs border border-gray-300 rounded"
-                        onKeyPress={async (e) => {
-                          if (e.key === 'Enter') {
-                            const amount = parseInt(e.currentTarget.value)
-                            if (amount > 0) {
-                              try {
-                                const { error } = await supabase
-                                  .from('niche_payments')
-                                  .insert({
-                                    fee_id: fee.id,
-                                    amount,
-                                    payment_method: 'Cash',
-                                    created_by: staff?.name || user?.email || 'Unknown'
-                                  })
-                                if (error) throw error
-                                
-                                await supabase
-                                  .from('niche_fees')
-                                  .update({ 
-                                    total_paid: fee.total_paid + amount,
-                                    updated_at: new Date().toISOString()
-                                  })
-                                  .eq('id', fee.id)
-                                
-                                e.currentTarget.value = ''
-                                loadFees()
-                                showToast(`Payment of KSh ${amount.toLocaleString()} recorded`, 'success')
-                              } catch (error: any) {
-                                showToast(`Error: ${error?.message}`, 'error')
-                              }
-                            }
-                          }
-                        }}
-                      />
                       <button
-                        onClick={async (e) => {
-                          const button = e.currentTarget
-                          const input = button.previousElementSibling as HTMLInputElement
-                          const amount = parseInt(input.value)
-                          if (amount > 0 && !button.disabled) {
-                            button.disabled = true
-                            try {
-                              const { error } = await supabase
-                                .from('niche_payments')
-                                .insert({
-                                  fee_id: fee.id,
-                                  amount,
-                                  payment_method: 'Cash',
-                                  created_by: staff?.name || user?.email || 'Unknown'
-                                })
-                              if (error) throw error
-                              
-                              await supabase
-                                .from('niche_fees')
-                                .update({ 
-                                  total_paid: fee.total_paid + amount,
-                                  updated_at: new Date().toISOString()
-                                })
-                                .eq('id', fee.id)
-                              
-                              input.value = ''
-                              loadFees()
-                              showToast(`Payment of KSh ${amount.toLocaleString()} recorded`, 'success')
-                            } catch (error: any) {
-                              showToast(`Error: ${error?.message}`, 'error')
-                            } finally {
-                              button.disabled = false
-                            }
-                          }
+                        onClick={() => {
+                          setSelectedFee(fee)
+                          setShowPaymentModal(true)
                         }}
-                        className="text-green-600 hover:text-green-800"
-                        title="Add Payment"
+                        className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700"
                       >
-                        <Plus className="w-4 h-4" />
+                        Pay Fees
+                      </button>
+                      <button
+                        onClick={() => {
+                          setSelectedFee(fee)
+                          setShowSponsorModal(true)
+                        }}
+                        className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 ml-1"
+                      >
+                        Sponsor
                       </button>
                     </div>
                   </td>
@@ -464,6 +448,60 @@ export function NicheFees() {
       </div>
 
 
+
+      {/* Add Sponsor Modal */}
+      {showSponsorModal && selectedFee && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-md w-full">
+            <div className="p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">
+                Add Sponsor Amount for {selectedFee.student_name}
+              </h2>
+              
+              <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+                <div className="text-sm text-gray-600">
+                  <div>Course Fee: KSh {selectedFee.course_fee.toLocaleString()}</div>
+                  <div>Current Balance: KSh {selectedFee.balance_due.toLocaleString()}</div>
+                </div>
+              </div>
+
+              <form onSubmit={handleAddSponsor} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Sponsor Amount *</label>
+                  <input
+                    type="number"
+                    required
+                    min="1"
+                    value={sponsorForm.amount}
+                    onChange={(e) => setSponsorForm({ ...sponsorForm, amount: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
+                    placeholder="Enter amount"
+                  />
+                </div>
+
+                <div className="flex gap-3 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowSponsorModal(false)
+                      setSponsorForm({ amount: '' })
+                    }}
+                    className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    Apply Sponsor
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Add Payment Modal */}
       {showPaymentModal && selectedFee && (
@@ -506,31 +544,7 @@ export function NicheFees() {
                   >
                     <option value="Cash">Cash</option>
                     <option value="M-Pesa">M-Pesa</option>
-                    <option value="Bank Transfer">Bank Transfer</option>
-                    <option value="Card">Card</option>
                   </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Reference Number</label>
-                  <input
-                    type="text"
-                    value={paymentForm.reference_number}
-                    onChange={(e) => setPaymentForm({ ...paymentForm, reference_number: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
-                    placeholder="Transaction ID, receipt number, etc."
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
-                  <textarea
-                    value={paymentForm.notes}
-                    onChange={(e) => setPaymentForm({ ...paymentForm, notes: e.target.value })}
-                    rows={2}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
-                    placeholder="Additional notes..."
-                  />
                 </div>
 
                 <div className="flex gap-3 pt-4">
