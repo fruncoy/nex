@@ -72,6 +72,7 @@ function AppRoutes() {
         <Route path="candidates" element={<Candidates />} />
         <Route path="niche" element={<Niche />} />
         <Route path="niche-courses" element={<NicheCourses />} />
+        <Route path="niche-cohorts" element={<NicheCohorts />} />
         <Route path="interviews" element={<Interviews />} />
         <Route path="niche-training" element={<NicheTraining />} />
         <Route path="niche-fees" element={<NicheFees />} />
