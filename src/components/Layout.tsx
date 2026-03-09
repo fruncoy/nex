@@ -24,7 +24,8 @@ import {
   Clock,
   Gift,
   UserX,
-  Award
+  Award,
+  Heart
 } from 'lucide-react'
 
 export function Layout() {
@@ -90,7 +91,8 @@ export function Layout() {
         { name: 'NICHE Timetable', href: '/niche-timetable', icon: Calendar },
         { name: 'NICHE Fees', href: '/niche-fees', icon: GraduationCap },
         { name: 'NICHE Cohorts', href: '/niche-cohorts', icon: Users },
-        { name: 'NICHE Grading', href: '/niche-grading', icon: Award }
+        { name: 'NICHE Grading', href: '/niche-grading', icon: Award },
+        { name: 'GetMatch', href: '/get-match', icon: Heart }
       ]
     },
     { 

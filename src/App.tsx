@@ -36,6 +36,7 @@ import { NestaraAI } from './pages/NestaraAI'
 import { CreateProfile } from './pages/CreateProfile'
 import { Placements } from './pages/Placements'
 import { Calendar } from './pages/Calendar'
+import { GetMatch } from './pages/GetMatch'
 import { Wrapped2025 } from './pages/Wrapped2025'
 
 function ProtectedLayout() {
@@ -78,6 +79,7 @@ function AppRoutes() {
         <Route path="niche-fees" element={<NicheFees />} />
         <Route path="niche-timetable" element={<NicheTimetable />} />
         <Route path="niche-grading" element={<NicheGrading />} />
+        <Route path="get-match" element={<GetMatch />} />
         <Route path="insights" element={<Insights />} />
         <Route path="calendar" element={<Calendar />} />
         <Route path="sms" element={<SMSManagement />} />

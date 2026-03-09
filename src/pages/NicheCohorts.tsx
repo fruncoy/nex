@@ -275,13 +275,6 @@ export function NicheCohorts() {
             <Plus className="w-4 h-4 mr-2" />
             Create Next Cohorts
           </button>
-          <button
-            onClick={() => setShowModal(true)}
-            className="flex items-center px-4 py-2 bg-nestalk-primary text-white rounded-lg hover:bg-nestalk-primary/90 transition-colors"
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            Add Cohort
-          </button>
         </div>
       </div>
 
