@@ -23,7 +23,8 @@ import {
   Brain,
   Clock,
   Gift,
-  UserX
+  UserX,
+  Award
 } from 'lucide-react'
 
 export function Layout() {
@@ -88,7 +89,8 @@ export function Layout() {
         { name: 'NICHE Courses', href: '/niche-courses', icon: GraduationCap },
         { name: 'NICHE Timetable', href: '/niche-timetable', icon: Calendar },
         { name: 'NICHE Fees', href: '/niche-fees', icon: GraduationCap },
-        { name: 'NICHE Cohorts', href: '/niche-cohorts', icon: Users }
+        { name: 'NICHE Cohorts', href: '/niche-cohorts', icon: Users },
+        { name: 'NICHE Grading', href: '/niche-grading', icon: Award }
       ]
     },
     { 

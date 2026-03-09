@@ -1,22 +1,20 @@
 import React, { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { Clock, MapPin, ChevronDown, ChevronUp } from 'lucide-react'
+import { Clock, MapPin } from 'lucide-react'
 
 interface NicheCourse {
   id: string
   name: string
   description?: string
-  duration_text?: string
-  format?: string
+  duration_weeks?: number
   cost_kes?: number
-  full_description?: string
+  course_type?: 'flagship' | 'specialized'
   is_active: boolean
 }
 
 export function NicheCourses() {
   const [courses, setCourses] = useState<NicheCourse[]>([])
   const [loading, setLoading] = useState(true)
-  const [expandedCourse, setExpandedCourse] = useState<string | null>(null)
 
   useEffect(() => {
     loadCourses()
@@ -47,14 +45,8 @@ export function NicheCourses() {
     }).format(amount)
   }
 
-  const getShortPreview = (description: string) => {
-    const firstSentence = description.split('.')[0]
-    return firstSentence.length > 80 ? firstSentence.substring(0, 80) + '...' : firstSentence + '.'
-  }
-
-  const toggleExpanded = (courseId: string) => {
-    setExpandedCourse(expandedCourse === courseId ? null : courseId)
-  }
+  const flagshipCourses = courses.filter(course => course.course_type === 'flagship')
+  const specializedCourses = courses.filter(course => course.course_type === 'specialized')
 
   if (loading) {
     return (
@@ -78,65 +70,72 @@ export function NicheCourses() {
         <p className="text-gray-600">Professional training programs for domestic staff</p>
       </div>
 
-      <div className="space-y-4">
-        {courses.map((course) => (
-          <div key={course.id} className="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow">
-            <div className="p-6">
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex-1">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-2">{course.name}</h3>
-                  <p className="text-sm text-gray-600 mb-3">
-                    {course.full_description ? getShortPreview(course.full_description) : 'No description available'}
-                  </p>
-                </div>
-                <button
-                  onClick={() => toggleExpanded(course.id)}
-                  className="flex-shrink-0 p-2 text-gray-400 hover:text-nestalk-primary transition-colors"
-                >
-                  {expandedCourse === course.id ? (
-                    <ChevronUp className="w-5 h-5" />
-                  ) : (
-                    <ChevronDown className="w-5 h-5" />
-                  )}
-                </button>
-              </div>
-
-              <div className="flex flex-wrap gap-4 text-sm text-gray-600">
-                {course.duration_text && (
+      {/* Flagship Programs */}
+      <div className="mb-8">
+        <h2 className="text-xl font-semibold text-gray-900 mb-4">Flagship Training Programs (14 Days)</h2>
+        <div className="space-y-4">
+          {flagshipCourses.map((course) => (
+            <div key={course.id} className="bg-white rounded-lg shadow-md p-6 border-l-4 border-nestalk-primary">
+              <div className="mb-4">
+                <h3 className="text-xl font-semibold text-gray-900 mb-2">{course.name}</h3>
+                <div className="flex items-center gap-6 text-sm text-gray-600 mb-3">
                   <div className="flex items-center">
                     <Clock className="w-4 h-4 mr-1" />
-                    <span>{course.duration_text}</span>
+                    <span>Duration: 14 days</span>
                   </div>
-                )}
-                
-                {course.format && (
                   <div className="flex items-center">
                     <MapPin className="w-4 h-4 mr-1" />
-                    <span>{course.format}</span>
+                    <span>Format: In-Person/Boarding</span>
                   </div>
-                )}
-                
-                {course.cost_kes && (
-                  <span className="font-semibold text-nestalk-primary">
-                    {formatCurrency(course.cost_kes)}
+                  <span className="font-semibold text-nestalk-primary text-lg">
+                    Cost: {formatCurrency(course.cost_kes || 0)}
                   </span>
-                )}
+                </div>
               </div>
-
-              {expandedCourse === course.id && course.full_description && (
-                <div className="mt-4 pt-4 border-t border-gray-200">
-                  <div className="text-sm text-gray-700 leading-relaxed">
-                    {course.full_description.split('. ').map((sentence, index, array) => (
-                      <p key={index} className={index < array.length - 1 ? 'mb-2' : ''}>
-                        {sentence}{index < array.length - 1 ? '.' : ''}
-                      </p>
-                    ))}
-                  </div>
+              
+              {course.description && (
+                <div className="text-gray-700 leading-relaxed">
+                  <p>{course.description}</p>
                 </div>
               )}
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
+      </div>
+
+      {/* Specialized Courses */}
+      <div>
+        <h2 className="text-xl font-semibold text-gray-900 mb-4">Specialized Skills Training</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {specializedCourses.map((course) => (
+            <div key={course.id} className="bg-white rounded-lg shadow-md p-6">
+              <div className="mb-4">
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">{course.name}</h3>
+                <div className="flex flex-col gap-2 text-sm text-gray-600 mb-3">
+                  {course.duration_weeks === 0.2 && (
+                    <div className="flex items-center">
+                      <Clock className="w-4 h-4 mr-1" />
+                      <span>Duration: 1 Day</span>
+                    </div>
+                  )}
+                  <div className="flex items-center">
+                    <MapPin className="w-4 h-4 mr-1" />
+                    <span>Format: In-Person</span>
+                  </div>
+                  <span className="font-semibold text-nestalk-primary">
+                    Cost: {formatCurrency(course.cost_kes || 0)}{course.duration_weeks === 0 ? ' per session' : ''}
+                  </span>
+                </div>
+              </div>
+              
+              {course.description && (
+                <div className="text-gray-700 leading-relaxed text-sm">
+                  <p>{course.description}</p>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
       </div>
 
       {courses.length === 0 && (

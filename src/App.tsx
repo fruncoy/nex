@@ -25,6 +25,7 @@ import { NicheTraining } from './pages/NicheTraining'
 import { NicheFees } from './pages/NicheFees'
 import { NicheTimetable } from './pages/NicheTimetable'
 import { NicheCohorts } from './pages/NicheCohorts'
+import { NicheGrading } from './pages/NicheGrading'
 import { Vetting } from './pages/Vetting'
 import { Staff } from './pages/Staff'
 import { LeadTracker } from './pages/LeadTracker'
@@ -75,7 +76,7 @@ function AppRoutes() {
         <Route path="niche-training" element={<NicheTraining />} />
         <Route path="niche-fees" element={<NicheFees />} />
         <Route path="niche-timetable" element={<NicheTimetable />} />
-        <Route path="niche-cohorts" element={<NicheCohorts />} />
+        <Route path="niche-grading" element={<NicheGrading />} />
         <Route path="insights" element={<Insights />} />
         <Route path="calendar" element={<Calendar />} />
         <Route path="sms" element={<SMSManagement />} />

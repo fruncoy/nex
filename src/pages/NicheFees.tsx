@@ -22,6 +22,18 @@ interface NicheFee {
   student_name: string
   student_phone: string
   course_name: string
+  cohort_id?: string
+  cohort_number?: number
+  training_type?: '2week' | 'weekend' | 'refresher'
+  training_status?: 'Active' | 'Graduated'
+}
+
+interface NicheCohort {
+  id: string
+  cohort_number: number
+  start_date: string
+  end_date: string
+  status: 'upcoming' | 'active' | 'completed'
 }
 
 interface Payment {
@@ -47,8 +59,10 @@ export function NicheFees() {
   const [fees, setFees] = useState<NicheFee[]>([])
   const [filteredFees, setFilteredFees] = useState<NicheFee[]>([])
   const [payments, setPayments] = useState<Payment[]>([])
+  const [cohorts, setCohorts] = useState<NicheCohort[]>([])
   const [searchTerm, setSearchTerm] = useState('')
   const [filterStatus, setFilterStatus] = useState('all')
+  const [filterCohort, setFilterCohort] = useState('active')
   const [loading, setLoading] = useState(true)
 
   const [showPaymentModal, setShowPaymentModal] = useState(false)
@@ -72,24 +86,45 @@ export function NicheFees() {
 
   useEffect(() => {
     loadFees()
+    loadCohorts()
   }, [])
 
   useEffect(() => {
     filterFees()
-  }, [fees, searchTerm, filterStatus])
+  }, [fees, searchTerm, filterStatus, filterCohort])
+
+  const loadCohorts = async () => {
+    try {
+      await supabase.rpc('update_cohort_statuses')
+      
+      const { data, error } = await supabase
+        .from('niche_cohorts')
+        .select('*')
+        .order('cohort_number')
+
+      if (error) throw error
+      setCohorts(data || [])
+    } catch (error) {
+      console.error('Error loading cohorts:', error)
+    }
+  }
 
   const loadFees = async () => {
     try {
-      // Get all active students with course fees
+      // Get all active and graduated students with course fees
       const { data: activeStudents, error: studentsError } = await supabase
         .from('niche_training')
         .select(`
           id,
           name,
           phone,
-          course
+          course,
+          cohort_id,
+          training_type,
+          status,
+          cohorts:niche_cohorts(id, cohort_number, start_date, end_date, status)
         `)
-        .eq('status', 'Active')
+        .in('status', ['Active', 'Graduated'])
 
       if (studentsError) throw studentsError
 
@@ -106,14 +141,14 @@ export function NicheFees() {
       console.log('Active students:', activeStudents)
       console.log('Course map:', courseMap)
 
-      // Get existing fee records for Active students only
+      // Get existing fee records for Active and Graduated students
       const { data: existingFees, error: feesError } = await supabase
         .from('niche_fees')
         .select(`
           *,
-          niche_training!inner(name, phone, course, status)
+          niche_training!inner(name, phone, course, status, cohort_id, training_type, cohorts:niche_cohorts(id, cohort_number, start_date, end_date, status))
         `)
-        .eq('niche_training.status', 'Active')
+        .in('niche_training.status', ['Active', 'Graduated'])
         .order('niche_training(name)', { ascending: true })
 
       if (feesError) throw feesError
@@ -125,7 +160,7 @@ export function NicheFees() {
       if (studentsNeedingFees.length > 0) {
         const newFeeRecords = studentsNeedingFees.map(student => {
           const courseFee = courseMap[student.course] || 0
-          console.log(`Student: ${student.name}, Course: ${student.course}, Fee: ${courseFee}`)
+          console.log(`Student: ${student.name}, Course: "${student.course}", Fee: ${courseFee}, Available courses:`, Object.keys(courseMap))
           return {
             training_id: student.id,
             course_fee: courseFee,
@@ -139,33 +174,57 @@ export function NicheFees() {
 
         if (insertError) throw insertError
 
-        // Reload fees after inserting new records - only Active students
+        // Reload fees after inserting new records - Active and Graduated students
         const { data: updatedFees, error: updatedError } = await supabase
           .from('niche_fees')
           .select(`
             *,
-            niche_training!inner(name, phone, course, status)
+            niche_training!inner(name, phone, course, status, cohort_id, training_type, cohorts:niche_cohorts(id, cohort_number, start_date, end_date, status))
           `)
-          .eq('niche_training.status', 'Active')
+          .in('niche_training.status', ['Active', 'Graduated'])
           .order('niche_training(name)', { ascending: true })
 
         if (updatedError) throw updatedError
         
-        const formattedFees = updatedFees?.map(fee => ({
-          ...fee,
-          student_name: fee.niche_training.name,
-          student_phone: fee.niche_training.phone,
-          course_name: fee.niche_training.course || 'No Course'
-        })) || []
+        const formattedFees = updatedFees?.map(fee => {
+          const balance = fee.course_fee - ((fee as any).sponsored_amount || 0) - fee.total_paid
+          const paymentStatus = balance <= 0 ? 'Paid' : 
+                               fee.total_paid > 0 ? 'Partial' : 'Pending'
+          
+          return {
+            ...fee,
+            student_name: fee.niche_training.name,
+            student_phone: fee.niche_training.phone,
+            course_name: fee.niche_training.course || 'No Course',
+            cohort_id: fee.niche_training.cohort_id,
+            cohort_number: fee.niche_training.cohorts?.cohort_number,
+            training_type: fee.niche_training.training_type,
+            balance_due: balance,
+            payment_status: paymentStatus,
+            training_status: fee.niche_training.status
+          }
+        }) || []
 
         setFees(formattedFees)
       } else {
-        const formattedFees = existingFees?.map(fee => ({
-          ...fee,
-          student_name: fee.niche_training.name,
-          student_phone: fee.niche_training.phone,
-          course_name: fee.niche_training.course || 'No Course'
-        })) || []
+        const formattedFees = existingFees?.map(fee => {
+          const balance = fee.course_fee - ((fee as any).sponsored_amount || 0) - fee.total_paid
+          const paymentStatus = balance <= 0 ? 'Paid' : 
+                               fee.total_paid > 0 ? 'Partial' : 'Pending'
+          
+          return {
+            ...fee,
+            student_name: fee.niche_training.name,
+            student_phone: fee.niche_training.phone,
+            course_name: fee.niche_training.course || 'No Course',
+            cohort_id: fee.niche_training.cohort_id,
+            cohort_number: fee.niche_training.cohorts?.cohort_number,
+            training_type: fee.niche_training.training_type,
+            balance_due: balance,
+            payment_status: paymentStatus,
+            training_status: fee.niche_training.status
+          }
+        }) || []
 
         setFees(formattedFees)
       }
@@ -186,7 +245,7 @@ export function NicheFees() {
       filtered = filtered.filter(fee =>
         fee.student_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         fee.course_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        fee.student_phone.includes(searchTerm)
+        (fee.student_phone && fee.student_phone.includes(searchTerm))
       )
     }
 
@@ -194,8 +253,53 @@ export function NicheFees() {
       filtered = filtered.filter(fee => fee.payment_status === filterStatus)
     }
 
+    if (filterCohort === 'active') {
+      filtered = filtered.filter(fee => {
+        const cohort = cohorts.find(c => c.id === fee.cohort_id)
+        return cohort?.status === 'active'
+      })
+    } else if (filterCohort !== 'all') {
+      filtered = filtered.filter(fee => fee.cohort_id === filterCohort)
+    }
+
     setFilteredFees(filtered)
   }
+
+  const getRomanNumeral = (num: number) => {
+    const romanNumerals = ['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X']
+    return romanNumerals[num] || num.toString()
+  }
+
+  const getVisibleCohorts = () => {
+    const today = new Date()
+    return cohorts.filter(cohort => {
+      const startDate = new Date(cohort.start_date)
+      return today >= startDate || cohort.status === 'active'
+    })
+  }
+
+  const getFlagshipTitle = () => {
+    if (filterCohort === 'active') {
+      const activeCohort = cohorts.find(c => c.status === 'active')
+      return activeCohort ? `Cohort ${getRomanNumeral(activeCohort.cohort_number)}` : '2-Week Programs'
+    } else if (filterCohort !== 'all') {
+      const selectedCohort = cohorts.find(c => c.id === filterCohort)
+      return selectedCohort ? `Cohort ${getRomanNumeral(selectedCohort.cohort_number)}` : '2-Week Programs'
+    }
+    return 'All Cohorts'
+  }
+
+  const flagshipFees = filteredFees.filter(fee => 
+    fee.course_name === 'Professional House Manager Training Program' || 
+    fee.course_name === 'Professional Nanny Training Program' ||
+    fee.training_type === '2week'
+  )
+  
+  const specializedFees = filteredFees.filter(fee => 
+    fee.course_name !== 'Professional House Manager Training Program' && 
+    fee.course_name !== 'Professional Nanny Training Program' &&
+    fee.training_type !== '2week'
+  )
 
 
 
@@ -332,109 +436,167 @@ export function NicheFees() {
         </div>
       </div>
 
-      <SearchFilter
-        searchTerm={searchTerm}
-        onSearchChange={setSearchTerm}
-        filterStatus={filterStatus}
-        onFilterChange={setFilterStatus}
-        statusOptions={statusOptions}
-        placeholder="Search by student name, course, or phone..."
-      />
-
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Course</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Course Fee</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sponsored</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Paid</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Balance</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {filteredFees.map((fee, index) => (
-                <tr key={fee.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{index + 1}</td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-medium text-gray-900">{fee.student_name}</div>
-                    <div className="text-sm text-gray-500">{fee.student_phone?.replace(/\D/g, '').replace(/^254/, '+254')}</div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    <div className="flex items-center gap-2">
-                      <span>{fee.course_name}</span>
-                      <button
-                        onClick={() => {
-                          // Add course functionality here
-                          showToast('Add course feature coming soon', 'info')
-                        }}
-                        className="text-blue-600 hover:text-blue-800"
-                        title="Add/Edit Course"
-                      >
-                        <Edit className="w-3 h-3" />
-                      </button>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    KSh {fee.course_fee.toLocaleString()}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-blue-600">
-                    KSh {((fee as any).sponsored_amount || 0).toLocaleString()}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-green-600">
-                    KSh {fee.total_paid.toLocaleString()}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-red-600">
-                    KSh {(fee.course_fee - ((fee as any).sponsored_amount || 0) - fee.total_paid).toLocaleString()}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <StatusBadge status={fee.payment_status} type="payment" />
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => {
-                          setSelectedFee(fee)
-                          loadPaymentHistory(fee.id)
-                          setShowPaymentHistory(true)
-                        }}
-                        className="text-blue-600 hover:text-blue-800 mr-2"
-                        title="View Payment History"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => {
-                          setSelectedFee(fee)
-                          setShowPaymentModal(true)
-                        }}
-                        className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700"
-                      >
-                        Pay Fees
-                      </button>
-                      <button
-                        onClick={() => {
-                          setSelectedFee(fee)
-                          setShowSponsorModal(true)
-                        }}
-                        className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 ml-1"
-                      >
-                        Sponsor
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <div className="flex flex-col gap-3">
+        <div className="flex gap-3">
+          <input
+            type="text"
+            placeholder="Search by student name, course, or phone..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
+          />
+          
+          <select
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
+          >
+            <option value="all">All Status</option>
+            {statusOptions.slice(1).map(status => (
+              <option key={status} value={status}>{status}</option>
+            ))}
+          </select>
+          
+          <select
+            value={filterCohort}
+            onChange={(e) => setFilterCohort(e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
+          >
+            <option value="all">All Cohorts</option>
+            {getVisibleCohorts().map(cohort => {
+              const isActive = cohort.status === 'active'
+              return (
+                <option key={cohort.id} value={isActive ? 'active' : cohort.id}>
+                  Cohort {getRomanNumeral(cohort.cohort_number)}{isActive ? ' (active)' : ''}
+                </option>
+              )
+            })}
+          </select>
         </div>
+      </div>
 
-        {filteredFees.length === 0 && (
+      <div className="mt-6">
+        {/* 2-Week Programs Section */}
+        {flagshipFees.length > 0 && (
+          <div className="mb-10">
+            <div className="rounded-t-lg p-4" style={{ backgroundColor: '#ae491e' }}>
+              <h2 className="text-xl font-bold text-white flex items-center">
+                <div className="w-2 h-8 bg-white rounded mr-3"></div>
+                {getFlagshipTitle()}
+                <span className="ml-auto bg-white/20 px-3 py-1 rounded-full text-sm font-medium">
+                  {flagshipFees.length} students
+                </span>
+              </h2>
+            </div>
+            <div className="bg-white rounded-b-lg shadow-lg overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Course</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cohort</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Course Fee</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sponsored</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Paid</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Balance</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {flagshipFees.map((fee, index) => (
+                      <tr key={fee.id} className={fee.payment_status === 'Paid' ? 'bg-green-600 text-white' : 'hover:bg-blue-50'}>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{index + 1}</td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm font-medium text-gray-900">{fee.student_name}</div>
+                          <div className="text-sm text-gray-500">{fee.student_phone?.replace(/\D/g, '').replace(/^254/, '+254')}</div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{fee.course_name}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                          {fee.cohort_number ? getRomanNumeral(fee.cohort_number) : 'No cohort'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">KSh {fee.course_fee.toLocaleString()}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-blue-600">KSh {((fee as any).sponsored_amount || 0).toLocaleString()}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-green-600">KSh {fee.total_paid.toLocaleString()}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-red-600">KSh {(fee.course_fee - ((fee as any).sponsored_amount || 0) - fee.total_paid).toLocaleString()}</td>
+                        <td className="px-6 py-4 whitespace-nowrap"><StatusBadge status={fee.payment_status} type="payment" /></td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                          <div className="flex items-center gap-1">
+                            <button onClick={() => { setSelectedFee(fee); loadPaymentHistory(fee.id); setShowPaymentHistory(true) }} className="text-blue-600 hover:text-blue-800 mr-2" title="View Payment History"><Eye className="w-4 h-4" /></button>
+                            <button onClick={() => { setSelectedFee(fee); setShowPaymentModal(true) }} className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700">Pay Fees</button>
+                            <button onClick={() => { setSelectedFee(fee); setShowSponsorModal(true) }} className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 ml-1">Sponsor</button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Specialized Skills Section */}
+        {specializedFees.length > 0 && (
+          <div className="mb-8">
+            <div className="rounded-t-lg p-4" style={{ backgroundColor: '#ae491e' }}>
+              <h2 className="text-xl font-bold text-white flex items-center">
+                <div className="w-2 h-8 bg-white rounded mr-3"></div>
+                Specialized Skills Training
+                <span className="ml-auto bg-white/20 px-3 py-1 rounded-full text-sm font-medium">
+                  {specializedFees.length} students
+                </span>
+              </h2>
+            </div>
+            <div className="bg-white rounded-b-lg shadow-lg overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Course</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Course Fee</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sponsored</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Paid</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Balance</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {specializedFees.map((fee, index) => (
+                      <tr key={fee.id} className={fee.payment_status === 'Paid' ? 'bg-green-600 text-white' : 'hover:bg-purple-50'}>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{index + 1}</td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm font-medium text-gray-900">{fee.student_name}</div>
+                          <div className="text-sm text-gray-500">{fee.student_phone?.replace(/\D/g, '').replace(/^254/, '+254')}</div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{fee.course_name}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">KSh {fee.course_fee.toLocaleString()}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-blue-600">KSh {((fee as any).sponsored_amount || 0).toLocaleString()}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-green-600">KSh {fee.total_paid.toLocaleString()}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-red-600">KSh {(fee.course_fee - ((fee as any).sponsored_amount || 0) - fee.total_paid).toLocaleString()}</td>
+                        <td className="px-6 py-4 whitespace-nowrap"><StatusBadge status={fee.payment_status} type="payment" /></td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                          <div className="flex items-center gap-1">
+                            <button onClick={() => { setSelectedFee(fee); loadPaymentHistory(fee.id); setShowPaymentHistory(true) }} className="text-blue-600 hover:text-blue-800 mr-2" title="View Payment History"><Eye className="w-4 h-4" /></button>
+                            <button onClick={() => { setSelectedFee(fee); setShowPaymentModal(true) }} className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700">Pay Fees</button>
+                            <button onClick={() => { setSelectedFee(fee); setShowSponsorModal(true) }} className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 ml-1">Sponsor</button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {(flagshipFees.length === 0 && specializedFees.length === 0) && (
           <div className="text-center py-12">
             <DollarSign className="mx-auto h-12 w-12 text-gray-400" />
             <h3 className="mt-2 text-sm font-medium text-gray-900">No fee records found</h3>
@@ -527,7 +689,7 @@ export function NicheFees() {
                     type="number"
                     required
                     min="1"
-                    max={selectedFee.balance_due}
+                    max={Math.max(1, selectedFee.balance_due)}
                     value={paymentForm.amount}
                     onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"

@@ -30,7 +30,7 @@ interface NicheTraining {
   name: string
   phone?: string
   role?: string
-  status: 'Pending' | 'Active' | 'Suspended' | 'Expelled'
+  status: 'Pending' | 'Active' | 'Graduated' | 'Expelled'
   course?: string
   description?: string
   date_started?: string
@@ -45,6 +45,7 @@ interface NicheTraining {
   created_by?: string
   updated_by?: string
   cohorts?: NicheCohort
+  has_grade?: boolean
 }
 
 interface Candidate {
@@ -69,13 +70,17 @@ export function NicheTraining() {
   const [selectedRecord, setSelectedRecord] = useState<NicheTraining | null>(null)
   const [candidateSearch, setCandidateSearch] = useState('')
   const [showCandidateDropdown, setShowCandidateDropdown] = useState(false)
+  const [selectedRecords, setSelectedRecords] = useState<string[]>([])
   const [selectedCandidates, setSelectedCandidates] = useState<string[]>([])
+  const [showBulkUpdate, setShowBulkUpdate] = useState(false)
+  const [bulkStatus, setBulkStatus] = useState('')
   const [formData, setFormData] = useState({
     candidate_id: '',
     name: '',
     phone: '',
+    email: '',
     role: '',
-    status: 'Pending' as 'Pending' | 'Active' | 'Suspended' | 'Expelled',
+    status: 'Pending' as 'Pending' | 'Active' | 'Graduated' | 'Expelled',
     course: '',
     cohort_id: '',
     training_type: '2week' as '2week' | 'weekend' | 'refresher',
@@ -110,7 +115,20 @@ export function NicheTraining() {
         .order('created_at', { ascending: false })
 
       if (error) throw error
-      setTrainingRecords(data || [])
+      
+      // Check which trainees have grades
+      const { data: gradesData } = await supabase
+        .from('trainee_grades')
+        .select('trainee_id')
+      
+      const gradedTraineeIds = new Set(gradesData?.map(g => g.trainee_id) || [])
+      
+      const recordsWithGradeStatus = (data || []).map(record => ({
+        ...record,
+        has_grade: gradedTraineeIds.has(record.id)
+      }))
+      
+      setTrainingRecords(recordsWithGradeStatus)
       
       // Extract unique courses for filter options
       const uniqueCourses = [...new Set(data?.map(record => record.course).filter(Boolean))]
@@ -154,6 +172,9 @@ export function NicheTraining() {
 
   const loadCohorts = async () => {
     try {
+      // First update cohort statuses automatically
+      await supabase.rpc('update_cohort_statuses')
+      
       const { data, error } = await supabase
         .from('niche_cohorts')
         .select('*')
@@ -177,10 +198,6 @@ export function NicheTraining() {
       )
     }
 
-    if (filterCourse !== 'all') {
-      filtered = filtered.filter(record => record.course === filterCourse)
-    }
-
     if (filterCohort === 'active') {
       filtered = filtered.filter(record => record.cohorts?.status === 'active')
     } else if (filterCohort !== 'all') {
@@ -189,6 +206,27 @@ export function NicheTraining() {
 
     setFilteredRecords(filtered)
   }
+
+  const getFlagshipTitle = () => {
+    if (filterCohort === 'active') {
+      const activeCohort = cohorts.find(c => c.status === 'active')
+      return activeCohort ? `Cohort ${getRomanNumeral(activeCohort.cohort_number)}` : 'Flagship Programs'
+    } else if (filterCohort !== 'all') {
+      const selectedCohort = cohorts.find(c => c.id === filterCohort)
+      return selectedCohort ? `Cohort ${getRomanNumeral(selectedCohort.cohort_number)}` : 'Flagship Programs'
+    }
+    return 'All Cohorts'
+  }
+
+  const flagshipRecords = filteredRecords.filter(record => 
+    record.course === 'Professional House Manager Training Program' || 
+    record.course === 'Professional Nanny Training Program'
+  )
+  
+  const specializedRecords = filteredRecords.filter(record => 
+    record.course !== 'Professional House Manager Training Program' && 
+    record.course !== 'Professional Nanny Training Program'
+  )
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -264,6 +302,7 @@ export function NicheTraining() {
       candidate_id: '',
       name: '',
       phone: '',
+      email: '',
       role: '',
       status: 'Pending',
       course: '',
@@ -395,6 +434,30 @@ export function NicheTraining() {
     )
   }
 
+  const handleBulkStatusUpdate = async () => {
+    if (!bulkStatus || selectedRecords.length === 0) return
+
+    try {
+      const { error } = await supabase
+        .from('niche_training')
+        .update({ 
+          status: bulkStatus as 'Pending' | 'Active' | 'Graduated' | 'Expelled',
+          updated_by: staff?.name || user?.email || 'Unknown'
+        })
+        .in('id', selectedRecords)
+
+      if (error) throw error
+
+      showToast(`Updated ${selectedRecords.length} trainee(s) to ${bulkStatus}`, 'success')
+      setSelectedRecords([])
+      setBulkStatus('')
+      loadTrainingRecords()
+    } catch (error: any) {
+      console.error('Error updating status:', error)
+      showToast(`Error: ${error?.message || 'Unknown error'}`, 'error')
+    }
+  }
+
   if (loading) {
     return (
       <div className="p-6">
@@ -446,17 +509,6 @@ export function NicheTraining() {
           />
           
           <select
-            value={filterCourse}
-            onChange={(e) => setFilterCourse(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
-          >
-            <option value="all">All Courses</option>
-            {courseFilterOptions.slice(1).map(course => (
-              <option key={course} value={course}>{course}</option>
-            ))}
-          </select>
-          
-          <select
             value={filterCohort}
             onChange={(e) => setFilterCohort(e.target.value)}
             className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
@@ -474,63 +526,212 @@ export function NicheTraining() {
         </div>
       </div>
 
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Course</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cohort</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {filteredRecords.map((record, index) => (
-                <tr key={record.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{index + 1}</td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-medium text-gray-900">{record.name}</div>
-                    {record.phone && <div className="text-sm text-gray-500">{record.phone}</div>}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{record.role || 'N/A'}</td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <StatusBadge status={record.status} type="training" />
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{record.course || 'Not assigned'}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {record.cohorts ? `${getRomanNumeral(record.cohorts.cohort_number)}` : 'No cohort'}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                    <button
-                      onClick={() => handleEdit(record)}
-                      className="text-nestalk-primary hover:text-nestalk-primary/80"
-                      title="Edit"
-                    >
-                      <Edit className="w-4 h-4" />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        {filteredRecords.length === 0 && (
-          <div className="text-center py-12">
-            <Users className="mx-auto h-12 w-12 text-gray-400" />
-            <h3 className="mt-2 text-sm font-medium text-gray-900">No training records found</h3>
-            <p className="mt-1 text-sm text-gray-500">
-              {searchTerm || filterCourse !== 'all'
-                ? 'Try adjusting your search or filter criteria.'
-                : 'Get started by adding your first training record.'}
-            </p>
+      <div className="mt-6">
+        {/* Flagship Programs Section */}
+      {flagshipRecords.length > 0 && (
+        <div className="mb-10">
+          <div className="rounded-t-lg p-4" style={{ backgroundColor: '#ae491e' }}>
+            <h2 className="text-xl font-bold text-white flex items-center">
+              <div className="w-2 h-8 bg-white rounded mr-3"></div>
+              {getFlagshipTitle()}
+              <span className="ml-auto bg-white/20 px-3 py-1 rounded-full text-sm font-medium">
+                {flagshipRecords.length} trainees
+              </span>
+            </h2>
           </div>
-        )}
-      </div>
+          <div className="bg-white rounded-b-lg shadow-lg overflow-hidden">
+            <div className="max-h-96 overflow-y-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50 sticky top-0">
+                  <tr>
+                    <th className="px-4 py-3 text-left">
+                      <input
+                        type="checkbox"
+                        checked={selectedRecords.length === flagshipRecords.length && flagshipRecords.length > 0}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedRecords(flagshipRecords.map(r => r.id))
+                          } else {
+                            setSelectedRecords([])
+                          }
+                        }}
+                        className="rounded border-gray-300 text-orange-600 focus:ring-orange-600"
+                      />
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">#</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Name</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Role</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Status</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Course</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Cohort</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-100">
+                  {flagshipRecords.map((record, index) => (
+                    <tr key={record.id} className="hover:bg-blue-50 transition-colors">
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <input
+                          type="checkbox"
+                          checked={selectedRecords.includes(record.id)}
+                          onChange={() => {
+                            if (selectedRecords.includes(record.id)) {
+                              setSelectedRecords(prev => prev.filter(id => id !== record.id))
+                            } else {
+                              setSelectedRecords(prev => [...prev, record.id])
+                            }
+                          }}
+                          className="rounded border-gray-300 text-orange-600 focus:ring-orange-600"
+                        />
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600 font-medium">{index + 1}</td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <div className="text-sm font-semibold text-gray-900 flex items-center">
+                          {record.name}
+                          {record.has_grade && (
+                            <span className="ml-2 inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                              Graded
+                            </span>
+                          )}
+                        </div>
+                        {record.phone && <div className="text-xs text-gray-500">{record.phone}</div>}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700">{record.role || 'N/A'}</td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <StatusBadge status={record.status} type="training" />
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700 font-medium">{record.course || 'Not assigned'}</td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
+                        {record.cohorts ? `${getRomanNumeral(record.cohorts.cohort_number)}` : 'No cohort'}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm font-medium">
+                        <button
+                          onClick={() => handleEdit(record)}
+                          className="text-nestalk-primary hover:text-nestalk-primary/80 transition-colors"
+                          title="Edit"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {selectedRecords.length > 0 && (
+        <div className="mb-4 p-4 bg-orange-50 border border-orange-200 rounded-lg">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-orange-800">
+              {selectedRecords.length} trainee(s) selected
+            </span>
+            <div className="flex items-center gap-3">
+              <select
+                value={bulkStatus}
+                onChange={(e) => setBulkStatus(e.target.value)}
+                className="px-3 py-1 border border-orange-300 rounded text-sm"
+              >
+                <option value="">Select status</option>
+                <option value="Pending">Pending</option>
+                <option value="Active">Active</option>
+                <option value="Graduated">Graduated</option>
+                <option value="Expelled">Expelled</option>
+              </select>
+              <button
+                onClick={handleBulkStatusUpdate}
+                disabled={!bulkStatus}
+                className="px-3 py-1 bg-orange-600 text-white rounded text-sm hover:bg-orange-700 disabled:bg-gray-300"
+              >
+                Update Status
+              </button>
+              <button
+                onClick={() => setSelectedRecords([])}
+                className="px-3 py-1 bg-gray-500 text-white rounded text-sm hover:bg-gray-600"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Specialized Courses Section */}
+      {specializedRecords.length > 0 && (
+        <div className="mb-8">
+          <div className="rounded-t-lg p-4" style={{ backgroundColor: '#ae491e' }}>
+            <h2 className="text-xl font-bold text-white flex items-center">
+              <div className="w-2 h-8 bg-white rounded mr-3"></div>
+              Specialized Skills Training
+              <span className="ml-auto bg-white/20 px-3 py-1 rounded-full text-sm font-medium">
+                {specializedRecords.length} trainees
+              </span>
+            </h2>
+          </div>
+          <div className="bg-white rounded-b-lg shadow-lg overflow-hidden">
+            <div className="max-h-96 overflow-y-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50 sticky top-0">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">#</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Name</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Role</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Status</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Course</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-100">
+                  {specializedRecords.map((record, index) => (
+                    <tr key={record.id} className="hover:bg-purple-50 transition-colors">
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600 font-medium">{index + 1}</td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <div className="text-sm font-semibold text-gray-900 flex items-center">
+                          {record.name}
+                          {record.has_grade && (
+                            <span className="ml-2 inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                              Graded
+                            </span>
+                          )}
+                        </div>
+                        {record.phone && <div className="text-xs text-gray-500">{record.phone}</div>}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700">{record.role || 'N/A'}</td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <StatusBadge status={record.status} type="training" />
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700 font-medium">{record.course || 'Not assigned'}</td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm font-medium">
+                        <button
+                          onClick={() => handleEdit(record)}
+                          className="text-purple-600 hover:text-purple-800 transition-colors"
+                          title="Edit"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {(flagshipRecords.length === 0 && specializedRecords.length === 0) && (
+        <div className="text-center py-12">
+          <Users className="mx-auto h-12 w-12 text-gray-400" />
+          <h3 className="mt-2 text-sm font-medium text-gray-900">No training records found</h3>
+          <p className="mt-1 text-sm text-gray-500">
+            {searchTerm
+              ? 'Try adjusting your search criteria.'
+              : 'Get started by adding your first training record.'}
+          </p>
+        </div>
+      )}
 
       {/* Import Modal */}
       {showImportModal && (
@@ -640,46 +841,171 @@ export function NicheTraining() {
               </h2>
 
               <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
-                    <input
-                      type="text"
-                      required
-                      value={formData.name}
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
-                    />
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
+                      <input
+                        type="text"
+                        required
+                        value={formData.name}
+                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                      <input
+                        type="text"
+                        value={formData.phone}
+                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                      <input
+                        type="email"
+                        value={formData.email}
+                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+                      <select
+                        value={formData.role}
+                        onChange={(e) => setFormData({ ...formData, role: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
+                      >
+                        <option value="">Select role</option>
+                        <option value="Nanny">Nanny</option>
+                        <option value="House Manager">House Manager</option>
+                        <option value="Chef">Chef</option>
+                        <option value="Driver">Driver</option>
+                        <option value="Night Nurse">Night Nurse</option>
+                        <option value="Caregiver">Caregiver</option>
+                        <option value="Housekeeper">Housekeeper</option>
+                      </select>
+                    </div>
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
-                    <input
-                      type="text"
-                      value={formData.phone}
-                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
-                    />
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Course Type *</label>
+                    <div className="flex gap-6">
+                      <label className="flex items-center">
+                        <input
+                          type="radio"
+                          name="course_type"
+                          value="2week"
+                          checked={formData.training_type === '2week'}
+                          onChange={() => setFormData({ ...formData, training_type: '2week', enrolled_courses: [] })}
+                          className="mr-2 text-nestalk-primary focus:ring-nestalk-primary"
+                        />
+                        2 Week Programs
+                      </label>
+                      <label className="flex items-center">
+                        <input
+                          type="radio"
+                          name="course_type"
+                          value="skills"
+                          checked={formData.training_type === 'weekend'}
+                          onChange={() => setFormData({ ...formData, training_type: 'weekend', enrolled_courses: [] })}
+                          className="mr-2 text-purple-600 focus:ring-purple-600"
+                        />
+                        Skills Training
+                      </label>
+                    </div>
                   </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
-                    <select
-                      value={formData.role}
-                      onChange={(e) => setFormData({ ...formData, role: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
-                    >
-                      <option value="">Select role</option>
-                      <option value="Nanny">Nanny</option>
-                      <option value="House Manager">House Manager</option>
-                      <option value="Chef">Chef</option>
-                      <option value="Driver">Driver</option>
-                      <option value="Night Nurse">Night Nurse</option>
-                      <option value="Caregiver">Caregiver</option>
-                      <option value="Housekeeper">Housekeeper</option>
-                    </select>
-                  </div>
+                  {formData.training_type === '2week' && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Select Course *</label>
+                      <div className="space-y-2">
+                        {courses.filter(course => course.name.includes('Professional')).map(course => (
+                          <label key={course.id} className="flex items-center space-x-2">
+                            <input
+                              type="radio"
+                              name="flagship_course"
+                              checked={formData.enrolled_courses.includes(course.name)}
+                              onChange={() => setFormData({ 
+                                ...formData, 
+                                enrolled_courses: [course.name],
+                                course: course.name
+                              })}
+                              className="text-nestalk-primary focus:ring-nestalk-primary"
+                            />
+                            <span className="text-sm text-gray-700">{course.name}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {formData.training_type === 'weekend' && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Select Skills *</label>
+                      <div className="space-y-2 max-h-32 overflow-y-auto border border-gray-300 rounded-lg p-2">
+                        {courses.filter(course => !course.name.includes('Professional')).map(course => (
+                          <label key={course.id} className="flex items-center space-x-2">
+                            <input
+                              type="checkbox"
+                              checked={formData.enrolled_courses.includes(course.name)}
+                              onChange={(e) => {
+                                let newCourses = [...formData.enrolled_courses]
+                                if (e.target.checked) {
+                                  newCourses = [...newCourses, course.name]
+                                } else {
+                                  newCourses = newCourses.filter(c => c !== course.name)
+                                }
+                                setFormData({ 
+                                  ...formData, 
+                                  enrolled_courses: newCourses,
+                                  course: newCourses[0] || ''
+                                })
+                              }}
+                              className="rounded border-gray-300 text-purple-600 focus:ring-purple-600"
+                            />
+                            <span className="text-sm text-gray-700">{course.name}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {formData.training_type === '2week' && (
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Accommodation *</label>
+                        <select
+                          required
+                          value={formData.accommodation_type}
+                          onChange={(e) => setFormData({ ...formData, accommodation_type: e.target.value as any })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
+                        >
+                          <option value="">Select accommodation</option>
+                          <option value="live_in">Live In</option>
+                          <option value="live_out">Live Out</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Cohort *</label>
+                        <select
+                          required
+                          value={formData.cohort_id}
+                          onChange={(e) => setFormData({ ...formData, cohort_id: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
+                        >
+                          <option value="">Select cohort</option>
+                          {cohorts.map(cohort => (
+                            <option key={cohort.id} value={cohort.id}>
+                              Cohort {getRomanNumeral(cohort.cohort_number)} ({new Date(cohort.start_date).toLocaleDateString()} - {new Date(cohort.end_date).toLocaleDateString()}) - {cohort.status}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  )}
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
@@ -690,86 +1016,9 @@ export function NicheTraining() {
                     >
                       <option value="Pending">Pending</option>
                       <option value="Active">Active</option>
-                      <option value="Suspended">Suspended</option>
                       <option value="Expelled">Expelled</option>
                     </select>
                   </div>
-
-                  {formData.training_type === '2week' && (
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Accommodation</label>
-                      <select
-                        value={formData.accommodation_type}
-                        onChange={(e) => setFormData({ ...formData, accommodation_type: e.target.value as any })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
-                      >
-                        <option value="">Select accommodation</option>
-                        <option value="live_in">Live In</option>
-                        <option value="live_out">Live Out</option>
-                      </select>
-                    </div>
-                  )}
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Cohort *</label>
-                    <select
-                      required
-                      value={formData.cohort_id}
-                      onChange={(e) => setFormData({ ...formData, cohort_id: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
-                    >
-                      <option value="">Select cohort (dates auto-assigned)</option>
-                      {cohorts.map(cohort => (
-                        <option key={cohort.id} value={cohort.id}>
-                          Cohort {getRomanNumeral(cohort.cohort_number)} ({new Date(cohort.start_date).toLocaleDateString()} - {new Date(cohort.end_date).toLocaleDateString()}) - {cohort.status}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Enrolled Courses</label>
-                    <div className="space-y-2 max-h-32 overflow-y-auto border border-gray-300 rounded-lg p-2">
-                      {courses.map(course => (
-                        <label key={course.id} className="flex items-center space-x-2">
-                          <input
-                            type="checkbox"
-                            checked={formData.enrolled_courses.includes(course.name)}
-                            onChange={(e) => {
-                              let newCourses = [...formData.enrolled_courses]
-                              if (e.target.checked) {
-                                newCourses = [...newCourses, course.name]
-                              } else {
-                                newCourses = newCourses.filter(c => c !== course.name)
-                              }
-                              
-                              // Auto-detect training type based on courses
-                              let trainingType: '2week' | 'weekend' | 'refresher' = 'weekend'
-                              if (newCourses.includes('Refresher Training')) {
-                                trainingType = 'refresher'
-                              } else if (newCourses.includes('Professional Nanny Training Program') || 
-                                        newCourses.includes('Professional House Manager Training Program')) {
-                                trainingType = '2week'
-                              }
-                              
-                              setFormData({ 
-                                ...formData, 
-                                enrolled_courses: newCourses,
-                                training_type: trainingType,
-                                course: formData.course || course.name
-                              })
-                            }}
-                            className="rounded border-gray-300 text-nestalk-primary focus:ring-nestalk-primary"
-                          />
-                          <span className="text-sm text-gray-700">{course.name}</span>
-                        </label>
-                      ))}
-                    </div>
-                    <div className="mt-2 text-sm text-gray-600">
-                      Training Type: <span className="font-medium capitalize">{formData.training_type}</span>
-                    </div>
-                  </div>
-
                 </div>
 
                 <div className="flex gap-3 pt-4">
@@ -795,6 +1044,7 @@ export function NicheTraining() {
           </div>
         </div>
       )}
+      </div>
     </div>
   )
 }

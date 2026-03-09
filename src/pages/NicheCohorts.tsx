@@ -9,7 +9,7 @@ interface NicheCohort {
   cohort_number: number
   start_date: string
   end_date: string
-  status: 'upcoming' | 'active' | 'completed'
+  status: 'upcoming' | 'active' | 'completed' | 'graduated'
   created_at: string
   trainee_count?: number
 }
@@ -25,7 +25,7 @@ export function NicheCohorts() {
     cohort_number: '',
     start_date: '',
     end_date: '',
-    status: 'upcoming' as 'upcoming' | 'active' | 'completed'
+    status: 'upcoming' as 'upcoming' | 'active' | 'completed' | 'graduated'
   })
 
   const { user, staff } = useAuth()
@@ -226,6 +226,7 @@ export function NicheCohorts() {
     switch (status) {
       case 'active': return <CheckCircle className="w-5 h-5 text-green-500" />
       case 'completed': return <AlertCircle className="w-5 h-5 text-gray-500" />
+      case 'graduated': return <UserCheck className="w-5 h-5 text-emerald-500" />
       default: return <Clock className="w-5 h-5 text-yellow-500" />
     }
   }
@@ -234,6 +235,7 @@ export function NicheCohorts() {
     switch (status) {
       case 'active': return 'bg-green-100 text-green-800 border-green-200'
       case 'completed': return 'bg-gray-100 text-gray-600 border-gray-200'
+      case 'graduated': return 'bg-emerald-100 text-emerald-800 border-emerald-200'
       default: return 'bg-yellow-100 text-yellow-800 border-yellow-200'
     }
   }
@@ -386,8 +388,8 @@ export function NicheCohorts() {
                     <div className="text-xs font-semibold text-gray-600">Pending</div>
                   </div>
                   <div className="bg-white border-2 border-gray-200 p-3 rounded-lg text-center shadow-sm flex-1">
-                    <div className="text-xl font-bold text-gray-900 mb-1">{cohortReport.statusBreakdown.Suspended || 0}</div>
-                    <div className="text-xs font-semibold text-gray-600">Suspended</div>
+                    <div className="text-xl font-bold text-gray-900 mb-1">{cohortReport.statusBreakdown.Graduated || 0}</div>
+                    <div className="text-xs font-semibold text-gray-600">Graduated</div>
                   </div>
                   <div className="bg-white border-2 border-gray-200 p-3 rounded-lg text-center shadow-sm flex-1">
                     <div className="text-xl font-bold text-gray-900 mb-1">{cohortReport.statusBreakdown.Expelled || 0}</div>
@@ -537,6 +539,7 @@ export function NicheCohorts() {
                     <option value="upcoming">Upcoming</option>
                     <option value="active">Active</option>
                     <option value="completed">Completed</option>
+                    <option value="graduated">Graduated</option>
                   </select>
                 </div>
 

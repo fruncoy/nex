@@ -5,7 +5,7 @@ import { Users, GraduationCap, Clock, CheckCircle, AlertCircle, TrendingUp } fro
 interface NicheStats {
   totalTrainees: number
   activeTrainees: number
-  completedTrainees: number
+  graduatedTrainees: number
   pendingTrainees: number
   totalCourses: number
   recentActivities: any[]
@@ -15,7 +15,7 @@ export function Niche() {
   const [stats, setStats] = useState<NicheStats>({
     totalTrainees: 0,
     activeTrainees: 0,
-    completedTrainees: 0,
+    graduatedTrainees: 0,
     pendingTrainees: 0,
     totalCourses: 0,
     recentActivities: []
@@ -49,13 +49,13 @@ export function Niche() {
 
       const totalTrainees = trainingData?.length || 0
       const activeTrainees = trainingData?.filter(t => t.status === 'Active').length || 0
-      const completedTrainees = trainingData?.filter(t => t.status === 'Completed').length || 0
+      const graduatedTrainees = trainingData?.filter(t => t.status === 'Graduated').length || 0
       const pendingTrainees = trainingData?.filter(t => t.status === 'Pending').length || 0
 
       setStats({
         totalTrainees,
         activeTrainees,
-        completedTrainees,
+        graduatedTrainees,
         pendingTrainees,
         totalCourses: coursesData?.length || 0,
         recentActivities: activitiesData || []
@@ -83,8 +83,8 @@ export function Niche() {
       textColor: 'text-green-600'
     },
     {
-      title: 'Completed',
-      value: stats.completedTrainees,
+      title: 'Graduated',
+      value: stats.graduatedTrainees,
       icon: CheckCircle,
       color: 'bg-emerald-500',
       textColor: 'text-emerald-600'
@@ -105,7 +105,7 @@ export function Niche() {
     },
     {
       title: 'Success Rate',
-      value: stats.totalTrainees > 0 ? Math.round((stats.completedTrainees / stats.totalTrainees) * 100) + '%' : '0%',
+      value: stats.totalTrainees > 0 ? Math.round((stats.graduatedTrainees / stats.totalTrainees) * 100) + '%' : '0%',
       icon: AlertCircle,
       color: 'bg-indigo-500',
       textColor: 'text-indigo-600'
