@@ -22,7 +22,6 @@ import {
   CheckCircle,
   Brain,
   Clock,
-  Gift,
   UserX,
   Award,
   Heart
@@ -57,27 +56,6 @@ export function Layout() {
     
     return () => window.removeEventListener('resize', handleResize)
   }, [location.pathname])
-
-  useEffect(() => {
-    checkWrappedViews()
-  }, [staff?.id])
-
-  const checkWrappedViews = async () => {
-    if (!staff?.id) return
-
-    const { data } = await supabase
-      .from('wrapped_views')
-      .select('has_viewed_wrapped')
-      .eq('user_id', staff.id)
-      .single()
-
-    if (!data || !data.has_viewed_wrapped) {
-      navigate('/wrapped')
-      await supabase
-        .from('wrapped_views')
-        .upsert({ user_id: staff.id, has_viewed_wrapped: true })
-    }
-  }
 
   const navigation = [
     { name: 'Dashboard', href: '/', icon: Home },
@@ -139,8 +117,7 @@ export function Layout() {
       href: '/insights', 
       icon: BarChart3,
       subItems: [
-        { name: 'Reports', href: '/reports', icon: FileText },
-        { name: '2025 Wrapped', href: '/wrapped', icon: Gift }
+        { name: 'Reports', href: '/reports', icon: FileText }
       ]
     },
     { name: 'Calendar', href: '/calendar', icon: Calendar },

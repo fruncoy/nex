@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { SearchFilter } from '../components/ui/SearchFilter'
 import { StatusBadge } from '../components/ui/StatusBadge'
-import { Plus, Edit, Users, UserPlus } from 'lucide-react'
+import { Plus, Edit, Users, UserPlus, Trash2 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
 import { ActivityLogger } from '../lib/activityLogger'
@@ -333,6 +333,43 @@ export function NicheTraining() {
     setShowModal(true)
   }
 
+  const handleDelete = async (record: NicheTraining) => {
+    if (!confirm(`Are you sure you want to delete ${record.name} and all their records? This action cannot be undone.`)) {
+      return
+    }
+
+    try {
+      // Delete trainee grades first (if any)
+      await supabase
+        .from('trainee_grades')
+        .delete()
+        .eq('trainee_id', record.id)
+
+      // Delete the training record (candidate will be preserved due to CASCADE settings)
+      const { error } = await supabase
+        .from('niche_training')
+        .delete()
+        .eq('id', record.id)
+
+      if (error) throw error
+
+      // Log activity
+      await ActivityLogger.logDelete(
+        user?.id || '',
+        'niche_training',
+        record.id,
+        record.name,
+        staff?.name || user?.email || 'Unknown'
+      )
+
+      showToast(`${record.name} deleted successfully`, 'success')
+      loadTrainingRecords()
+    } catch (error: any) {
+      console.error('Error deleting training record:', error)
+      showToast(`Error: ${error?.message || 'Unknown error'}`, 'error')
+    }
+  }
+
   const handleCandidateSelect = (candidate: Candidate) => {
     setFormData({
       ...formData,
@@ -605,13 +642,22 @@ export function NicheTraining() {
                         {record.cohorts ? `${getRomanNumeral(record.cohorts.cohort_number)}` : 'No cohort'}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-sm font-medium">
-                        <button
-                          onClick={() => handleEdit(record)}
-                          className="text-nestalk-primary hover:text-nestalk-primary/80 transition-colors"
-                          title="Edit"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </button>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleEdit(record)}
+                            className="text-nestalk-primary hover:text-nestalk-primary/80 transition-colors"
+                            title="Edit"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(record)}
+                            className="text-red-600 hover:text-red-800 transition-colors"
+                            title="Delete"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -704,13 +750,22 @@ export function NicheTraining() {
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700 font-medium">{record.course || 'Not assigned'}</td>
                       <td className="px-4 py-3 whitespace-nowrap text-sm font-medium">
-                        <button
-                          onClick={() => handleEdit(record)}
-                          className="text-purple-600 hover:text-purple-800 transition-colors"
-                          title="Edit"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </button>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleEdit(record)}
+                            className="text-purple-600 hover:text-purple-800 transition-colors"
+                            title="Edit"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(record)}
+                            className="text-red-600 hover:text-red-800 transition-colors"
+                            title="Delete"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}

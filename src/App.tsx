@@ -37,7 +37,6 @@ import { CreateProfile } from './pages/CreateProfile'
 import { Placements } from './pages/Placements'
 import { Calendar } from './pages/Calendar'
 import { GetMatch } from './pages/GetMatch'
-import { Wrapped2025 } from './pages/Wrapped2025'
 
 function ProtectedLayout() {
   const { user, loading } = useAuth()
@@ -67,7 +66,6 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/createprofile" element={<CreateProfile />} />
-      <Route path="/wrapped" element={<Wrapped2025 />} />
       <Route path="/" element={<ProtectedLayout />}>
         <Route index element={<Dashboard />} />
         <Route path="candidates" element={<Candidates />} />
