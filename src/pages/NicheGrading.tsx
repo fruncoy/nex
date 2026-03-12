@@ -415,13 +415,25 @@ export function NicheGrading() {
 
   const calculatePillarScores = () => {
     const pillars = gradeData.training_type === 'nanny' ? nannyPillars : houseManagerPillars
+    
+    // Calculate pillar averages from sub-pillars (1-5 scale)
     const pillarScores = pillars.map(pillar => {
       const subpillarValues = pillar.subpillars.map(sub => subPillarGrades[sub.key as keyof SubPillarGrades] || 3)
       const average = subpillarValues.reduce((sum, val) => sum + val, 0) / subpillarValues.length
       return average
     })
     
-    const weightedScores = pillarScores.map((score, index) => score * pillars[index].weight)
+    // Convert to percentage (multiply by 20 to get 1-5 scale to 20-100 scale)
+    const pillarPercentages = pillarScores.map(score => score * 20)
+    
+    // Apply weights to get weighted contributions (already in percentage form)
+    const totalWeight = pillars.reduce((sum, pillar) => sum + pillar.weight, 0)
+    const weightedScores = pillarPercentages.map((score, index) => {
+      const weight = pillars[index].weight
+      return (score * weight) / totalWeight
+    })
+    
+    // Final score is sum of weighted contributions
     const finalScore = weightedScores.reduce((sum, score) => sum + score, 0)
     
     const tier = finalScore >= 95 ? 'MASTER' :
@@ -445,24 +457,60 @@ export function NicheGrading() {
       return
     }
 
+    // First, let's check what values exist in the database to understand the constraint
+    try {
+      const { data: existingGrades, error: checkError } = await supabase
+        .from('trainee_grades')
+        .select('pillar1_score, pillar2_score, pillar3_score, pillar4_score')
+        .limit(5)
+      
+      if (!checkError && existingGrades) {
+        console.log('Existing pillar scores in database:', existingGrades)
+      }
+    } catch (error) {
+      console.log('Could not check existing grades:', error)
+    }
+
     try {
       // Calculate final scores from sub-pillars
       const scores = calculatePillarScores()
       
+      // Debug: Log the calculated scores
+      console.log('Calculated scores:', {
+        pillarScores: scores.pillarScores,
+        weightedScores: scores.weightedScores,
+        finalScore: scores.finalScore,
+        tier: scores.tier
+      })
+      
+      // Try using percentage scale (20-100) for pillar scores based on database constraint
+      const pillar1 = Math.round(scores.pillarScores[0] * 20) // Convert 1-5 to 20-100
+      const pillar2 = Math.round(scores.pillarScores[1] * 20)
+      const pillar3 = Math.round(scores.pillarScores[2] * 20)
+      const pillar4 = Math.round(scores.pillarScores[3] * 20)
+      
+      console.log('Pillar scores in percentage scale:', { pillar1, pillar2, pillar3, pillar4 })
+      
       const payload = {
-        ...gradeData,
-        pillar1_score: scores.pillarScores[0],
-        pillar2_score: scores.pillarScores[1], 
-        pillar3_score: scores.pillarScores[2],
-        pillar4_score: scores.pillarScores[3],
-        pillar1_weighted: scores.weightedScores[0],
-        pillar2_weighted: scores.weightedScores[1],
-        pillar3_weighted: scores.weightedScores[2], 
-        pillar4_weighted: scores.weightedScores[3],
-        final_score: scores.finalScore,
-        tier: scores.tier,
+        trainee_id: gradeData.trainee_id,
+        cohort_id: gradeData.cohort_id,
+        training_type: gradeData.training_type,
+        pillar1_score: pillar1,
+        pillar2_score: pillar2,
+        pillar3_score: pillar3,
+        pillar4_score: pillar4,
+        pillar1_weighted: Math.round((scores.weightedScores[0] || 0) * 100) / 100,
+        pillar2_weighted: Math.round((scores.weightedScores[1] || 0) * 100) / 100,
+        pillar3_weighted: Math.round((scores.weightedScores[2] || 0) * 100) / 100, 
+        pillar4_weighted: Math.round((scores.weightedScores[3] || 0) * 100) / 100,
+        final_score: Math.round((scores.finalScore || 0) * 100) / 100,
+        tier: scores.tier || 'NONE',
+        notes: gradeData.notes,
         graded_by: staff.name || user?.email || 'Unknown'
       }
+      
+      // Debug: Log the payload being sent
+      console.log('Full payload being sent to database:', JSON.stringify(payload, null, 2))
 
       if (gradeData.id) {
         // Update existing grade
@@ -924,16 +972,32 @@ export function NicheGrading() {
                       
                       <div className="space-y-3">
                         <div className="flex justify-between">
+                          <span className="text-sm text-gray-600">Pillar 1 Score (1-5):</span>
+                          <span className="font-semibold">{liveScores.pillarScores[0]?.toFixed(1) || '0.0'}</span>
+                        </div>
+                        <div className="flex justify-between">
                           <span className="text-sm text-gray-600">Pillar 1 Weighted:</span>
                           <span className="font-semibold">{liveScores.weightedScores[0]?.toFixed(1) || '0.0'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-sm text-gray-600">Pillar 2 Score (1-5):</span>
+                          <span className="font-semibold">{liveScores.pillarScores[1]?.toFixed(1) || '0.0'}</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-sm text-gray-600">Pillar 2 Weighted:</span>
                           <span className="font-semibold">{liveScores.weightedScores[1]?.toFixed(1) || '0.0'}</span>
                         </div>
                         <div className="flex justify-between">
+                          <span className="text-sm text-gray-600">Pillar 3 Score (1-5):</span>
+                          <span className="font-semibold">{liveScores.pillarScores[2]?.toFixed(1) || '0.0'}</span>
+                        </div>
+                        <div className="flex justify-between">
                           <span className="text-sm text-gray-600">Pillar 3 Weighted:</span>
                           <span className="font-semibold">{liveScores.weightedScores[2]?.toFixed(1) || '0.0'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-sm text-gray-600">Pillar 4 Score (1-5):</span>
+                          <span className="font-semibold">{liveScores.pillarScores[3]?.toFixed(1) || '0.0'}</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-sm text-gray-600">Pillar 4 Weighted:</span>

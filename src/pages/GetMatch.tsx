@@ -38,12 +38,13 @@ export function GetMatch() {
   const questions = selectedRole === 'nanny' ? nannyQuestions : houseManagerQuestions
   const currentQuestion = questions[currentQuestionIndex]
 
-  // Convert score to tier name
+  // Convert NICHE score to tier name
   const scoreToTier = (score: number) => {
-    if (score >= 23) return 'Master'
-    if (score >= 20) return 'Distinguished' 
-    if (score >= 17) return 'Exceptional'
-    return 'Excellent'
+    if (score >= 95) return 'Master'
+    if (score >= 90) return 'Distinguished' 
+    if (score >= 80) return 'Exceptional'
+    if (score >= 70) return 'Excellent'
+    return 'Needs Training'
   }
 
   // Calculate pillar scores and overall tier
@@ -427,31 +428,31 @@ export function GetMatch() {
                       {selectedRole === 'nanny' ? (
                         <>
                           <div className="text-sm">
-                            <span className="font-medium">Childcare & Development:</span> {scoreToTier(candidate.pillar1_score)}
+                            <span className="font-medium">Childcare & Development:</span> {scoreToTier(candidate.pillar1_score * 20)}
                           </div>
                           <div className="text-sm">
-                            <span className="font-medium">Professional Conduct:</span> {scoreToTier(candidate.pillar2_score)}
+                            <span className="font-medium">Professional Conduct:</span> {scoreToTier(candidate.pillar2_score * 20)}
                           </div>
                           <div className="text-sm">
-                            <span className="font-medium">Housekeeping:</span> {scoreToTier(candidate.pillar3_score)}
+                            <span className="font-medium">Housekeeping:</span> {scoreToTier(candidate.pillar3_score * 20)}
                           </div>
                           <div className="text-sm">
-                            <span className="font-medium">Cooking & Nutrition:</span> {scoreToTier(candidate.pillar4_score)}
+                            <span className="font-medium">Cooking & Nutrition:</span> {scoreToTier(candidate.pillar4_score * 20)}
                           </div>
                         </>
                       ) : (
                         <>
                           <div className="text-sm">
-                            <span className="font-medium">Housekeeping & Systems:</span> {scoreToTier(candidate.pillar1_score)}
+                            <span className="font-medium">Housekeeping & Systems:</span> {scoreToTier(candidate.pillar1_score * 20)}
                           </div>
                           <div className="text-sm">
-                            <span className="font-medium">Cooking & Kitchen:</span> {scoreToTier(candidate.pillar2_score)}
+                            <span className="font-medium">Cooking & Kitchen:</span> {scoreToTier(candidate.pillar2_score * 20)}
                           </div>
                           <div className="text-sm">
-                            <span className="font-medium">Childcare Literacy:</span> {scoreToTier(candidate.pillar3_score)}
+                            <span className="font-medium">Childcare Literacy:</span> {scoreToTier(candidate.pillar3_score * 20)}
                           </div>
                           <div className="text-sm">
-                            <span className="font-medium">Professional Conduct:</span> {scoreToTier(candidate.pillar4_score)}
+                            <span className="font-medium">Professional Conduct:</span> {scoreToTier(candidate.pillar4_score * 20)}
                           </div>
                         </>
                       )}
