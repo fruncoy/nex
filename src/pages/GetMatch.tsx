@@ -22,10 +22,10 @@ const nannyQuestions: Question[] = [
 ]
 
 const houseManagerQuestions: Question[] = [
+  { id: 'pc', pillar: 'Professional Conduct', criterion: 'Communication, reliability, initiative, adaptability', question: 'How important is clear communication, reliability, taking initiative, and being adaptable to household needs?', weight: 1.2 },
   { id: 'hs', pillar: 'Housekeeping & Systems', criterion: 'Deep cleaning, organization, laundry, inventory management', question: 'How important is maintaining high cleaning standards, organization, proper laundry care, and household inventory management?', weight: 1.2 },
   { id: 'ck', pillar: 'Cooking & Kitchen', criterion: 'Meal planning, kitchen management, dietary needs', question: 'How important is planning varied meals, maintaining kitchen organization, and accommodating dietary restrictions?', weight: 1.0 },
-  { id: 'cl', pillar: 'Childcare Literacy', criterion: 'Basic child safety, interaction, routine support', question: 'How important is understanding basic child safety, positive interaction with children, and supporting family routines?', weight: 0.6 },
-  { id: 'pc', pillar: 'Professional Conduct', criterion: 'Communication, reliability, initiative, adaptability', question: 'How important is clear communication, reliability, taking initiative, and being adaptable to household needs?', weight: 1.2 }
+  { id: 'cl', pillar: 'Childcare Literacy', criterion: 'Basic child safety, interaction, routine support', question: 'How important is understanding basic child safety, positive interaction with children, and supporting family routines?', weight: 0.6 }
 ]
 
 export function GetMatch() {
@@ -54,7 +54,7 @@ export function GetMatch() {
     // Pillar weights as percentages (total = 100%)
     const pillarWeights = selectedRole === 'nanny' 
       ? { 'Childcare & Development': 45, 'Professional Conduct': 30, 'Housekeeping': 15, 'Cooking & Nutrition': 10 }
-      : { 'Housekeeping & Systems': 30, 'Cooking & Kitchen': 25, 'Professional Conduct': 30, 'Childcare Literacy': 15 }
+      : { 'Professional Conduct': 30, 'Housekeeping & Systems': 30, 'Cooking & Kitchen': 25, 'Childcare Literacy': 15 }
 
     // Convert tier selection to NICHE-equivalent scores
     const tierToNicheScore = {
@@ -118,9 +118,9 @@ export function GetMatch() {
         )
       `)
       .eq('training_type', selectedRole === 'nanny' ? 'nanny' : 'house_manager')
-      .gte('final_score', averageScore - 15)
-      .lte('final_score', averageScore + 15)
-      .limit(3)
+      .gte('final_score', Math.max(70, averageScore - 10)) // Narrower range, minimum 70
+      .order('final_score', { ascending: false }) // Sort by highest score first
+      .limit(5)
     
     if (error) {
       console.error('Query error:', error)
@@ -129,16 +129,29 @@ export function GetMatch() {
     
     console.log('Candidates found:', candidates?.length || 0)
     
-    return candidates?.map((item, index) => ({
-      id: index + 1,
-      name: item.niche_training.name,
-      final_score: item.final_score,
-      tier: item.tier,
-      pillar1_score: item.pillar1_score,
-      pillar2_score: item.pillar2_score,
-      pillar3_score: item.pillar3_score,
-      pillar4_score: item.pillar4_score
-    })) || []
+    // Calculate match scores and sort by best match
+    const candidatesWithMatchScore = candidates?.map((item, index) => {
+      // Calculate how close candidate is to user requirements
+      const scoreDifference = Math.abs(item.final_score - averageScore)
+      const matchScore = Math.max(0, 100 - scoreDifference) // Higher = better match
+      
+      return {
+        id: index + 1,
+        name: item.niche_training.name,
+        final_score: item.final_score,
+        tier: item.tier,
+        pillar1_score: item.pillar1_score,
+        pillar2_score: item.pillar2_score,
+        pillar3_score: item.pillar3_score,
+        pillar4_score: item.pillar4_score,
+        matchScore: matchScore
+      }
+    }) || []
+    
+    // Sort by match score (best matches first)
+    return candidatesWithMatchScore
+      .sort((a, b) => b.matchScore - a.matchScore)
+      .slice(0, 3)
   }
 
   // Load candidates when results change
@@ -428,31 +441,31 @@ export function GetMatch() {
                       {selectedRole === 'nanny' ? (
                         <>
                           <div className="text-sm">
-                            <span className="font-medium">Childcare & Development:</span> {scoreToTier(candidate.pillar1_score * 20)}
+                            <span className="font-medium">Childcare & Development:</span> {scoreToTier(candidate.pillar1_score)}
                           </div>
                           <div className="text-sm">
-                            <span className="font-medium">Professional Conduct:</span> {scoreToTier(candidate.pillar2_score * 20)}
+                            <span className="font-medium">Professional Conduct:</span> {scoreToTier(candidate.pillar2_score)}
                           </div>
                           <div className="text-sm">
-                            <span className="font-medium">Housekeeping:</span> {scoreToTier(candidate.pillar3_score * 20)}
+                            <span className="font-medium">Housekeeping:</span> {scoreToTier(candidate.pillar3_score)}
                           </div>
                           <div className="text-sm">
-                            <span className="font-medium">Cooking & Nutrition:</span> {scoreToTier(candidate.pillar4_score * 20)}
+                            <span className="font-medium">Cooking & Nutrition:</span> {scoreToTier(candidate.pillar4_score)}
                           </div>
                         </>
                       ) : (
                         <>
                           <div className="text-sm">
-                            <span className="font-medium">Housekeeping & Systems:</span> {scoreToTier(candidate.pillar1_score * 20)}
+                            <span className="font-medium">Professional Conduct:</span> {scoreToTier(candidate.pillar1_score)}
                           </div>
                           <div className="text-sm">
-                            <span className="font-medium">Cooking & Kitchen:</span> {scoreToTier(candidate.pillar2_score * 20)}
+                            <span className="font-medium">Housekeeping & Systems:</span> {scoreToTier(candidate.pillar2_score)}
                           </div>
                           <div className="text-sm">
-                            <span className="font-medium">Childcare Literacy:</span> {scoreToTier(candidate.pillar3_score * 20)}
+                            <span className="font-medium">Cooking & Kitchen:</span> {scoreToTier(candidate.pillar3_score)}
                           </div>
                           <div className="text-sm">
-                            <span className="font-medium">Professional Conduct:</span> {scoreToTier(candidate.pillar4_score * 20)}
+                            <span className="font-medium">Childcare Literacy:</span> {scoreToTier(candidate.pillar4_score)}
                           </div>
                         </>
                       )}
