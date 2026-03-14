@@ -1071,6 +1071,7 @@ export function NicheTraining() {
                     >
                       <option value="Pending">Pending</option>
                       <option value="Active">Active</option>
+                      <option value="Graduated">Graduated</option>
                       <option value="Expelled">Expelled</option>
                     </select>
                   </div>

@@ -230,6 +230,7 @@ const GradingReport: React.FC<GradingReportProps> = ({ onClose }) => {
                               <tr className="text-white" style={{background: 'linear-gradient(135deg, #AE491E, #8B3A18)'}}>
                                 <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-wider">#</th>
                                 <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-wider">Name</th>
+                                <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-wider">Training Type</th>
                                 <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-wider">Course</th>
                                 <th className="px-3 py-3 text-center text-xs font-bold uppercase tracking-wider">Pillar 1</th>
                                 <th className="px-3 py-3 text-center text-xs font-bold uppercase tracking-wider">Pillar 2</th>
@@ -256,6 +257,13 @@ const GradingReport: React.FC<GradingReportProps> = ({ onClose }) => {
                                   <tr key={record.id} className="hover:bg-gray-50 transition-colors">
                                     <td className="px-3 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{index + 1}</td>
                                     <td className="px-3 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{record.niche_training.name}</td>
+                                    <td className="px-3 py-4 whitespace-nowrap text-sm text-center">
+                                      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                                        record.training_type === 'nanny' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'
+                                      }`}>
+                                        {record.training_type === 'nanny' ? 'Nanny' : 'House Manager'}
+                                      </span>
+                                    </td>
                                     <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-600">{record.niche_training.course}</td>
                                     <td className="px-3 py-4 whitespace-nowrap text-sm text-center font-semibold text-gray-900">{record.pillar1_weighted?.toFixed(1)}/{pillars[0].maxWeighted}</td>
                                     <td className="px-3 py-4 whitespace-nowrap text-sm text-center font-semibold text-gray-900">{record.pillar2_weighted?.toFixed(1)}/{pillars[1].maxWeighted}</td>

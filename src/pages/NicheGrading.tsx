@@ -91,7 +91,8 @@ interface GradeData {
 export function NicheGrading() {
   const [cohorts, setCohorts] = useState<NicheCohort[]>([])
   const [selectedCohort, setSelectedCohort] = useState<string>('')
-  const [trainees, setTrainees] = useState<NicheTrainee[]>([])
+  const [allTrainees, setAllTrainees] = useState<NicheTrainee[]>([])
+  const [filteredTrainees, setFilteredTrainees] = useState<NicheTrainee[]>([])
   const [selectedTrainee, setSelectedTrainee] = useState<NicheTrainee | null>(null)
   const [showGradingForm, setShowGradingForm] = useState(false)
   const [gradedRecords, setGradedRecords] = useState<any[]>([])
@@ -104,6 +105,7 @@ export function NicheGrading() {
   const [nicheCardData, setNicheCardData] = useState<any>(null)
   const [showReport, setShowReport] = useState(false)
   const [subPillarGrades, setSubPillarGrades] = useState<SubPillarGrades>({})
+  const [hasChanges, setHasChanges] = useState(false)
   
   // Define pillar structures
   const nannyPillars = [
@@ -216,14 +218,13 @@ export function NicheGrading() {
 
   useEffect(() => {
     loadCohorts()
+    loadAllTrainees()
     loadGradedRecordsWithTraineeData()
   }, [])
 
   useEffect(() => {
-    if (selectedCohort) {
-      loadTrainees()
-    }
-  }, [selectedCohort])
+    filterTrainees()
+  }, [allTrainees, searchTerm, cohortFilter])
 
   useEffect(() => {
     filterAndSortRecords()
@@ -328,34 +329,70 @@ export function NicheGrading() {
     setFilteredRecords(filtered)
   }
 
-  const loadTrainees = async () => {
+  const loadAllTrainees = async () => {
     try {
       const { data: traineesData, error: traineesError } = await supabase
         .from('niche_training')
-        .select('id, name, phone, role, status, course')
-        .eq('cohort_id', selectedCohort)
+        .select(`
+          id, name, phone, role, status, course, cohort_id,
+          niche_cohorts!inner(cohort_number)
+        `)
         .eq('status', 'Graduated')
+        .order('niche_cohorts(cohort_number)', { ascending: false })
 
       if (traineesError) throw traineesError
 
       // Check which trainees already have grades
       const { data: gradesData } = await supabase
         .from('trainee_grades')
-        .select('trainee_id')
-        .eq('cohort_id', selectedCohort)
+        .select('trainee_id, training_type')
 
-      const gradedTraineeIds = new Set(gradesData?.map(g => g.trainee_id) || [])
+      const gradedTraineeMap = new Map(gradesData?.map(g => [g.trainee_id, g.training_type]) || [])
 
       const traineesWithGradeStatus = (traineesData || []).map(trainee => ({
         ...trainee,
-        has_grade: gradedTraineeIds.has(trainee.id)
+        cohort_number: trainee.niche_cohorts?.cohort_number,
+        has_grade: gradedTraineeMap.has(trainee.id),
+        training_type: gradedTraineeMap.get(trainee.id)
       }))
 
-      setTrainees(traineesWithGradeStatus)
+      // Sort by cohort number descending (latest first), then by name
+      traineesWithGradeStatus.sort((a, b) => {
+        if (a.cohort_number !== b.cohort_number) {
+          return (b.cohort_number || 0) - (a.cohort_number || 0)
+        }
+        return (a.name || '').localeCompare(b.name || '')
+      })
+
+      setAllTrainees(traineesWithGradeStatus)
     } catch (error) {
-      console.error('Error loading trainees:', error)
+      console.error('Error loading all trainees:', error)
       showToast('Failed to load trainees', 'error')
     }
+  }
+
+  const filterTrainees = () => {
+    let filtered = [...allTrainees]
+
+    if (searchTerm) {
+      filtered = filtered.filter(trainee => 
+        trainee.name?.toLowerCase().includes(searchTerm.toLowerCase())
+      )
+    }
+
+    if (cohortFilter !== 'all') {
+      filtered = filtered.filter(trainee => trainee.cohort_id === cohortFilter)
+    }
+
+    // Maintain sorting by latest cohort first, then by name
+    filtered.sort((a, b) => {
+      if (a.cohort_number !== b.cohort_number) {
+        return (b.cohort_number || 0) - (a.cohort_number || 0)
+      }
+      return (a.name || '').localeCompare(b.name || '')
+    })
+
+    setFilteredTrainees(filtered)
   }
 
   const handleGradeTrainee = (trainee: NicheTrainee, trainingType: 'nanny' | 'house_manager') => {
@@ -368,7 +405,7 @@ export function NicheGrading() {
       // Reset form for new grade - only set training type, scores calculated from sub-pillars
       setGradeData({
         trainee_id: trainee.id,
-        cohort_id: selectedCohort,
+        cohort_id: trainee.cohort_id || '',
         training_type: trainingType,
         pillar1_score: 0,
         pillar2_score: 0,
@@ -378,6 +415,7 @@ export function NicheGrading() {
       })
       // Reset sub-pillar grades to default 3
       setSubPillarGrades({})
+      setHasChanges(false)
     }
     
     setShowGradingForm(true)
@@ -407,6 +445,7 @@ export function NicheGrading() {
         } else if (subData) {
           setSubPillarGrades(subData)
         }
+        setHasChanges(false)
       }
     } catch (error) {
       console.error('Error loading existing grade:', error)
@@ -439,13 +478,14 @@ export function NicheGrading() {
     const tier = finalScore >= 95 ? 'MASTER' :
                  finalScore >= 90 ? 'DISTINGUISHED' :
                  finalScore >= 80 ? 'EXCEPTIONAL' :
-                 finalScore >= 70 ? 'EXCELLENT' : 'NONE'
+                 finalScore >= 70 ? 'EXCELLENT' : 'NEEDS_IMPROVEMENT'
     
     return { pillarScores, weightedScores, finalScore, tier }
   }
 
   const updateSubPillarGrade = (key: string, value: number) => {
     setSubPillarGrades(prev => ({ ...prev, [key]: value }))
+    setHasChanges(true)
   }
 
   const handleSubmitGrade = async (e: React.FormEvent) => {
@@ -499,11 +539,11 @@ export function NicheGrading() {
         pillar2_score: pillar2,
         pillar3_score: pillar3,
         pillar4_score: pillar4,
-        pillar1_weighted: Math.round((scores.weightedScores[0] || 0) * 100) / 100,
-        pillar2_weighted: Math.round((scores.weightedScores[1] || 0) * 100) / 100,
-        pillar3_weighted: Math.round((scores.weightedScores[2] || 0) * 100) / 100, 
-        pillar4_weighted: Math.round((scores.weightedScores[3] || 0) * 100) / 100,
-        final_score: Math.round((scores.finalScore || 0) * 100) / 100,
+        pillar1_weighted: scores.weightedScores[0] || 0,
+        pillar2_weighted: scores.weightedScores[1] || 0,
+        pillar3_weighted: scores.weightedScores[2] || 0, 
+        pillar4_weighted: scores.weightedScores[3] || 0,
+        final_score: scores.finalScore || 0,
         tier: scores.tier || 'NONE',
         notes: gradeData.notes,
         graded_by: staff.name || user?.email || 'Unknown'
@@ -550,7 +590,7 @@ export function NicheGrading() {
 
       setShowGradingForm(false)
       setSelectedTrainee(null)
-      loadTrainees() // Refresh trainee list
+      loadAllTrainees() // Refresh trainee list
       loadGradedRecordsWithTraineeData() // Refresh records table
     } catch (error: any) {
       console.error('Error saving grade:', error)
@@ -631,123 +671,125 @@ export function NicheGrading() {
                 </button>
               </div>
 
-              {/* Step 1: Select Cohort */}
+              {/* Search and Filter */}
               <div className="bg-white rounded-lg shadow p-6 mb-6">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-                  <GraduationCap className="w-5 h-5 mr-2" />
-                  Step 1: Select Cohort
-                </h2>
-                <select
-                  value={selectedCohort}
-                  onChange={(e) => setSelectedCohort(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
-                >
-                  <option value="">Select a cohort to grade</option>
-                  {cohorts.map(cohort => (
-                    <option key={cohort.id} value={cohort.id}>
-                      Cohort {getRomanNumeral(cohort.cohort_number)} - {cohort.status} 
-                      ({new Date(cohort.start_date).toLocaleDateString()} - {new Date(cohort.end_date).toLocaleDateString()})
-                    </option>
-                  ))}
-                </select>
+                <div className="flex gap-3 mb-4">
+                  <input
+                    type="text"
+                    placeholder="Search trainees by name..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="px-3 py-2 border border-gray-300 rounded-lg text-sm flex-1"
+                  />
+                  <select
+                    value={cohortFilter}
+                    onChange={(e) => setCohortFilter(e.target.value)}
+                    className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white min-w-48"
+                  >
+                    <option value="all">All Cohorts</option>
+                    {cohorts.map(cohort => (
+                      <option key={cohort.id} value={cohort.id}>
+                        Cohort {getRomanNumeral(cohort.cohort_number)} - {cohort.status}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
-              {/* Step 2: Display Graduated Trainees */}
-              {selectedCohort && (
-                <div className="bg-white rounded-lg shadow p-6 mb-6">
-                  <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-                    <Users className="w-5 h-5 mr-2" />
-                    Step 2: Select Graduated Trainee to Grade
-                  </h2>
-                  
-                  {trainees.length > 0 ? (
-                    <div className="overflow-x-auto">
-                      <table className="min-w-full divide-y divide-gray-200">
-                        <thead className="bg-gray-50">
-                          <tr>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Phone</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody className="bg-white divide-y divide-gray-200">
-                          {trainees.map((trainee, index) => (
-                            <tr key={trainee.id} className="hover:bg-gray-50">
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{index + 1}</td>
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <div className="flex items-center">
-                                  <div className="text-sm font-medium text-gray-900">{trainee.name}</div>
-                                  {trainee.has_grade && (
-                                    <CheckCircle className="w-4 h-4 ml-2 text-green-600" />
-                                  )}
-                                </div>
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{trainee.role}</td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{trainee.phone || '-'}</td>
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                                  {trainee.status}
-                                </span>
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                {!trainee.has_grade ? (
-                                  <div className="flex gap-2">
-                                    <button
-                                      onClick={() => handleGradeTrainee(trainee, 'nanny')}
-                                      className="px-3 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700"
-                                    >
-                                      Grade as Nanny
-                                    </button>
-                                    <button
-                                      onClick={() => handleGradeTrainee(trainee, 'house_manager')}
-                                      className="px-3 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700"
-                                    >
-                                      Grade as House Manager
-                                    </button>
-                                  </div>
-                                ) : (
+              {/* All Trainees List */}
+              <div className="bg-white rounded-lg shadow p-6">
+                <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                  <Users className="w-5 h-5 mr-2" />
+                  All Graduated Trainees
+                </h2>
+                
+                {filteredTrainees.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cohort</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Phone</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {filteredTrainees.map((trainee, index) => (
+                          <tr key={trainee.id} className="hover:bg-gray-50">
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{index + 1}</td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="flex items-center">
+                                <div className="text-sm font-medium text-gray-900">{trainee.name}</div>
+                                {trainee.has_grade && (
+                                  <CheckCircle className="w-4 h-4 ml-2 text-green-600" />
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              {trainee.cohort_number ? getRomanNumeral(trainee.cohort_number) : '-'}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{trainee.role}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{trainee.phone || '-'}</td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                {trainee.status}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                              {!trainee.has_grade ? (
+                                <div className="flex gap-2">
                                   <button
                                     onClick={() => handleGradeTrainee(trainee, 'nanny')}
-                                    className="px-3 py-1 bg-gray-600 text-white rounded text-xs hover:bg-gray-700"
+                                    className="px-3 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700"
                                   >
-                                    Edit Grade
+                                    Grade as Nanny
                                   </button>
-                                )}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : (
-                    <div className="text-center py-8">
-                      <Users className="mx-auto h-12 w-12 text-gray-400" />
-                      <h3 className="mt-2 text-sm font-medium text-gray-900">No graduated trainees found</h3>
-                      <p className="mt-1 text-sm text-gray-500">
-                        No graduated trainees in this cohort available for grading.
-                      </p>
-                    </div>
-                  )}
-                </div>
-              )}
+                                  <button
+                                    onClick={() => handleGradeTrainee(trainee, 'house_manager')}
+                                    className="px-3 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700"
+                                  >
+                                    Grade as House Manager
+                                  </button>
+                                </div>
+                              ) : (
+                                <button
+                                  onClick={() => handleGradeTrainee(trainee, trainee.training_type || 'nanny')}
+                                  className="px-3 py-1 bg-gray-600 text-white rounded text-xs hover:bg-gray-700"
+                                >
+                                  Edit Grade
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <Users className="mx-auto h-12 w-12 text-gray-400" />
+                    <h3 className="mt-2 text-sm font-medium text-gray-900">No graduated trainees found</h3>
+                    <p className="mt-1 text-sm text-gray-500">
+                      {searchTerm || cohortFilter !== 'all' ? 'Try adjusting your search or filter criteria.' : 'No graduated trainees available for grading.'}
+                    </p>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* NICHE Professionals Table */}
+      {/* NICHE Professionals Tables */}
       {view === 'records' && (
-        <div className="bg-white rounded-lg shadow mt-8">
-          <div className="px-6 py-4 border-b border-gray-200">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">
-              NICHE Professionals
-            </h2>
-            
-            {/* Filters */}
-            <div className="flex gap-3 mb-4">
+        <div className="space-y-8 mt-8">
+          {/* Filters */}
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="flex gap-3">
               <input
                 type="text"
                 placeholder="Search by name..."
@@ -769,63 +811,173 @@ export function NicheGrading() {
               </select>
             </div>
           </div>
-          
-          {filteredRecords.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Course</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tier</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {filteredRecords.map((record, index) => (
-                    <tr key={record.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{index + 1}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                        {record.trainee_name}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {record.trainee_role}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {record.trainee_course}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${getTierColor(record.tier)}`}>
-                          <Star className="w-3 h-3 mr-1" />
-                          {record.tier}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        <button
-                          onClick={() => loadNicheCardData(record)}
-                          className="text-blue-600 hover:text-blue-900"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </button>
-                      </td>
+
+          {/* Nanny Professionals Table */}
+          <div className="bg-white rounded-lg shadow">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h2 className="text-lg font-semibold text-gray-900 flex items-center">
+                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 mr-3">
+                  Nanny
+                </span>
+                NICHE Professionals
+              </h2>
+            </div>
+            
+            {filteredRecords.filter(record => record.training_type === 'nanny').length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Course</th>
+                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Childcare & Development</th>
+                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Professional Conduct</th>
+                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Housekeeping</th>
+                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Cooking & Nutrition</th>
+                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Final Score</th>
+                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Tier</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {filteredRecords.filter(record => record.training_type === 'nanny').map((record, index) => (
+                      <tr key={record.id} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 flex items-center gap-2">
+                          {index + 1}
+                          <button
+                            onClick={() => loadNicheCardData(record)}
+                            className="text-blue-600 hover:text-blue-900 p-1 rounded hover:bg-blue-50"
+                            title="View Certificate"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                          {record.trainee_name}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                          {record.trainee_course}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-center font-semibold text-gray-900">
+                          {record.pillar1_weighted?.toFixed(1)}/45
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-center font-semibold text-gray-900">
+                          {record.pillar2_weighted?.toFixed(1)}/30
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-center font-semibold text-gray-900">
+                          {record.pillar3_weighted?.toFixed(1)}/15
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-center font-semibold text-gray-900">
+                          {record.pillar4_weighted?.toFixed(1)}/10
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-center font-bold text-nestalk-primary">
+                          {record.final_score?.toFixed(1)}%
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-center">
+                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${getTierColor(record.tier)}`}>
+                            <Star className="w-3 h-3 mr-1" />
+                            {record.tier}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="text-center py-12">
+                <h3 className="mt-2 text-sm font-medium text-gray-900">No Nanny professionals found</h3>
+                <p className="mt-1 text-sm text-gray-500">
+                  {searchTerm || cohortFilter !== 'all' ? 'Try adjusting your search or filter criteria.' : 'No Nanny trainees have been graded yet.'}
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* House Manager Professionals Table */}
+          <div className="bg-white rounded-lg shadow">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h2 className="text-lg font-semibold text-gray-900 flex items-center">
+                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 mr-3">
+                  House Manager
+                </span>
+                NICHE Professionals
+              </h2>
             </div>
-          ) : (
-            <div className="text-center py-12">
-              <h3 className="mt-2 text-sm font-medium text-gray-900">No professionals found</h3>
-              <p className="mt-1 text-sm text-gray-500">
-                {searchTerm || cohortFilter !== 'all' ? 'Try adjusting your search or filter criteria.' : 'No trainees have been graded yet.'}
-              </p>
-            </div>
-          )}
+            
+            {filteredRecords.filter(record => record.training_type === 'house_manager').length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Course</th>
+                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Professional Conduct</th>
+                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Housekeeping & Systems</th>
+                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Cooking & Kitchen</th>
+                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Childcare Literacy</th>
+                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Final Score</th>
+                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Tier</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {filteredRecords.filter(record => record.training_type === 'house_manager').map((record, index) => (
+                      <tr key={record.id} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 flex items-center gap-2">
+                          {index + 1}
+                          <button
+                            onClick={() => loadNicheCardData(record)}
+                            className="text-blue-600 hover:text-blue-900 p-1 rounded hover:bg-blue-50"
+                            title="View Certificate"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                          {record.trainee_name}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                          {record.trainee_course}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-center font-semibold text-gray-900">
+                          {record.pillar1_weighted?.toFixed(1)}/30
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-center font-semibold text-gray-900">
+                          {record.pillar2_weighted?.toFixed(1)}/30
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-center font-semibold text-gray-900">
+                          {record.pillar3_weighted?.toFixed(1)}/25
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-center font-semibold text-gray-900">
+                          {record.pillar4_weighted?.toFixed(1)}/15
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-center font-bold text-nestalk-primary">
+                          {record.final_score?.toFixed(1)}%
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-center">
+                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${getTierColor(record.tier)}`}>
+                            <Star className="w-3 h-3 mr-1" />
+                            {record.tier}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="text-center py-12">
+                <h3 className="mt-2 text-sm font-medium text-gray-900">No House Manager professionals found</h3>
+                <p className="mt-1 text-sm text-gray-500">
+                  {searchTerm || cohortFilter !== 'all' ? 'Try adjusting your search or filter criteria.' : 'No House Manager trainees have been graded yet.'}
+                </p>
+              </div>
+            )}
+          </div>
           
           {/* Tier Legend */}
-          <div className="px-6 py-4 border-t border-gray-200 bg-gray-50">
+          <div className="bg-white rounded-lg shadow p-6">
             <h4 className="text-sm font-medium text-gray-900 mb-3">Performance Tiers</h4>
             <div className="flex flex-wrap gap-4 text-xs">
               <div className="flex items-center">
@@ -871,7 +1023,6 @@ export function NicheGrading() {
                   <h2 className="text-xl font-semibold text-gray-900">
                     Grade: {selectedTrainee.name} - {gradeData.training_type === 'nanny' ? 'Nanny Training' : 'House Manager Training'}
                   </h2>
-                  <p className="text-gray-600">{selectedTrainee.role} • {selectedTrainee.course}</p>
                 </div>
                 <button
                   onClick={() => setShowGradingForm(false)}
@@ -882,24 +1033,16 @@ export function NicheGrading() {
               </div>
 
               <form onSubmit={handleSubmitGrade}>
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 gap-6">
                   {/* Grading Table */}
-                  <div className="lg:col-span-2">
+                  <div className="lg:col-span-3">
                     <div className="bg-white rounded-lg border">
-                      <div className="px-4 py-3 border-b bg-gray-50">
-                        <h3 className="text-lg font-semibold text-gray-900">
-                          {gradeData.training_type === 'nanny' ? 'Nanny Training' : 'House Manager Training'} - Sub-Pillar Grading
-                        </h3>
-                      </div>
-                      
                       <div className="overflow-x-auto">
                         <table className="min-w-full">
                           <thead className="bg-gray-50">
                             <tr>
                               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Pillar / Sub-Pillar</th>
                               <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Score (1-5)</th>
-                              <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Pillar Avg</th>
-                              <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Weighted</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-gray-200">
@@ -910,12 +1053,6 @@ export function NicheGrading() {
                                   <td className="px-4 py-3 font-semibold text-blue-900" colSpan={2}>
                                     {pillar.name} (Weight: {pillar.weight}x)
                                   </td>
-                                  <td className="px-4 py-3 text-center font-semibold text-blue-900">
-                                    {liveScores.pillarScores[pillarIndex]?.toFixed(1) || '0.0'}
-                                  </td>
-                                  <td className="px-4 py-3 text-center font-semibold text-blue-900">
-                                    {liveScores.weightedScores[pillarIndex]?.toFixed(1) || '0.0'}
-                                  </td>
                                 </tr>
                                 {/* Sub-pillars */}
                                 {pillar.subpillars.map((subpillar, subIndex) => (
@@ -925,10 +1062,11 @@ export function NicheGrading() {
                                     </td>
                                     <td className="px-4 py-2 text-center">
                                       <select
-                                        value={subPillarGrades[subpillar.key as keyof SubPillarGrades] || 3}
+                                        value={subPillarGrades[subpillar.key as keyof SubPillarGrades] || ''}
                                         onChange={(e) => updateSubPillarGrade(subpillar.key, parseInt(e.target.value))}
                                         className="w-16 px-2 py-1 border border-gray-300 rounded text-center text-sm"
                                       >
+                                        <option value="">-</option>
                                         <option value={1}>1</option>
                                         <option value={2}>2</option>
                                         <option value={3}>3</option>
@@ -936,8 +1074,6 @@ export function NicheGrading() {
                                         <option value={5}>5</option>
                                       </select>
                                     </td>
-                                    <td className="px-4 py-2 text-center text-sm text-gray-500">-</td>
-                                    <td className="px-4 py-2 text-center text-sm text-gray-500">-</td>
                                   </tr>
                                 ))}
                               </React.Fragment>
@@ -961,65 +1097,6 @@ export function NicheGrading() {
                       />
                     </div>
                   </div>
-
-                  {/* Live Results Panel */}
-                  <div className="lg:col-span-1">
-                    <div className="sticky top-6 bg-gray-50 p-4 rounded-lg">
-                      <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-                        <Award className="w-5 h-5 mr-2" />
-                        Live Results
-                      </h3>
-                      
-                      <div className="space-y-3">
-                        <div className="flex justify-between">
-                          <span className="text-sm text-gray-600">Pillar 1 Score (1-5):</span>
-                          <span className="font-semibold">{liveScores.pillarScores[0]?.toFixed(1) || '0.0'}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-sm text-gray-600">Pillar 1 Weighted:</span>
-                          <span className="font-semibold">{liveScores.weightedScores[0]?.toFixed(1) || '0.0'}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-sm text-gray-600">Pillar 2 Score (1-5):</span>
-                          <span className="font-semibold">{liveScores.pillarScores[1]?.toFixed(1) || '0.0'}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-sm text-gray-600">Pillar 2 Weighted:</span>
-                          <span className="font-semibold">{liveScores.weightedScores[1]?.toFixed(1) || '0.0'}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-sm text-gray-600">Pillar 3 Score (1-5):</span>
-                          <span className="font-semibold">{liveScores.pillarScores[2]?.toFixed(1) || '0.0'}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-sm text-gray-600">Pillar 3 Weighted:</span>
-                          <span className="font-semibold">{liveScores.weightedScores[2]?.toFixed(1) || '0.0'}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-sm text-gray-600">Pillar 4 Score (1-5):</span>
-                          <span className="font-semibold">{liveScores.pillarScores[3]?.toFixed(1) || '0.0'}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-sm text-gray-600">Pillar 4 Weighted:</span>
-                          <span className="font-semibold">{liveScores.weightedScores[3]?.toFixed(1) || '0.0'}</span>
-                        </div>
-                        
-                        <hr className="my-3" />
-                        
-                        <div className="flex justify-between text-lg font-bold">
-                          <span>Final Score:</span>
-                          <span>{liveScores.finalScore?.toFixed(1) || '0.0'}/100</span>
-                        </div>
-                        
-                        <div className="text-center">
-                          <span className={`inline-flex items-center px-3 py-2 rounded-full text-sm font-medium ${getTierColor(liveScores.tier)}`}>
-                            <Star className="w-4 h-4 mr-1" />
-                            {liveScores.tier}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
                 </div>
 
                 {/* Form Actions */}
@@ -1033,7 +1110,12 @@ export function NicheGrading() {
                   </button>
                   <button
                     type="submit"
-                    className="flex-1 px-4 py-2 bg-nestalk-primary text-white rounded-lg hover:bg-nestalk-primary/90 transition-colors"
+                    disabled={!hasChanges}
+                    className={`flex-1 px-4 py-2 rounded-lg transition-colors ${
+                      hasChanges 
+                        ? 'bg-nestalk-primary text-white hover:bg-nestalk-primary/90' 
+                        : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                    }`}
                   >
                     {gradeData.id ? 'Update Grade' : 'Save Grade'}
                   </button>

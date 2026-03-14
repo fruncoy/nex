@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
-    "@supabase/supabase-js": "^2.53.0",
+    "@supabase/supabase-js": "^2.99.1",
     "google-auth-library": "^10.5.0",
     "googleapis": "^169.0.0",
     "html2canvas": "^1.4.1",
