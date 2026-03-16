@@ -597,7 +597,6 @@ export function NicheTraining() {
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">#</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Name</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Role</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Status</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Course</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Cohort</th>
@@ -633,7 +632,6 @@ export function NicheTraining() {
                         </div>
                         {record.phone && <div className="text-xs text-gray-500">{record.phone}</div>}
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700">{record.role || 'N/A'}</td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         <StatusBadge status={record.status} type="training" />
                       </td>
@@ -723,7 +721,6 @@ export function NicheTraining() {
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">#</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Name</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Role</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Status</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Course</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Actions</th>
@@ -744,7 +741,6 @@ export function NicheTraining() {
                         </div>
                         {record.phone && <div className="text-xs text-gray-500">{record.phone}</div>}
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700">{record.role || 'N/A'}</td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         <StatusBadge status={record.status} type="training" />
                       </td>

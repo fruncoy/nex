@@ -68,6 +68,7 @@ export function Layout() {
         { name: 'NICHE Courses', href: '/niche-courses', icon: GraduationCap },
         { name: 'NICHE Timetable', href: '/niche-timetable', icon: Calendar },
         { name: 'NICHE Fees', href: '/niche-fees', icon: GraduationCap },
+        { name: 'Progress Tracking', href: '/niche-progress', icon: BarChart3 },
         { name: 'NICHE Cohorts', href: '/niche-cohorts', icon: Users },
         { name: 'NICHE Grading', href: '/niche-grading', icon: Award },
         { name: 'GetMatch', href: '/get-match', icon: Heart }

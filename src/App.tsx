@@ -37,6 +37,7 @@ import { CreateProfile } from './pages/CreateProfile'
 import { Placements } from './pages/Placements'
 import { Calendar } from './pages/Calendar'
 import { GetMatch } from './pages/GetMatch'
+import NicheProgressTracking from './pages/NicheProgressTracking'
 
 function ProtectedLayout() {
   const { user, loading } = useAuth()
@@ -77,6 +78,7 @@ function AppRoutes() {
         <Route path="niche-fees" element={<NicheFees />} />
         <Route path="niche-timetable" element={<NicheTimetable />} />
         <Route path="niche-grading" element={<NicheGrading />} />
+        <Route path="niche-progress" element={<NicheProgressTracking />} />
         <Route path="get-match" element={<GetMatch />} />
         <Route path="insights" element={<Insights />} />
         <Route path="calendar" element={<Calendar />} />
