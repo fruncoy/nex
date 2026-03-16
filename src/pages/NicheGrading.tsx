@@ -4,7 +4,7 @@ import { Users, GraduationCap, Award, CheckCircle, AlertCircle, Star, Eye, FileT
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
 import NicheCertificate from '../components/NicheCertificate'
-import GradingReport from '../components/GradingReport'
+import html2pdf from 'html2pdf.js'
 
 interface NicheCohort {
   id: string
@@ -103,7 +103,10 @@ export function NicheGrading() {
   const [sortBy, setSortBy] = useState('name')
   const [filteredRecords, setFilteredRecords] = useState<any[]>([])
   const [nicheCardData, setNicheCardData] = useState<any>(null)
-  const [showReport, setShowReport] = useState(false)
+  const [showExportModal, setShowExportModal] = useState(false)
+  const [selectedCohortForExport, setSelectedCohortForExport] = useState('all')
+  const [showPreview, setShowPreview] = useState(false)
+  const [previewContent, setPreviewContent] = useState('')
   const [subPillarGrades, setSubPillarGrades] = useState<SubPillarGrades>({})
   const [hasChanges, setHasChanges] = useState(false)
   
@@ -613,6 +616,277 @@ export function NicheGrading() {
     }
   }
 
+  const generatePreview = () => {
+    // Filter records based on selected cohort
+    let recordsToExport = gradedRecords
+    if (selectedCohortForExport !== 'all') {
+      recordsToExport = gradedRecords.filter(record => record.cohort_id === selectedCohortForExport)
+    }
+
+    // Get cohort info for title
+    const selectedCohortInfo = selectedCohortForExport !== 'all' 
+      ? cohorts.find(c => c.id === selectedCohortForExport)
+      : null
+
+    // Separate records by training type
+    const nannyRecords = recordsToExport.filter(record => record.training_type === 'nanny')
+    const houseManagerRecords = recordsToExport.filter(record => record.training_type === 'house_manager')
+
+    const content = `
+      <div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; background: white;">
+        <div style="text-align: center; margin-bottom: 25px; border-bottom: 3px solid #AE491E; padding-bottom: 15px;">
+          <h1 style="font-size: 24px; margin: 0; color: #AE491E; font-weight: bold;">Nestara Institute of Care and Hospitality Excellence</h1>
+          <h2 style="font-size: 16px; margin: 8px 0 0 0; color: #666;">NICHE Professionals Report${selectedCohortInfo ? ` - Cohort ${getRomanNumeral(selectedCohortInfo.cohort_number)}` : ''}</h2>
+          ${selectedCohortInfo ? `<p style="margin: 5px 0 0 0; font-size: 12px; color: #666;">${new Date(selectedCohortInfo.start_date).toLocaleDateString()} to ${new Date(selectedCohortInfo.end_date).toLocaleDateString()}</p>` : ''}
+        </div>
+
+        ${nannyRecords.length > 0 ? `
+          <div style="margin-bottom: 30px;">
+            <h3 style="font-size: 16px; font-weight: bold; margin: 25px 0 15px 0; color: #AE491E; border-bottom: 2px solid #AE491E; padding-bottom: 8px;">
+              Nanny Professionals (${nannyRecords.length})
+            </h3>
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 11px;">
+              <thead>
+                <tr style="background: linear-gradient(135deg, #AE491E, #8B3A18); color: white;">
+                  <th style="border: 1px solid #ddd; padding: 8px; text-align: center; font-size: 10px;">#</th>
+                  <th style="border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 10px;">Name</th>
+                  <th style="border: 1px solid #ddd; padding: 8px; text-align: center; font-size: 9px;">Childcare & Development</th>
+                  <th style="border: 1px solid #ddd; padding: 8px; text-align: center; font-size: 9px;">Professional Conduct</th>
+                  <th style="border: 1px solid #ddd; padding: 8px; text-align: center; font-size: 9px;">Housekeeping</th>
+                  <th style="border: 1px solid #ddd; padding: 8px; text-align: center; font-size: 9px;">Cooking & Nutrition</th>
+                  <th style="border: 1px solid #ddd; padding: 8px; text-align: center; font-size: 10px;">Final Score</th>
+                  <th style="border: 1px solid #ddd; padding: 8px; text-align: center; font-size: 10px;">Tier</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${nannyRecords.map((record, index) => `
+                  <tr style="${index % 2 === 0 ? 'background-color: #f9f9f9;' : ''}">
+                    <td style="border: 1px solid #ddd; padding: 6px; text-align: center;">${index + 1}</td>
+                    <td style="border: 1px solid #ddd; padding: 6px; font-weight: 500;">${record.trainee_name}</td>
+                    <td style="border: 1px solid #ddd; padding: 6px; text-align: center; font-weight: bold;">${record.pillar1_weighted?.toFixed(1)}/45</td>
+                    <td style="border: 1px solid #ddd; padding: 6px; text-align: center; font-weight: bold;">${record.pillar2_weighted?.toFixed(1)}/30</td>
+                    <td style="border: 1px solid #ddd; padding: 6px; text-align: center; font-weight: bold;">${record.pillar3_weighted?.toFixed(1)}/15</td>
+                    <td style="border: 1px solid #ddd; padding: 6px; text-align: center; font-weight: bold;">${record.pillar4_weighted?.toFixed(1)}/10</td>
+                    <td style="border: 1px solid #ddd; padding: 6px; text-align: center; font-weight: bold; color: #AE491E;">${record.final_score?.toFixed(1)}%</td>
+                    <td style="border: 1px solid #ddd; padding: 6px; text-align: center; font-weight: bold; color: ${record.tier === 'MASTER' ? '#7c3aed' : record.tier === 'DISTINGUISHED' ? '#2563eb' : record.tier === 'EXCEPTIONAL' ? '#059669' : '#d97706'};">${record.tier}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        ` : ''}
+
+        ${houseManagerRecords.length > 0 ? `
+          <div style="margin-bottom: 30px;">
+            <h3 style="font-size: 16px; font-weight: bold; margin: 25px 0 15px 0; color: #AE491E; border-bottom: 2px solid #AE491E; padding-bottom: 8px;">
+              House Manager Professionals (${houseManagerRecords.length})
+            </h3>
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 11px;">
+              <thead>
+                <tr style="background: linear-gradient(135deg, #AE491E, #8B3A18); color: white;">
+                  <th style="border: 1px solid #ddd; padding: 8px; text-align: center; font-size: 10px;">#</th>
+                  <th style="border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 10px;">Name</th>
+                  <th style="border: 1px solid #ddd; padding: 8px; text-align: center; font-size: 9px;">Professional Conduct</th>
+                  <th style="border: 1px solid #ddd; padding: 8px; text-align: center; font-size: 9px;">Housekeeping & Systems</th>
+                  <th style="border: 1px solid #ddd; padding: 8px; text-align: center; font-size: 9px;">Cooking & Kitchen</th>
+                  <th style="border: 1px solid #ddd; padding: 8px; text-align: center; font-size: 9px;">Childcare Literacy</th>
+                  <th style="border: 1px solid #ddd; padding: 8px; text-align: center; font-size: 10px;">Final Score</th>
+                  <th style="border: 1px solid #ddd; padding: 8px; text-align: center; font-size: 10px;">Tier</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${houseManagerRecords.map((record, index) => `
+                  <tr style="${index % 2 === 0 ? 'background-color: #f9f9f9;' : ''}">
+                    <td style="border: 1px solid #ddd; padding: 6px; text-align: center;">${index + 1}</td>
+                    <td style="border: 1px solid #ddd; padding: 6px; font-weight: 500;">${record.trainee_name}</td>
+                    <td style="border: 1px solid #ddd; padding: 6px; text-align: center; font-weight: bold;">${record.pillar1_weighted?.toFixed(1)}/30</td>
+                    <td style="border: 1px solid #ddd; padding: 6px; text-align: center; font-weight: bold;">${record.pillar2_weighted?.toFixed(1)}/30</td>
+                    <td style="border: 1px solid #ddd; padding: 6px; text-align: center; font-weight: bold;">${record.pillar3_weighted?.toFixed(1)}/25</td>
+                    <td style="border: 1px solid #ddd; padding: 6px; text-align: center; font-weight: bold;">${record.pillar4_weighted?.toFixed(1)}/15</td>
+                    <td style="border: 1px solid #ddd; padding: 6px; text-align: center; font-weight: bold; color: #AE491E;">${record.final_score?.toFixed(1)}%</td>
+                    <td style="border: 1px solid #ddd; padding: 6px; text-align: center; font-weight: bold; color: ${record.tier === 'MASTER' ? '#7c3aed' : record.tier === 'DISTINGUISHED' ? '#2563eb' : record.tier === 'EXCEPTIONAL' ? '#059669' : '#d97706'};">${record.tier}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        ` : ''}
+
+        <div style="margin-top: 30px; padding: 15px; background-color: #f8f9fa; border-radius: 8px;">
+          <h4 style="margin: 0 0 10px 0; color: #AE491E; font-size: 14px;">Performance Tiers</h4>
+          <div style="display: flex; flex-wrap: wrap; gap: 15px; font-size: 11px;">
+            <div style="display: flex; align-items: center; gap: 5px;">
+              <span style="padding: 2px 6px; border-radius: 12px; font-weight: bold; background: #f3e8ff; color: #7c3aed;">MASTER</span>
+              <span>95+ points</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 5px;">
+              <span style="padding: 2px 6px; border-radius: 12px; font-weight: bold; background: #dbeafe; color: #2563eb;">DISTINGUISHED</span>
+              <span>90-94 points</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 5px;">
+              <span style="padding: 2px 6px; border-radius: 12px; font-weight: bold; background: #d1fae5; color: #059669;">EXCEPTIONAL</span>
+              <span>80-89 points</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 5px;">
+              <span style="padding: 2px 6px; border-radius: 12px; font-weight: bold; background: #fef3c7; color: #d97706;">EXCELLENT</span>
+              <span>70-79 points</span>
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-top: 20px; text-align: center; font-size: 10px; color: #666; border-top: 1px solid #ddd; padding-top: 15px;">
+          NICHE Academy | Total Professionals: ${recordsToExport.length}
+        </div>
+      </div>
+    `
+
+    setPreviewContent(content)
+    setShowPreview(true)
+  }
+
+  const downloadPDF = () => {
+    // Filter records based on selected cohort
+    let recordsToExport = gradedRecords
+    if (selectedCohortForExport !== 'all') {
+      recordsToExport = gradedRecords.filter(record => record.cohort_id === selectedCohortForExport)
+    }
+
+    // Get cohort info for title
+    const selectedCohortInfo = selectedCohortForExport !== 'all' 
+      ? cohorts.find(c => c.id === selectedCohortForExport)
+      : null
+
+    // Separate records by training type
+    const nannyRecords = recordsToExport.filter(record => record.training_type === 'nanny')
+    const houseManagerRecords = recordsToExport.filter(record => record.training_type === 'house_manager')
+
+    // Create a temporary element for PDF generation
+    const element = document.createElement('div')
+    element.innerHTML = `
+      <div style="font-family: Arial, sans-serif; padding: 20px; color: #333; background: white;">
+        <div style="text-align: center; margin-bottom: 30px; border-bottom: 3px solid #AE491E; padding-bottom: 20px;">
+          <h1 style="font-size: 22px; margin: 0 0 10px 0; color: #AE491E; font-weight: bold;">Nestara Institute of Care and Hospitality Excellence</h1>
+          <h2 style="font-size: 16px; margin: 0; color: #666;">NICHE Professionals Report${selectedCohortInfo ? ` - Cohort ${getRomanNumeral(selectedCohortInfo.cohort_number)}` : ''}</h2>
+          ${selectedCohortInfo ? `<p style="margin: 8px 0 0 0; font-size: 12px; color: #666;">${new Date(selectedCohortInfo.start_date).toLocaleDateString()} to ${new Date(selectedCohortInfo.end_date).toLocaleDateString()}</p>` : ''}
+        </div>
+
+        ${nannyRecords.length > 0 ? `
+          <div style="margin-bottom: 30px;">
+            <h3 style="font-size: 16px; font-weight: bold; margin: 30px 0 15px 0; color: #AE491E; border-bottom: 2px solid #AE491E; padding-bottom: 8px;">
+              Nanny Professionals (${nannyRecords.length})
+            </h3>
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 25px; font-size: 10px;">
+              <thead>
+                <tr style="background: #AE491E; color: white;">
+                  <th style="border: 1px solid #ddd; padding: 8px; text-align: center; font-weight: bold;">#</th>
+                  <th style="border: 1px solid #ddd; padding: 8px; text-align: left; font-weight: bold;">Name</th>
+                  <th style="border: 1px solid #ddd; padding: 8px; text-align: center; font-weight: bold;">Childcare & Development</th>
+                  <th style="border: 1px solid #ddd; padding: 8px; text-align: center; font-weight: bold;">Professional Conduct</th>
+                  <th style="border: 1px solid #ddd; padding: 8px; text-align: center; font-weight: bold;">Housekeeping</th>
+                  <th style="border: 1px solid #ddd; padding: 8px; text-align: center; font-weight: bold;">Cooking & Nutrition</th>
+                  <th style="border: 1px solid #ddd; padding: 8px; text-align: center; font-weight: bold;">Final Score</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${nannyRecords.map((record, index) => `
+                  <tr style="${index % 2 === 0 ? 'background-color: #f9f9f9;' : ''}">
+                    <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${index + 1}</td>
+                    <td style="border: 1px solid #ddd; padding: 8px; font-weight: 500;">${record.trainee_name}</td>
+                    <td style="border: 1px solid #ddd; padding: 8px; text-align: center; font-weight: bold;">${record.pillar1_weighted?.toFixed(1)}/45</td>
+                    <td style="border: 1px solid #ddd; padding: 8px; text-align: center; font-weight: bold;">${record.pillar2_weighted?.toFixed(1)}/30</td>
+                    <td style="border: 1px solid #ddd; padding: 8px; text-align: center; font-weight: bold;">${record.pillar3_weighted?.toFixed(1)}/15</td>
+                    <td style="border: 1px solid #ddd; padding: 8px; text-align: center; font-weight: bold;">${record.pillar4_weighted?.toFixed(1)}/10</td>
+                    <td style="border: 1px solid #ddd; padding: 8px; text-align: center; font-weight: bold; color: #AE491E;">${record.final_score?.toFixed(1)}% - ${record.tier}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        ` : ''}
+
+        ${houseManagerRecords.length > 0 ? `
+          <div style="margin-bottom: 30px; ${nannyRecords.length > 8 ? 'page-break-before: always;' : ''}">
+            <h3 style="font-size: 16px; font-weight: bold; margin: 30px 0 15px 0; color: #AE491E; border-bottom: 2px solid #AE491E; padding-bottom: 8px;">
+              House Manager Professionals (${houseManagerRecords.length})
+            </h3>
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 25px; font-size: 10px;">
+              <thead>
+                <tr style="background: #AE491E; color: white;">
+                  <th style="border: 1px solid #ddd; padding: 8px; text-align: center; font-weight: bold;">#</th>
+                  <th style="border: 1px solid #ddd; padding: 8px; text-align: left; font-weight: bold;">Name</th>
+                  <th style="border: 1px solid #ddd; padding: 8px; text-align: center; font-weight: bold;">Professional Conduct</th>
+                  <th style="border: 1px solid #ddd; padding: 8px; text-align: center; font-weight: bold;">Housekeeping & Systems</th>
+                  <th style="border: 1px solid #ddd; padding: 8px; text-align: center; font-weight: bold;">Cooking & Kitchen</th>
+                  <th style="border: 1px solid #ddd; padding: 8px; text-align: center; font-weight: bold;">Childcare Literacy</th>
+                  <th style="border: 1px solid #ddd; padding: 8px; text-align: center; font-weight: bold;">Final Score</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${houseManagerRecords.map((record, index) => `
+                  <tr style="${index % 2 === 0 ? 'background-color: #f9f9f9;' : ''}">
+                    <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${index + 1}</td>
+                    <td style="border: 1px solid #ddd; padding: 8px; font-weight: 500;">${record.trainee_name}</td>
+                    <td style="border: 1px solid #ddd; padding: 8px; text-align: center; font-weight: bold;">${record.pillar1_weighted?.toFixed(1)}/30</td>
+                    <td style="border: 1px solid #ddd; padding: 8px; text-align: center; font-weight: bold;">${record.pillar2_weighted?.toFixed(1)}/30</td>
+                    <td style="border: 1px solid #ddd; padding: 8px; text-align: center; font-weight: bold;">${record.pillar3_weighted?.toFixed(1)}/25</td>
+                    <td style="border: 1px solid #ddd; padding: 8px; text-align: center; font-weight: bold;">${record.pillar4_weighted?.toFixed(1)}/15</td>
+                    <td style="border: 1px solid #ddd; padding: 8px; text-align: center; font-weight: bold; color: #AE491E;">${record.final_score?.toFixed(1)}% - ${record.tier}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        ` : ''}
+
+        <div style="margin-top: 25px; padding: 15px; background-color: #f8f9fa; border-radius: 8px; border: 1px solid #e9ecef;">
+          <h4 style="margin: 0 0 12px 0; color: #AE491E; font-size: 14px;">Performance Tiers</h4>
+          <div style="display: flex; flex-wrap: wrap; gap: 15px; font-size: 10px;">
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span style="padding: 3px 8px; border-radius: 12px; font-weight: bold; font-size: 9px; background: #f3e8ff; color: #7c3aed;">MASTER</span>
+              <span>95+ points</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span style="padding: 3px 8px; border-radius: 12px; font-weight: bold; font-size: 9px; background: #dbeafe; color: #2563eb;">DISTINGUISHED</span>
+              <span>90-94 points</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span style="padding: 3px 8px; border-radius: 12px; font-weight: bold; font-size: 9px; background: #d1fae5; color: #059669;">EXCEPTIONAL</span>
+              <span>80-89 points</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span style="padding: 3px 8px; border-radius: 12px; font-weight: bold; font-size: 9px; background: #fef3c7; color: #d97706;">EXCELLENT</span>
+              <span>70-79 points</span>
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-top: 30px; text-align: center; font-size: 10px; color: #666; border-top: 1px solid #ddd; padding-top: 15px;">
+          NICHE Academy | Total Professionals: ${recordsToExport.length}
+        </div>
+      </div>
+    `
+
+    // Configure PDF options
+    const opt = {
+      margin: [15, 10, 15, 10],
+      filename: `niche-professionals-report${selectedCohortInfo ? `-cohort-${selectedCohortInfo.cohort_number}` : ''}-${new Date().toISOString().split('T')[0]}.pdf`,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { scale: 2, useCORS: true },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    }
+
+    // Generate and download PDF
+    html2pdf().set(opt).from(element).save().then(() => {
+      const cohortName = selectedCohortInfo ? ` for Cohort ${getRomanNumeral(selectedCohortInfo.cohort_number)}` : ''
+      showToast(`PDF downloaded successfully${cohortName}`, 'success')
+      setShowPreview(false)
+      setShowExportModal(false)
+    }).catch((error) => {
+      console.error('PDF generation error:', error)
+      showToast('Failed to generate PDF', 'error')
+    })
+  }
+
   const liveScores = calculatePillarScores()
 
   if (loading) {
@@ -640,11 +914,11 @@ export function NicheGrading() {
           </div>
           <div className="flex gap-3">
             <button
-              onClick={() => setShowReport(true)}
+              onClick={() => setShowExportModal(true)}
               className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2"
             >
               <FileText className="w-4 h-4" />
-              View Report
+              Export Report
             </button>
             <button
               onClick={() => setView('grade')}
@@ -708,64 +982,64 @@ export function NicheGrading() {
                     <table className="min-w-full divide-y divide-gray-200">
                       <thead className="bg-gray-50">
                         <tr>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-16">#</th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cohort</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Phone</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-24">Cohort</th>
+                          <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-48">Actions</th>
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-200">
-                        {filteredTrainees.map((trainee, index) => (
-                          <tr key={trainee.id} className="hover:bg-gray-50">
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{index + 1}</td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="flex items-center">
-                                <div className="text-sm font-medium text-gray-900">{trainee.name}</div>
-                                {trainee.has_grade && (
-                                  <CheckCircle className="w-4 h-4 ml-2 text-green-600" />
-                                )}
-                              </div>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                              {trainee.cohort_number ? getRomanNumeral(trainee.cohort_number) : '-'}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{trainee.role}</td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{trainee.phone || '-'}</td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                                {trainee.status}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                              {!trainee.has_grade ? (
-                                <div className="flex gap-2">
-                                  <button
-                                    onClick={() => handleGradeTrainee(trainee, 'nanny')}
-                                    className="px-3 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700"
-                                  >
-                                    Grade as Nanny
-                                  </button>
-                                  <button
-                                    onClick={() => handleGradeTrainee(trainee, 'house_manager')}
-                                    className="px-3 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700"
-                                  >
-                                    Grade as House Manager
-                                  </button>
+                        {filteredTrainees.map((trainee, index) => {
+                          // Determine if this is a Nanny program based on course name
+                          const isNannyProgram = trainee.course?.toLowerCase().includes('nanny') || 
+                                               trainee.course?.toLowerCase().includes('childcare') ||
+                                               trainee.course?.toLowerCase().includes('child care')
+                          
+                          return (
+                            <tr key={trainee.id} className="hover:bg-gray-50">
+                              <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900 text-center font-medium">{index + 1}</td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <div className="flex items-center">
+                                  <div className="text-sm font-medium text-gray-900">{trainee.name}</div>
+                                  {trainee.has_grade && (
+                                    <CheckCircle className="w-4 h-4 ml-2 text-green-600" title="Already graded" />
+                                  )}
                                 </div>
-                              ) : (
-                                <button
-                                  onClick={() => handleGradeTrainee(trainee, trainee.training_type || 'nanny')}
-                                  className="px-3 py-1 bg-gray-600 text-white rounded text-xs hover:bg-gray-700"
-                                >
-                                  Edit Grade
-                                </button>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
+                              </td>
+                              <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900 text-center font-medium">
+                                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                  {trainee.cohort_number ? getRomanNumeral(trainee.cohort_number) : '-'}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-center">
+                                {!trainee.has_grade ? (
+                                  isNannyProgram ? (
+                                    <button
+                                      onClick={() => handleGradeTrainee(trainee, 'nanny')}
+                                      className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg text-xs hover:bg-blue-700 transition-colors font-medium"
+                                    >
+                                      Grade as Nanny
+                                    </button>
+                                  ) : (
+                                    <button
+                                      onClick={() => handleGradeTrainee(trainee, 'house_manager')}
+                                      className="inline-flex items-center px-4 py-2 bg-green-600 text-white rounded-lg text-xs hover:bg-green-700 transition-colors font-medium"
+                                    >
+                                      Grade as House Manager
+                                    </button>
+                                  )
+                                ) : (
+                                  <button
+                                    onClick={() => handleGradeTrainee(trainee, trainee.training_type || 'nanny')}
+                                    className="inline-flex items-center px-4 py-2 bg-gray-600 text-white rounded-lg text-xs hover:bg-gray-700 transition-colors font-medium"
+                                  >
+                                    Edit Grade
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
+                          )
+                        })}
                       </tbody>
                     </table>
                   </div>
@@ -1082,20 +1356,6 @@ export function NicheGrading() {
                         </table>
                       </div>
                     </div>
-
-                    {/* Notes */}
-                    <div className="mt-6">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Trainer Notes
-                      </label>
-                      <textarea
-                        value={gradeData.notes || ''}
-                        onChange={(e) => setGradeData({ ...gradeData, notes: e.target.value })}
-                        rows={3}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary"
-                        placeholder="Optional notes about the trainee's performance..."
-                      />
-                    </div>
                   </div>
                 </div>
 
@@ -1149,9 +1409,103 @@ export function NicheGrading() {
         />
       )}
 
-      {/* Grading Report Modal */}
-      {showReport && (
-        <GradingReport onClose={() => setShowReport(false)} />
+      {/* Export Modal */}
+      {showExportModal && !showPreview && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-md w-full">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-semibold text-gray-900">Export NICHE Report</h2>
+                <button
+                  onClick={() => setShowExportModal(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                {/* Cohort Selection */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Select Cohort
+                  </label>
+                  <select
+                    value={selectedCohortForExport}
+                    onChange={(e) => setSelectedCohortForExport(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-nestalk-primary"
+                  >
+                    <option value="all">All Cohorts</option>
+                    {cohorts.map(cohort => (
+                      <option key={cohort.id} value={cohort.id}>
+                        Cohort {getRomanNumeral(cohort.cohort_number)} - {cohort.status}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-6 border-t mt-6">
+                <button
+                  onClick={() => setShowExportModal(false)}
+                  className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={generatePreview}
+                  className="flex-1 px-4 py-2 bg-nestalk-primary text-white rounded-lg hover:bg-nestalk-primary/90 transition-colors flex items-center justify-center gap-2"
+                >
+                  <Eye className="w-4 h-4" />
+                  Preview Report
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Preview Modal */}
+      {showPreview && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-6xl w-full h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between p-6 border-b flex-shrink-0">
+              <h2 className="text-xl font-semibold text-gray-900">Report Preview</h2>
+              <button
+                onClick={() => {
+                  setShowPreview(false)
+                  setPreviewContent('')
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-6">
+              <div dangerouslySetInnerHTML={{ __html: previewContent }} />
+            </div>
+            
+            <div className="flex gap-3 p-6 border-t bg-gray-50 flex-shrink-0">
+              <button
+                onClick={() => {
+                  setShowPreview(false)
+                  setPreviewContent('')
+                }}
+                className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+              >
+                Back to Selection
+              </button>
+              <button
+                onClick={downloadPDF}
+                className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
+              >
+                <FileText className="w-4 h-4" />
+                Download PDF
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
     </div>

@@ -1,4 +1,5 @@
 import React from 'react'
+import html2canvas from 'html2canvas'
 
 interface NicheCertificateProps {
   recipientName: string
@@ -69,9 +70,33 @@ const NicheCertificate: React.FC<NicheCertificateProps> = ({
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-2xl w-full max-w-5xl h-[85vh] overflow-auto">
-        {/* Close Button */}
-        <div className="flex justify-end p-4">
+      <div className="bg-white rounded-lg shadow-2xl w-full max-w-6xl h-[90vh] overflow-auto">
+        {/* Close Button and Download */}
+        <div className="flex justify-between p-4">
+          <button
+            onClick={() => {
+              const element = document.getElementById('certificate-content');
+              if (element) {
+                html2canvas(element, {
+                  scale: 2,
+                  useCORS: true,
+                  allowTaint: true,
+                  backgroundColor: '#ffffff'
+                }).then(canvas => {
+                  const link = document.createElement('a');
+                  link.download = `${recipientName.replace(/\s+/g, '_')}_NICHE_Certificate.png`;
+                  link.href = canvas.toDataURL('image/png');
+                  link.click();
+                });
+              }
+            }}
+            className="flex items-center gap-2 bg-[#AE491E] text-white px-4 py-2 rounded-lg hover:bg-[#8B3A18] transition-colors"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            Cert
+          </button>
           <button
             onClick={onClose}
             className="text-gray-500 hover:text-gray-700 text-2xl font-bold"
@@ -80,51 +105,70 @@ const NicheCertificate: React.FC<NicheCertificateProps> = ({
           </button>
         </div>
 
-        {/* Certificate Container */}
-        <div className="px-6 pb-6">
-          <div className="bg-gradient-to-br from-gray-900 to-black rounded-lg shadow-2xl overflow-hidden h-[70vh]">
-            <div className="flex h-full">
+        {/* Certificate Container - Full Landscape Format */}
+        <div className="px-8 pb-8">
+          <div className="bg-white rounded-lg shadow-lg overflow-hidden aspect-[4/3] relative" style={{ minHeight: '600px' }} id="certificate-content">
+            
+            {/* Subtle Background Pattern */}
+            <div className="absolute inset-0 opacity-5">
+              <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                  <pattern id="dots" x="0" y="0" width="40" height="40" patternUnits="userSpaceOnUse">
+                    <circle cx="20" cy="20" r="1" fill="#AE491E" />
+                  </pattern>
+                </defs>
+                <rect width="100%" height="100%" fill="url(#dots)" />
+              </svg>
+            </div>
+            
+            {/* Certificate Content */}
+            <div className="h-full flex flex-col justify-between p-12">
               
-              {/* Left Section - Main Certificate Area (70%) */}
-              <div className="flex-1 bg-gradient-to-br from-gray-900 to-black p-8 relative">
+              {/* Header */}
+              <div className="text-center mb-2">
+                <h1 className="text-5xl font-bold text-gray-800 mb-2" style={{ fontFamily: 'serif' }}>
+                  CERTIFICATE OF MERIT
+                </h1>
+                <p className="text-sm text-gray-600">Nestara Institute of Care and Hospitality Excellence</p>
+              </div>
 
-                {/* Main Heading */}
-                <div className="text-center mb-8">
-                  <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-yellow-600 tracking-widest">
-                    NICHE Academy
-                  </h1>
+              {/* Main Content */}
+              <div className="text-center flex-1 flex flex-col justify-center -mt-8">
+                <p className="text-lg text-gray-700">This honor is proudly bestowed upon</p>
+                
+                <div className="mb-6">
+                  <h3 className="text-4xl font-bold text-gray-800 mb-2" style={{ fontFamily: 'serif' }}>
+                    {recipientName}
+                  </h3>
                 </div>
-
-                {/* Recipient Name */}
-                <div className="text-center mb-6">
-                  <div className="flex items-center justify-center mb-3">
-                    <div className="h-px bg-gradient-to-r from-transparent via-yellow-500 to-transparent flex-1 max-w-16"></div>
-                    <div className="mx-4 text-3xl font-script text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-yellow-600">
-                      {recipientName}
-                    </div>
-                    <div className="h-px bg-gradient-to-r from-transparent via-yellow-500 to-transparent flex-1 max-w-16"></div>
-                  </div>
-                </div>
-
-                {/* Description */}
-                <div className="text-center mb-6">
-                  <p className="text-gray-300 text-sm leading-relaxed max-w-xl mx-auto">
-                    Successfully completed the <span className="text-yellow-400 font-semibold">{course}</span> program 
-                    as a <span className="text-yellow-400 font-semibold">{role}</span> with a final score of{' '}
-                    <span className="text-yellow-400 font-bold">{finalScore.toFixed(1)}%</span> earning the{' '}
-                    <span className="font-bold" style={{ color: getTierColor(tier) }}>{tier}</span> tier.
+                
+                <div className="max-w-4xl mx-auto mb-8">
+                  <p className="text-lg text-gray-700 leading-relaxed">
+                    In recognition of her exceptional dedication and outstanding achievement within the{' '}
+                    <span className="font-semibold text-gray-800">{course}</span>. {recipientName.split(' ')[0]} has met the most stringent requirements of the curriculum, 
+                    exhibiting a level of competency that transcends standard expectations and earns her the rank of{' '}
+                    <span className="font-bold text-xl" style={{ color: '#AE491E' }}>{tier}</span>.
                   </p>
                 </div>
 
-                {/* Pillar Performance Cards */}
-                <div className="mb-4">
-                  <h3 className="text-yellow-400 font-semibold text-sm mb-3 text-center">Performance Breakdown</h3>
-                  <div className="grid grid-cols-4 gap-2">
+                {/* Performance Summary */}
+                <div className="bg-gray-50 rounded-lg p-6 max-w-4xl mx-auto mb-6">
+                  <h4 className="text-lg font-semibold text-gray-800 mb-4">Professional Competency Assessment</h4>
+                  <div className="grid grid-cols-4 gap-4">
                     {pillars.map((pillar, index) => (
-                      <div key={index} className="bg-gray-800 rounded-lg p-2 border border-gray-700 text-center">
-                        <div className="text-gray-300 text-xs font-medium mb-1">{pillar.name}</div>
-                        <div className="text-yellow-400 font-bold text-sm">
+                      <div key={index} className="text-center">
+                        <div className="text-sm font-medium text-gray-600 mb-1">{pillar.name}</div>
+                        <div className="text-lg font-bold text-gray-800">
                           {weightedScores[index]?.toFixed(1)}/{pillar.maxWeighted}
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
+                          <div 
+                            className="h-2 rounded-full" 
+                            style={{ 
+                              width: `${(weightedScores[index] / pillar.maxWeighted) * 100}%`,
+                              backgroundColor: '#AE491E'
+                            }}
+                          ></div>
                         </div>
                       </div>
                     ))}
@@ -132,51 +176,16 @@ const NicheCertificate: React.FC<NicheCertificateProps> = ({
                 </div>
               </div>
 
-              {/* Right Panel - Certificate Details */}
-              <div className="w-64 bg-white p-4 flex flex-col justify-between">
-                
-                {/* Certificate Details */}
-                <div className="bg-white rounded-lg p-4">
-                  <h3 className="text-gray-800 font-bold text-center mb-4 border-b border-gray-200 pb-2">Certificate Details</h3>
-                  
-                  <div className="space-y-3">
-                    <div className="text-center">
-                      <div className="text-gray-600 text-xs uppercase tracking-wide mb-1">Final Score</div>
-                      <div className="text-gray-800 font-bold text-2xl">{finalScore.toFixed(1)}%</div>
-                    </div>
-                    
-                    <div className="text-center border-t border-gray-100 pt-3">
-                      <div className="text-gray-600 text-xs uppercase tracking-wide mb-1">Achievement Tier</div>
-                      <div className="font-bold text-lg" style={{ color: getTierColor(tier) }}>{tier}</div>
-                    </div>
-                    
-                    <div className="text-center border-t border-gray-100 pt-3">
-                      <div className="text-gray-600 text-xs uppercase tracking-wide mb-1">Cohort</div>
-                      <div className="text-gray-800 font-semibold">{cohortNumber}</div>
-                    </div>
-                    
-                    <div className="text-center border-t border-gray-100 pt-3">
-                      <div className="text-gray-600 text-xs uppercase tracking-wide mb-1">Graduation</div>
-                      <div className="text-gray-800 font-semibold text-sm">{graduationDate}</div>
-                    </div>
-                    
-                    <div className="text-center border-t border-gray-100 pt-3">
-                      <div className="text-gray-600 text-xs uppercase tracking-wide mb-1">Program</div>
-                      <div className="text-gray-800 font-semibold text-sm">{course}</div>
-                    </div>
-                    
-                    <div className="text-center border-t border-gray-100 pt-3">
-                      <div className="text-gray-600 text-xs uppercase tracking-wide mb-1">Role</div>
-                      <div className="text-gray-800 font-semibold text-sm">{role}</div>
-                    </div>
-                  </div>
+              {/* Footer */}
+              <div className="flex justify-between items-end">
+                <div className="text-left">
+                  <div className="w-32 h-px bg-gray-400 mb-2"></div>
+                  <div className="text-sm font-medium text-gray-700">Director, Nestara Limited</div>
                 </div>
                 
-                {/* Year Badge */}
-                <div className="text-center mt-4">
-                  <div className="inline-block bg-gradient-to-r from-yellow-400 to-yellow-600 text-white font-bold px-6 py-2 rounded-full shadow-lg">
-                    2025
-                  </div>
+                <div className="text-right">
+                  <div className="w-32 h-px bg-gray-400 mb-2"></div>
+                  <div className="text-sm font-medium text-gray-700">Lead Trainer, NICHE</div>
                 </div>
               </div>
             </div>
