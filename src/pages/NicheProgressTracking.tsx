@@ -12,13 +12,46 @@ interface ProgressAssessment {
   question_1_score: number | null
   question_2_score: number | null
   question_3_score: number | null
-  question_4_score: number | null
-  question_5_score: number | null
   total_score?: number
   instructor_notes: string
   red_flags: string
   improvement_areas: string
-  recommendation: string
+  assessed_by: string
+  grader_comments?: string
+}
+
+interface PracticalAssessment {
+  id?: number
+  trainee_id: string
+  assessment_week: number
+  assessment_date: string
+  // Kitchen
+  oven_score: number | null
+  microwave_score: number | null
+  coffee_maker_score: number | null
+  sandwich_maker_score: number | null
+  toaster_score: number | null
+  fryer_score: number | null
+  blender_score: number | null
+  gas_cooker_score: number | null
+  cylinder_score: number | null
+  // Refrigeration
+  fridge_score: number | null
+  freezer_score: number | null
+  water_purifier_score: number | null
+  water_dispensers_score: number | null
+  // Laundry & Cleaning
+  washing_machines_score: number | null
+  vacuum_cleaner_score: number | null
+  dishwasher_score: number | null
+  // Floor Care
+  polishing_machine_score: number | null
+  floor_scrubber_score: number | null
+  steam_vapour_machine_score: number | null
+  floor_polisher_score: number | null
+  carpet_shampooer_score: number | null
+  bed_vacuum_score: number | null
+  overall_score?: number
   assessed_by: string
 }
 
@@ -49,11 +82,16 @@ const NicheProgressTracking: React.FC = () => {
   const [allCohorts, setAllCohorts] = useState<string[]>([])
   const [questions, setQuestions] = useState<AssessmentQuestion[]>([])
   const [assessments, setAssessments] = useState<ProgressAssessment[]>([])
+  const [practicalAssessments, setPracticalAssessments] = useState<PracticalAssessment[]>([])
   const [selectedCohort, setSelectedCohort] = useState<string>('')
   const [searchTerm, setSearchTerm] = useState<string>('')
   const [selectedTrainee, setSelectedTrainee] = useState<string | null>(null)
   const [selectedDay, setSelectedDay] = useState<number>(1)
+  const [selectedWeek, setSelectedWeek] = useState<number>(1)
+  const [assessmentType, setAssessmentType] = useState<'regular' | 'practical'>('regular')
+  const [isEditMode, setIsEditMode] = useState<boolean>(false)
   const [showAllProgress, setShowAllProgress] = useState<boolean>(false)
+  const [selectedProgressDay, setSelectedProgressDay] = useState<number | 'all'>('all')
   const [selectedProgressTrainee, setSelectedProgressTrainee] = useState<string | null>(null)
   const [showAssessmentForm, setShowAssessmentForm] = useState<boolean>(false)
   const [currentAssessment, setCurrentAssessment] = useState<ProgressAssessment>({
@@ -63,22 +101,81 @@ const NicheProgressTracking: React.FC = () => {
     question_1_score: null,
     question_2_score: null,
     question_3_score: null,
-    question_4_score: null,
-    question_5_score: null,
     instructor_notes: '',
     red_flags: '',
     improvement_areas: '',
-    recommendation: 'Continue',
+    assessed_by: staff?.name || user?.email || 'Unknown',
+    grader_comments: ''
+  })
+  const [currentPracticalAssessment, setCurrentPracticalAssessment] = useState<PracticalAssessment>({
+    trainee_id: '',
+    assessment_week: 1,
+    assessment_date: new Date().toISOString().split('T')[0],
+    oven_score: null,
+    microwave_score: null,
+    coffee_maker_score: null,
+    sandwich_maker_score: null,
+    toaster_score: null,
+    fryer_score: null,
+    blender_score: null,
+    gas_cooker_score: null,
+    cylinder_score: null,
+    fridge_score: null,
+    freezer_score: null,
+    water_purifier_score: null,
+    water_dispensers_score: null,
+    washing_machines_score: null,
+    vacuum_cleaner_score: null,
+    dishwasher_score: null,
+    polishing_machine_score: null,
+    floor_scrubber_score: null,
+    steam_vapour_machine_score: null,
+    floor_polisher_score: null,
+    carpet_shampooer_score: null,
+    bed_vacuum_score: null,
     assessed_by: staff?.name || user?.email || 'Unknown'
   })
   const [loading, setLoading] = useState(false)
 
   const assessmentDays = [
-    { day: 1, label: 'Day 1' },
+    { day: 1, label: 'Baseline Assessment' },
     { day: 3, label: 'Day 3' },
     { day: 5, label: 'Day 5' },
     { day: 10, label: 'Day 10' }
   ]
+
+  const equipmentCategories = {
+    kitchen: [
+      { key: 'oven_score', label: 'Oven' },
+      { key: 'microwave_score', label: 'Microwave' },
+      { key: 'coffee_maker_score', label: 'Coffee Maker' },
+      { key: 'sandwich_maker_score', label: 'Sandwich Maker' },
+      { key: 'toaster_score', label: 'Toaster' },
+      { key: 'fryer_score', label: 'Fryer' },
+      { key: 'blender_score', label: 'Blender' },
+      { key: 'gas_cooker_score', label: 'Gas Cooker' },
+      { key: 'cylinder_score', label: 'Cylinder' }
+    ],
+    refrigeration: [
+      { key: 'fridge_score', label: 'Fridge' },
+      { key: 'freezer_score', label: 'Freezer' },
+      { key: 'water_purifier_score', label: 'Water Purifier' },
+      { key: 'water_dispensers_score', label: 'Water Dispensers' }
+    ],
+    laundryAndCleaning: [
+      { key: 'washing_machines_score', label: 'Washing Machines' },
+      { key: 'vacuum_cleaner_score', label: 'Vacuum Cleaner' },
+      { key: 'dishwasher_score', label: 'Dishwasher' }
+    ],
+    floorCare: [
+      { key: 'polishing_machine_score', label: 'Polishing Machine' },
+      { key: 'floor_scrubber_score', label: 'Floor Scrubber' },
+      { key: 'steam_vapour_machine_score', label: 'Steam Vapour Machine' },
+      { key: 'floor_polisher_score', label: 'Floor Polisher' },
+      { key: 'carpet_shampooer_score', label: 'Carpet Shampooer' },
+      { key: 'bed_vacuum_score', label: 'Bed Vacuum' }
+    ]
+  }
 
   const recommendations = ['Continue', 'Monitor Closely', 'Intervention Required', 'Consider Dismissal']
 
@@ -86,6 +183,7 @@ const NicheProgressTracking: React.FC = () => {
     fetchTrainees()
     fetchQuestions()
     fetchAssessments()
+    fetchPracticalAssessments()
   }, [])
 
   const fetchTrainees = async () => {
@@ -182,36 +280,58 @@ const NicheProgressTracking: React.FC = () => {
     }
   }
 
+  const fetchPracticalAssessments = async () => {
+    const { data, error } = await supabase
+      .from('niche_practical_assessments')
+      .select('*')
+      .order('assessment_date', { ascending: false })
+
+    if (error) {
+      console.error('Error fetching practical assessments:', error)
+    } else {
+      setPracticalAssessments(data || [])
+    }
+  }
+
   const handleAssessTrainee = (traineeId: string) => {
     setSelectedTrainee(traineeId)
     setShowAssessmentForm(true)
+    setIsEditMode(false)
+    setAssessmentType('regular')
+    
+    // Find the next unassessed day
+    const traineeAssessments = assessments.filter(a => a.trainee_id === traineeId)
+    const completedDays = traineeAssessments.map(a => a.assessment_day)
+    const nextUnassessedDay = [1, 3, 5, 10].find(day => !completedDays.includes(day)) || 1
+    
+    setSelectedDay(nextUnassessedDay)
     setCurrentAssessment(prev => ({ ...prev, trainee_id: traineeId, assessed_by: staff?.name || user?.email || 'Unknown' }))
     
-    // Load existing assessment if available
-    const existing = assessments.find(a => a.trainee_id === traineeId && a.assessment_day === selectedDay)
+    // Load existing assessment if available for the selected day
+    const existing = assessments.find(a => a.trainee_id === traineeId && a.assessment_day === nextUnassessedDay)
     if (existing) {
       setCurrentAssessment(existing)
     } else {
       setCurrentAssessment(prev => ({
         ...prev,
         trainee_id: traineeId,
-        assessment_day: selectedDay,
+        assessment_day: nextUnassessedDay,
         question_1_score: null,
         question_2_score: null,
         question_3_score: null,
-        question_4_score: null,
-        question_5_score: null,
         instructor_notes: '',
         red_flags: '',
         improvement_areas: '',
-        recommendation: 'Continue',
-        assessed_by: staff?.name || user?.email || 'Unknown'
+        assessed_by: staff?.name || user?.email || 'Unknown',
+        grader_comments: ''
       }))
+      setIsEditMode(true)
     }
   }
 
   const handleDaySelect = (day: number) => {
     setSelectedDay(day)
+    setIsEditMode(false) // Reset to view mode when switching days
     setCurrentAssessment(prev => ({ ...prev, assessment_day: day, assessed_by: staff?.name || user?.email || 'Unknown' }))
     
     if (selectedTrainee) {
@@ -225,14 +345,32 @@ const NicheProgressTracking: React.FC = () => {
           question_1_score: null,
           question_2_score: null,
           question_3_score: null,
-          question_4_score: null,
-          question_5_score: null,
           instructor_notes: '',
           red_flags: '',
           improvement_areas: '',
-          recommendation: 'Continue',
+          assessed_by: staff?.name || user?.email || 'Unknown',
+          grader_comments: ''
+        }))
+        setIsEditMode(true) // New assessment starts in edit mode
+      }
+    }
+  }
+
+  const handleWeekSelect = (week: number) => {
+    setSelectedWeek(week)
+    setIsEditMode(false)
+    if (selectedTrainee) {
+      const existing = practicalAssessments.find(a => a.trainee_id === selectedTrainee && a.assessment_week === week)
+      if (existing) {
+        setCurrentPracticalAssessment(existing)
+      } else {
+        setCurrentPracticalAssessment(prev => ({
+          ...prev,
+          trainee_id: selectedTrainee,
+          assessment_week: week,
           assessed_by: staff?.name || user?.email || 'Unknown'
         }))
+        setIsEditMode(true)
       }
     }
   }
@@ -244,62 +382,172 @@ const NicheProgressTracking: React.FC = () => {
     }))
   }
 
+  const handlePracticalScoreChange = (equipmentKey: string, score: number) => {
+    setCurrentPracticalAssessment(prev => {
+      const updated = {
+        ...prev,
+        [equipmentKey]: score
+      }
+      
+      // Calculate overall score
+      const allEquipment = Object.values(equipmentCategories).flat()
+      const scores = allEquipment.map(eq => updated[eq.key as keyof PracticalAssessment] as number | null).filter(s => s !== null) as number[]
+      const overallScore = scores.length > 0 ? Math.round(scores.reduce((sum, s) => sum + s, 0) / scores.length) : null
+      
+      return {
+        ...updated,
+        overall_score: overallScore
+      }
+    })
+  }
+
   const handleCloseAllProgress = () => {
     setShowAllProgress(false)
     setSelectedProgressTrainee(null)
+    setSelectedProgressDay('all')
   }
 
   const downloadProgressPDF = async () => {
     try {
-      // Get the content element
-      const element = document.querySelector('.pdf-content') as HTMLElement
-      if (!element) {
-        alert('Content not found for PDF generation')
+      // Get all student sections
+      const studentSections = document.querySelectorAll('.student-section') as NodeListOf<HTMLElement>
+      if (studentSections.length === 0) {
+        alert('No student sections found for PDF generation')
         return
       }
       
-      // Create canvas from HTML
-      const canvas = await html2canvas(element, {
-        scale: 2,
-        useCORS: true,
-        allowTaint: true,
-        backgroundColor: '#ffffff',
-        width: element.scrollWidth,
-        height: element.scrollHeight
+      // Create PDF
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
+        compress: true
       })
       
-      // Create PDF
-      const pdf = new jsPDF('p', 'mm', 'a4')
-      const imgData = canvas.toDataURL('image/png')
+      // A4 dimensions in mm
+      const pdfWidth = 210
+      const pdfHeight = 297
+      const margin = 10
+      const contentWidth = pdfWidth - (margin * 2)
+      const contentHeight = pdfHeight - (margin * 2)
       
-      // Calculate dimensions for A4
-      const pdfWidth = 210 // A4 width in mm
-      const pdfHeight = 297 // A4 height in mm
-      const imgWidth = pdfWidth - 20 // margins
-      const imgHeight = (canvas.height * imgWidth) / canvas.width
+      let currentY = margin
+      let isFirstPage = true
       
-      let heightLeft = imgHeight
-      let position = 10 // top margin
-      
-      // Add first page
-      pdf.addImage(imgData, 'PNG', 10, position, imgWidth, imgHeight)
-      heightLeft -= pdfHeight - 20
-      
-      // Add additional pages if needed
-      while (heightLeft >= 0) {
-        position = heightLeft - imgHeight + 10
-        pdf.addPage()
-        pdf.addImage(imgData, 'PNG', 10, position, imgWidth, imgHeight)
-        heightLeft -= pdfHeight - 20
+      // Add header only to first page
+      if (isFirstPage) {
+        pdf.setFontSize(16)
+        pdf.setFont('helvetica', 'bold')
+        pdf.text('NICHE Progress Tracking Report', pdfWidth / 2, margin + 10, { align: 'center' })
+        pdf.setFontSize(10)
+        pdf.setFont('helvetica', 'normal')
+        pdf.text('All Assessment Days (Day 1, 3, 5, 10)', pdfWidth / 2, margin + 18, { align: 'center' })
+        currentY = margin + 30
+        isFirstPage = false
       }
       
-      // Download the PDF
-      const fileName = `NICHE_Progress_Report_${new Date().toISOString().split('T')[0]}.pdf`
+      // Process each student section
+      for (let i = 0; i < studentSections.length; i++) {
+        const section = studentSections[i]
+        
+        // Temporarily make section visible and capture its dimensions
+        const originalOverflow = section.style.overflow
+        const originalMaxHeight = section.style.maxHeight
+        section.style.overflow = 'visible'
+        section.style.maxHeight = 'none'
+        
+        // Wait for layout to settle
+        await new Promise(resolve => setTimeout(resolve, 50))
+        
+        // Create canvas for this section
+        const canvas = await html2canvas(section, {
+          scale: 2,
+          useCORS: true,
+          allowTaint: true,
+          backgroundColor: '#ffffff',
+          width: section.scrollWidth,
+          height: section.scrollHeight,
+          logging: false,
+          imageTimeout: 0,
+          removeContainer: true,
+          scrollX: 0,
+          scrollY: 0
+        })
+        
+        // Restore original styles
+        section.style.overflow = originalOverflow
+        section.style.maxHeight = originalMaxHeight
+        
+        // Calculate section dimensions in PDF units
+        const sectionWidth = contentWidth
+        const sectionHeight = (canvas.height * contentWidth) / canvas.width
+        
+        // Check if section fits on current page
+        const spaceRemaining = pdfHeight - currentY - margin
+        
+        // If section doesn't fit and we're not on a fresh page, start new page
+        if (sectionHeight > spaceRemaining && currentY > margin) {
+          pdf.addPage()
+          currentY = margin
+        }
+        
+        // If section is too tall for a single page, we need to handle it differently
+        if (sectionHeight > contentHeight) {
+          // For very tall sections, split them but try to keep logical breaks
+          let remainingHeight = sectionHeight
+          let sourceY = 0
+          
+          while (remainingHeight > 0) {
+            const availableHeight = pdfHeight - currentY - margin
+            const pageHeight = Math.min(remainingHeight, availableHeight)
+            const sourceHeight = (pageHeight * canvas.height) / sectionHeight
+            
+            // Create canvas for this page portion
+            const pageCanvas = document.createElement('canvas')
+            pageCanvas.width = canvas.width
+            pageCanvas.height = sourceHeight
+            const pageCtx = pageCanvas.getContext('2d')
+            
+            if (pageCtx) {
+              pageCtx.drawImage(
+                canvas,
+                0, sourceY,
+                canvas.width, sourceHeight,
+                0, 0,
+                canvas.width, sourceHeight
+              )
+              
+              const pageImgData = pageCanvas.toDataURL('image/jpeg', 0.95)
+              pdf.addImage(pageImgData, 'JPEG', margin, currentY, sectionWidth, pageHeight)
+            }
+            
+            sourceY += sourceHeight
+            remainingHeight -= pageHeight
+            
+            if (remainingHeight > 0) {
+              pdf.addPage()
+              currentY = margin
+            } else {
+              currentY += pageHeight + 5 // Add small gap after section
+            }
+          }
+        } else {
+          // Section fits as a whole unit
+          const imgData = canvas.toDataURL('image/jpeg', 0.95)
+          pdf.addImage(imgData, 'JPEG', margin, currentY, sectionWidth, sectionHeight)
+          currentY += sectionHeight + 5 // Add small gap after section
+        }
+      }
+      
+      // Generate filename
+      const cohortText = selectedCohort ? selectedCohort.replace(/[^a-zA-Z0-9]/g, '_') : 'All_Cohorts'
+      const fileName = `NICHE_Progress_All_Days_${cohortText}_${new Date().toISOString().split('T')[0]}.pdf`
+      
       pdf.save(fileName)
       
     } catch (error) {
       console.error('Error generating PDF:', error)
-      alert('Error generating PDF. Please try again or use browser print instead.')
+      alert('Error generating PDF. Please try again.')
     }
   }
 
@@ -311,20 +559,54 @@ const NicheProgressTracking: React.FC = () => {
 
     setLoading(true)
     
-    const { data, error } = await supabase
-      .from('niche_progress_assessments')
-      .upsert([currentAssessment], { 
-        onConflict: 'trainee_id,assessment_day',
-        ignoreDuplicates: false 
-      })
-      .select()
+    if (assessmentType === 'regular') {
+      // Save regular assessment
+      const { total_score, id, ...assessmentData } = currentAssessment
+      const dataToSave = {
+        ...assessmentData,
+        assessed_by: staff?.name || user?.email || 'Unknown'
+      }
+      
+      const { data, error } = await supabase
+        .from('niche_progress_assessments')
+        .upsert([dataToSave], { 
+          onConflict: 'trainee_id,assessment_day',
+          ignoreDuplicates: false 
+        })
+        .select()
 
-    if (error) {
-      console.error('Error saving assessment:', error)
-      alert('Error saving assessment')
+      if (error) {
+        console.error('Error saving assessment:', error)
+        alert('Error saving assessment')
+      } else {
+        alert('Assessment saved successfully')
+        setIsEditMode(false)
+        fetchAssessments()
+      }
     } else {
-      alert('Assessment saved successfully')
-      fetchAssessments()
+      // Save practical assessment
+      const { id, ...practicalData } = currentPracticalAssessment
+      const dataToSave = {
+        ...practicalData,
+        assessed_by: staff?.name || user?.email || 'Unknown'
+      }
+      
+      const { data, error } = await supabase
+        .from('niche_practical_assessments')
+        .upsert([dataToSave], { 
+          onConflict: 'trainee_id,assessment_week',
+          ignoreDuplicates: false 
+        })
+        .select()
+
+      if (error) {
+        console.error('Error saving practical assessment:', error)
+        alert('Error saving practical assessment')
+      } else {
+        alert('Practical assessment saved successfully')
+        setIsEditMode(false)
+        fetchPracticalAssessments()
+      }
     }
     
     setLoading(false)
@@ -484,76 +766,152 @@ const NicheProgressTracking: React.FC = () => {
         </div>
       ) : showAllProgress ? (
         // All Progress Modal
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-6xl w-full mx-4 max-h-[90vh] overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between print:hidden">
-              <h3 className="text-lg font-semibold text-gray-900">All Progress Overview</h3>
-              <button
-                onClick={handleCloseAllProgress}
-                className="text-gray-500 hover:text-gray-700 text-xl font-bold w-8 h-8 flex items-center justify-center"
-              >
-                ×
-              </button>
+        <div className="fixed inset-0 bg-white z-50">
+          <div className="h-full w-full flex flex-col">
+            <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between print:hidden flex-shrink-0">
+              <div className="flex items-center gap-4">
+                <h3 className="text-lg font-semibold text-gray-900">Progress Overview</h3>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={handleCloseAllProgress}
+                  className="text-gray-500 hover:text-gray-700 text-xl font-bold w-8 h-8 flex items-center justify-center"
+                >
+                  ×
+                </button>
+              </div>
             </div>
-            {/* A4 Format Content */}
-            <div className="overflow-y-auto max-h-[calc(95vh-80px)] print:overflow-visible print:max-h-none p-6 print:p-0">
-              <div className="p-8 bg-white print:p-0 pdf-content border border-gray-300" style={{ width: '210mm', minHeight: '297mm', margin: '0 auto' }}>
+            {/* Full Page Content */}
+            <div className="flex-1 overflow-y-auto p-6 print:p-0">
+              <div className="max-w-7xl mx-auto">
                 {/* PDF Header */}
                 <div className="text-center mb-8 print:mb-6">
                   <h1 className="text-2xl font-bold text-gray-900 mb-2">NICHE Progress Tracking Report</h1>
-                  <p className="text-gray-600">Day 1 (Mon), Day 3 (Wed), Day 5 (Fri), Day 10 (Wed)</p>
-                  <div className="mt-4 text-sm text-gray-500">
-                    Total Trainees: {filteredTrainees.length} | Cohort: {selectedCohort || 'All Cohorts'}
-                  </div>
+                  <p className="text-gray-600">
+                    {selectedProgressDay === 'all' 
+                      ? 'All Assessment Days (Day 1, 3, 5, 10)'
+                      : selectedProgressDay === 1 
+                        ? 'Day 1 (MON) Assessment Details'
+                        : `Day ${selectedProgressDay} Assessment Details`
+                    }
+                  </p>
                 </div>
 
-                {/* Detailed Breakdown */}
-                <div className="space-y-6">
+                {/* Chart Visualization */}
+                <div className="space-y-8">
                   {filteredTrainees.map((trainee, traineeIndex) => {
                     const traineeAssessments = assessments.filter(a => a.trainee_id === trainee.id)
                     
+                    // Skip trainees with no assessments if viewing specific day
+                    if (selectedProgressDay !== 'all' && !traineeAssessments.some(a => a.assessment_day === selectedProgressDay)) {
+                      return null
+                    }
+                    
+                    // Get all unique pillars from questions
+                    const allPillars = [...new Set(questions.map(q => q.pillar_focus))]
+                    const days = selectedProgressDay === 'all' ? [1, 3, 5, 10] : [selectedProgressDay as number]
+                    
                     return (
-                      <div key={trainee.id} className="border border-gray-300 rounded-lg p-4 mb-4 break-inside-avoid">
-                        <div className="mb-3">
-                          <h3 className="text-base font-semibold text-gray-900">{trainee.name}</h3>
+                      <div key={trainee.id} className="student-section border border-gray-300 rounded-lg p-6 mb-6 break-inside-avoid">
+                        <div className="mb-6">
+                          <h3 className="text-lg font-semibold text-gray-900">{traineeIndex + 1}. {trainee.name}</h3>
                           <p className="text-sm text-gray-600">{trainee.course || trainee.role || 'N/A'}</p>
+                          {trainee.niche_cohorts && (
+                            <p className="text-xs text-gray-500">Cohort {trainee.niche_cohorts.cohort_number}</p>
+                          )}
                         </div>
                         
-                        <div className="grid grid-cols-2 gap-4">
-                          {[1, 3, 5, 10].map(day => {
-                            const dayAssessment = traineeAssessments.find(a => a.assessment_day === day)
-                            const dayQuestions = questions.filter(q => q.assessment_day === day)
-                            
-                            return (
-                              <div key={day} className="border border-gray-200 rounded p-3">
-                                <h4 className="font-medium text-gray-900 mb-2 text-sm">Day {day} {day === 1 ? '(Mon)' : day === 3 ? '(Wed)' : day === 5 ? '(Fri)' : '(Wed)'}</h4>
-                                {dayAssessment ? (
-                                  <div className="space-y-1">
-                                    {dayQuestions.map((question) => {
-                                      const score = dayAssessment[`question_${question.question_number}_score` as keyof ProgressAssessment] as number | null
-                                      return (
-                                        <div key={question.id} className="text-xs">
-                                          <div className="text-gray-600">{question.pillar_focus}</div>
-                                          <div className="font-medium">Score: {score || 'N/A'}/5</div>
-                                        </div>
-                                      )
-                                    })}
-                                    <div className="mt-2 pt-2 border-t border-gray-200">
-                                      <div className="text-xs font-medium">
-                                        Recommendation: {dayAssessment.recommendation}
-                                      </div>
-                                    </div>
-                                  </div>
-                                ) : (
-                                  <div className="text-gray-400 text-xs">No assessment completed</div>
-                                )}
+                        {/* Chart Grid */}
+                        <div className="bg-gray-50 p-4 rounded-lg">
+                          <div className="grid grid-cols-5 gap-2 mb-4">
+                            {/* Header Row */}
+                            <div className="text-xs font-medium text-gray-600 text-center">Pillar</div>
+                            {days.map(day => (
+                              <div key={day} className="text-xs font-medium text-gray-600 text-center">
+                                Day {day}
                               </div>
-                            )
-                          })}
+                            ))}
+                            
+                            {/* Data Rows */}
+                            {allPillars.map(pillar => {
+                              return (
+                                <React.Fragment key={pillar}>
+                                  <div className="text-xs font-medium text-gray-700 py-2 pr-2 text-right">
+                                    {pillar}
+                                  </div>
+                                  {days.map(day => {
+                                    const dayAssessment = traineeAssessments.find(a => a.assessment_day === day)
+                                    const dayQuestion = questions.find(q => q.assessment_day === day && q.pillar_focus === pillar)
+                                    const score = dayQuestion && dayAssessment 
+                                      ? dayAssessment[`question_${dayQuestion.question_number}_score` as keyof ProgressAssessment] as number | null
+                                      : null
+                                    
+                                    return (
+                                      <div key={`${pillar}-${day}`} className="flex items-center justify-center py-2">
+                                        <div className={`rounded-full text-xs font-bold ${
+                                          !score ? 'bg-gray-200 text-gray-400' :
+                                          score <= 2 ? 'bg-red-500 text-white' :
+                                          score === 3 ? 'bg-yellow-500 text-white' :
+                                          'bg-green-500 text-white'
+                                        }`} style={{
+                                          width: '32px',
+                                          height: '32px',
+                                          lineHeight: '32px',
+                                          textAlign: 'center',
+                                          display: 'inline-block'
+                                        }}>
+                                          {score || '-'}
+                                        </div>
+                                      </div>
+                                    )
+                                  })}
+                                </React.Fragment>
+                              )
+                            })}
+                          </div>
+                          
+                          {/* Legend */}
+                          <div className="flex justify-center gap-4 text-xs text-gray-600 mt-4 pt-4 border-t border-gray-200">
+                            <div className="flex items-center gap-1">
+                              <div className="w-3 h-3 bg-red-500 rounded-full"></div>
+                              <span>1-2 (Needs Work)</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
+                              <span>3 (Developing)</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+                              <span>4-5 (Good/Strong)</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <div className="w-3 h-3 bg-gray-200 rounded-full"></div>
+                              <span>Not Assessed</span>
+                            </div>
+                          </div>
+                          
+                          {/* Comments Section */}
+                          {traineeAssessments.some(a => a.grader_comments) && (
+                            <div className="mt-4 pt-4 border-t border-gray-200">
+                              <h4 className="text-sm font-medium text-gray-700 mb-2">Comments:</h4>
+                              <div className="space-y-1">
+                                {days.map(day => {
+                                  const dayAssessment = traineeAssessments.find(a => a.assessment_day === day)
+                                  if (!dayAssessment?.grader_comments) return null
+                                  return (
+                                    <div key={day} className="text-xs">
+                                      <span className="font-medium text-gray-600">Day {day}: </span>
+                                      <span className="text-gray-600">{dayAssessment.grader_comments}</span>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </div>
                     )
-                  })}
+                  }).filter(Boolean)}
                 </div>
 
                 {/* Footer */}
@@ -571,71 +929,279 @@ const NicheProgressTracking: React.FC = () => {
             <h3 className="text-lg font-semibold text-gray-900">
               Assessment for {selectedTraineeData?.name}
             </h3>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setShowAssessmentForm(false)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                ← Back to List
+              </button>
+            </div>
+          </div>
+          
+          {/* Assessment Type Tabs */}
+          <div className="flex bg-gray-100 p-1 rounded-lg mb-6">
             <button
-              onClick={() => setShowAssessmentForm(false)}
-              className="text-gray-500 hover:text-gray-700"
+              onClick={() => {
+                setAssessmentType('regular')
+                setIsEditMode(false)
+              }}
+              className={`px-3 py-1 rounded text-sm transition-colors ${
+                assessmentType === 'regular'
+                  ? 'bg-white text-[#AE491E] shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
             >
-              ← Back to List
+              Regular Assessment
+            </button>
+            <button
+              onClick={() => {
+                setAssessmentType('practical')
+                setIsEditMode(false)
+                
+                // Find the next unassessed week for practical assessments
+                const traineePracticalAssessments = practicalAssessments.filter(a => a.trainee_id === selectedTrainee)
+                const completedWeeks = traineePracticalAssessments.map(a => a.assessment_week)
+                const nextUnassessedWeek = [1, 2].find(week => !completedWeeks.includes(week)) || 1
+                
+                setSelectedWeek(nextUnassessedWeek)
+                
+                // Load practical assessment for the next unassessed week
+                const existing = practicalAssessments.find(a => a.trainee_id === selectedTrainee && a.assessment_week === nextUnassessedWeek)
+                if (existing) {
+                  setCurrentPracticalAssessment(existing)
+                } else {
+                  setCurrentPracticalAssessment(prev => ({
+                    ...prev,
+                    trainee_id: selectedTrainee || '',
+                    assessment_week: nextUnassessedWeek,
+                    assessed_by: staff?.name || user?.email || 'Unknown'
+                  }))
+                  setIsEditMode(true)
+                }
+              }}
+              className={`px-3 py-1 rounded text-sm transition-colors ${
+                assessmentType === 'practical'
+                  ? 'bg-white text-[#AE491E] shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Practical Assessment
             </button>
           </div>
                 
-                {/* Day Selection Tabs */}
-                <div className="border-b border-gray-200 mb-6">
-                  <nav className="-mb-px flex space-x-8">
-                    {assessmentDays.map(({ day, label }) => (
-                      <button
-                        key={day}
-                        onClick={() => handleDaySelect(day)}
-                        className={`py-2 px-1 border-b-2 font-medium text-sm transition-colors ${
-                          selectedDay === day
-                            ? 'border-[#AE491E] text-[#AE491E]'
-                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                        }`}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </nav>
-                </div>
+                {/* Day Selection Tabs - Only show for regular assessments */}
+                {assessmentType === 'regular' && (
+                  <div className="border-b border-gray-200 mb-6">
+                    <nav className="-mb-px flex space-x-8">
+                      {assessmentDays.map(({ day, label }) => (
+                        <button
+                          key={day}
+                          onClick={() => handleDaySelect(day)}
+                          className={`py-2 px-1 border-b-2 font-medium text-sm transition-colors ${
+                            selectedDay === day
+                              ? 'border-[#AE491E] text-[#AE491E]'
+                              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </nav>
+                  </div>
+                )}
 
                 {/* Assessment Questions */}
-                <div className="space-y-4 mb-6">
-                  {dayQuestions.map((question, index) => (
-                    <div key={question.id} className="border rounded-lg p-4">
-                      <div className="mb-2">
-                        <span className="text-sm font-medium text-[#AE491E]">
-                          {question.pillar_focus}
-                        </span>
+                {assessmentType === 'regular' ? (
+                  <div className="space-y-4 mb-6">
+                    {dayQuestions.map((question, index) => (
+                      <div key={question.id} className="border rounded-lg p-4">
+                        <div className="mb-2">
+                          <span className="text-sm font-medium text-[#AE491E]">
+                            {question.pillar_focus}
+                          </span>
+                        </div>
+                        <div className="mb-3 text-gray-900">{question.question_text}</div>
+                        <div className="flex gap-2">
+                          {[1, 2, 3, 4, 5].map(score => (
+                            <button
+                              key={score}
+                              onClick={() => isEditMode ? handleScoreChange(question.question_number, score) : null}
+                              disabled={!isEditMode}
+                              className={`w-10 h-10 rounded-full border-2 font-medium transition-colors ${
+                                currentAssessment[`question_${question.question_number}_score` as keyof ProgressAssessment] === score
+                                  ? 'border-[#AE491E] bg-[#AE491E] text-white'
+                                  : isEditMode 
+                                    ? 'border-gray-300 text-gray-600 hover:border-gray-400 cursor-pointer'
+                                    : 'border-gray-200 text-gray-400 cursor-not-allowed'
+                              }`}
+                            >
+                              {score}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="text-xs text-gray-500 mt-2">
+                          1=Concerning • 2=Needs Work • 3=Developing • 4=Good • 5=Strong
+                        </div>
                       </div>
-                      <div className="mb-3 text-gray-900">{question.question_text}</div>
-                      <div className="flex gap-2">
-                        {[1, 2, 3, 4, 5].map(score => (
-                          <button
-                            key={score}
-                            onClick={() => handleScoreChange(question.question_number, score)}
-                            className={`w-10 h-10 rounded-full border-2 font-medium transition-colors ${
-                              currentAssessment[`question_${question.question_number}_score` as keyof ProgressAssessment] === score
-                                ? 'border-[#AE491E] bg-[#AE491E] text-white'
-                                : 'border-gray-300 text-gray-600 hover:border-gray-400'
-                            }`}
-                          >
-                            {score}
-                          </button>
-                        ))}
-                      </div>
-                      <div className="text-xs text-gray-500 mt-2">
-                        1=Concerning • 2=Needs Work • 3=Developing • 4=Good • 5=Strong
-                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="space-y-6 mb-6">
+                    {/* Week Selection */}
+                    <div className="flex gap-2 mb-4">
+                      <button
+                        onClick={() => handleWeekSelect(1)}
+                        className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                          selectedWeek === 1
+                            ? 'bg-[#AE491E] text-white'
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        }`}
+                      >
+                        Week 1
+                      </button>
+                      <button
+                        onClick={() => handleWeekSelect(2)}
+                        className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                          selectedWeek === 2
+                            ? 'bg-[#AE491E] text-white'
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        }`}
+                      >
+                        Week 2
+                      </button>
                     </div>
-                  ))}
+
+                    {/* Equipment Categories */}
+                    {Object.entries(equipmentCategories).map(([categoryKey, equipment]) => (
+                      <div key={categoryKey} className="border rounded-lg p-4">
+                        <h4 className="text-sm font-medium text-[#AE491E] mb-3 capitalize">
+                          {categoryKey.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}
+                        </h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {equipment.map(item => (
+                            <div key={item.key} className="flex items-center justify-between">
+                              <span className="text-sm text-gray-700">{item.label}</span>
+                              <div className="flex gap-1">
+                                {[1, 2, 3, 4, 5].map(score => (
+                                  <button
+                                    key={score}
+                                    onClick={() => isEditMode ? handlePracticalScoreChange(item.key, score) : null}
+                                    disabled={!isEditMode}
+                                    className={`w-8 h-8 rounded-full border font-medium text-xs transition-colors ${
+                                      currentPracticalAssessment[item.key as keyof PracticalAssessment] === score
+                                        ? 'border-[#AE491E] bg-[#AE491E] text-white'
+                                        : isEditMode 
+                                          ? 'border-gray-300 text-gray-600 hover:border-gray-400 cursor-pointer'
+                                          : 'border-gray-200 text-gray-400 cursor-not-allowed'
+                                    }`}
+                                  >
+                                    {score}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+
+                    {/* Overall Score Display */}
+                    {currentPracticalAssessment.overall_score && (
+                      <div className="bg-gray-50 p-4 rounded-lg">
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium text-gray-900">Overall Score:</span>
+                          <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                            currentPracticalAssessment.overall_score <= 2 ? 'bg-red-100 text-red-800' :
+                            currentPracticalAssessment.overall_score === 3 ? 'bg-yellow-100 text-yellow-800' :
+                            'bg-green-100 text-green-800'
+                          }`}>
+                            {currentPracticalAssessment.overall_score}/5
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="text-xs text-gray-500 mt-2">
+                      1=Cannot operate • 2=Basic awareness • 3=Can operate with guidance • 4=Independent operation • 5=Expert level
+                    </div>
+                  </div>
+                )}
+
+                {/* Grader Comments - Only for regular assessments */}
+                {assessmentType === 'regular' && (
+                  <div className="grid grid-cols-1 gap-4 mb-6">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Grader Comments
+                      </label>
+                      <textarea
+                        value={currentAssessment.grader_comments || ''}
+                        onChange={(e) => isEditMode ? setCurrentAssessment(prev => ({ ...prev, grader_comments: e.target.value })) : null}
+                        disabled={!isEditMode}
+                        placeholder="Provide specific feedback on the trainee's performance, strengths, and areas for improvement..."
+                        className={`w-full p-2 border border-gray-300 rounded-lg ${
+                          isEditMode 
+                            ? 'bg-white cursor-text' 
+                            : 'bg-gray-100 cursor-not-allowed text-gray-500'
+                        }`}
+                        rows={4}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Edit/Cancel buttons - Bottom right of entire form */}
+                <div className="flex justify-end gap-3 mb-6">
+                  {assessmentType === 'regular' && assessments.find(a => a.trainee_id === selectedTrainee && a.assessment_day === selectedDay) && !isEditMode && (
+                    <button
+                      onClick={() => setIsEditMode(true)}
+                      className="bg-blue-600 text-white px-3 py-1 rounded-lg text-sm hover:bg-blue-700 transition-colors"
+                    >
+                      Edit
+                    </button>
+                  )}
+                  {assessmentType === 'practical' && practicalAssessments.find(a => a.trainee_id === selectedTrainee && a.assessment_week === selectedWeek) && !isEditMode && (
+                    <button
+                      onClick={() => setIsEditMode(true)}
+                      className="bg-blue-600 text-white px-3 py-1 rounded-lg text-sm hover:bg-blue-700 transition-colors"
+                    >
+                      Edit
+                    </button>
+                  )}
+                  {isEditMode && (
+                    <button
+                      onClick={() => {
+                        setIsEditMode(false)
+                        if (assessmentType === 'regular') {
+                          const existing = assessments.find(a => a.trainee_id === selectedTrainee && a.assessment_day === selectedDay)
+                          if (existing) {
+                            setCurrentAssessment(existing)
+                          }
+                        } else {
+                          const existing = practicalAssessments.find(a => a.trainee_id === selectedTrainee && a.assessment_week === selectedWeek)
+                          if (existing) {
+                            setCurrentPracticalAssessment(existing)
+                          }
+                        }
+                      }}
+                      className="bg-gray-600 text-white px-3 py-1 rounded-lg text-sm hover:bg-gray-700 transition-colors"
+                    >
+                      Cancel Edit
+                    </button>
+                  )}
                 </div>
 
                 <button
                   onClick={saveAssessment}
-                  disabled={loading}
-                  className="w-full bg-[#AE491E] text-white py-2 px-4 rounded-lg hover:bg-[#8B3A18] transition-colors disabled:opacity-50"
+                  disabled={loading || !isEditMode}
+                  className={`w-full py-2 px-4 rounded-lg transition-colors ${
+                    isEditMode 
+                      ? 'bg-[#AE491E] text-white hover:bg-[#8B3A18] disabled:opacity-50'
+                      : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  }`}
                 >
-                  {loading ? 'Saving...' : 'Save Assessment'}
+                  {loading ? 'Saving...' : isEditMode ? `Save ${assessmentType === 'regular' ? 'Assessment' : 'Practical Assessment'}` : 'Assessment Locked'}
                 </button>
         </div>
       ) : null}
