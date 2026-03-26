@@ -4,21 +4,11 @@ import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { ToastProvider } from './contexts/ToastContext'
 import { Layout } from './components/Layout'
 import { LoginForm } from './components/auth/LoginForm'
-import { Dashboard } from './pages/Dashboard'
-import { Candidates } from './pages/Candidates'
-import { Leads } from './pages/Leads'
-import { Clients } from './pages/Clients'
-import { TrainingLeads } from './pages/TrainingLeads'
-import { Interviews } from './pages/Interviews'
+import { NicheCandidates } from './pages/NicheCandidates'
+import { NicheInterviews } from './pages/NicheInterviews'
 import { Updates } from './pages/Updates'
 import { Reminders } from './pages/Reminders'
 import { MeetingNotes } from './pages/MeetingNotes'
-import { Reporting } from './pages/Reporting'
-import { DataEntry } from './pages/reporting/DataEntry'
-import { Reports as ReportingReports } from './pages/reporting/Reports'
-import { Reports } from './pages/Reports'
-import { Dashboards } from './pages/reporting/Dashboards'
-import { Insights } from './pages/Insights'
 import { Niche } from './pages/Niche'
 import { NicheCourses } from './pages/NicheCourses'
 import { NicheTraining } from './pages/NicheTraining'
@@ -26,15 +16,10 @@ import { NicheFees } from './pages/NicheFees'
 import { NicheTimetable } from './pages/NicheTimetable'
 import { NicheCohorts } from './pages/NicheCohorts'
 import { NicheGrading } from './pages/NicheGrading'
-import { Vetting } from './pages/Vetting'
-import { Staff } from './pages/Staff'
-import { LeadTracker } from './pages/LeadTracker'
-import { ConvertedClients } from './pages/ConvertedClients'
 import { Blacklisted } from './pages/Blacklisted'
 import { SMSManagement } from './pages/SMSManagement'
 import { NestaraAI } from './pages/NestaraAI'
 import { CreateProfile } from './pages/CreateProfile'
-import { Placements } from './pages/Placements'
 import { Calendar } from './pages/Calendar'
 import { GetMatch } from './pages/GetMatch'
 import NicheProgressTracking from './pages/NicheProgressTracking'
@@ -68,35 +53,25 @@ function AppRoutes() {
     <Routes>
       <Route path="/createprofile" element={<CreateProfile />} />
       <Route path="/" element={<ProtectedLayout />}>
-        <Route index element={<Dashboard />} />
-        <Route path="candidates" element={<Candidates />} />
+        <Route index element={<Niche />} />
+        <Route path="niche-candidates" element={<NicheCandidates />} />
+        <Route path="niche-interviews" element={<NicheInterviews />} />
         <Route path="niche" element={<Niche />} />
         <Route path="niche-courses" element={<NicheCourses />} />
         <Route path="niche-cohorts" element={<NicheCohorts />} />
-        <Route path="interviews" element={<Interviews />} />
         <Route path="niche-training" element={<NicheTraining />} />
         <Route path="niche-fees" element={<NicheFees />} />
         <Route path="niche-timetable" element={<NicheTimetable />} />
         <Route path="niche-grading" element={<NicheGrading />} />
         <Route path="niche-progress" element={<NicheProgressTracking />} />
         <Route path="get-match" element={<GetMatch />} />
-        <Route path="insights" element={<Insights />} />
         <Route path="calendar" element={<Calendar />} />
         <Route path="sms" element={<SMSManagement />} />
         <Route path="nestara-ai" element={<NestaraAI />} />
         <Route path="updates" element={<Updates />} />
         <Route path="reminders" element={<Reminders />} />
         <Route path="meeting-notes" element={<MeetingNotes />} />
-        <Route path="reports" element={<Reports />} />
-        <Route path="reporting" element={<Reporting />}>
-          <Route index element={<DataEntry />} />
-          <Route path="data-entry" element={<DataEntry />} />
-          <Route path="reports" element={<ReportingReports />} />
-          <Route path="dashboards" element={<Dashboards />} />
-        </Route>
-        <Route path="staff" element={<Staff />} />
         <Route path="blacklisted" element={<Blacklisted />} />
-        <Route path="vetting" element={<Vetting />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

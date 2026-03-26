@@ -82,7 +82,7 @@ export function NicheFees() {
   const { user, staff } = useAuth()
   const { showToast } = useToast()
 
-  const statusOptions = ['all', 'Pending', 'Partial', 'Paid', 'Overdue']
+  const statusOptions = ['all', 'Pending', 'Paid']
 
   useEffect(() => {
     loadFees()
@@ -153,6 +153,19 @@ export function NicheFees() {
 
       if (feesError) throw feesError
 
+      // Get all payments for existing fees
+      const feeIds = existingFees?.map(f => f.id) || []
+      const { data: paymentsData } = await supabase
+        .from('niche_payments')
+        .select('fee_id, amount')
+        .in('fee_id', feeIds)
+
+      // Calculate total payments per fee
+      const paymentTotals = paymentsData?.reduce((acc, payment) => {
+        acc[payment.fee_id] = (acc[payment.fee_id] || 0) + payment.amount
+        return acc
+      }, {} as Record<string, number>) || {}
+
       // Create fee records for students without existing records
       const existingTrainingIds = existingFees?.map(f => f.training_id) || []
       const studentsNeedingFees = activeStudents?.filter(s => !existingTrainingIds.includes(s.id)) || []
@@ -187,9 +200,9 @@ export function NicheFees() {
         if (updatedError) throw updatedError
         
         const formattedFees = updatedFees?.map(fee => {
-          const balance = fee.course_fee - ((fee as any).sponsored_amount || 0) - fee.total_paid
-          const paymentStatus = balance <= 0 ? 'Paid' : 
-                               fee.total_paid > 0 ? 'Partial' : 'Pending'
+          const actualPayments = paymentTotals[fee.id] || 0
+          const balance = fee.total_paid - ((fee as any).sponsored_amount || 0) - actualPayments
+          const paymentStatus = actualPayments >= fee.course_fee ? 'Paid' : 'Pending'
           
           return {
             ...fee,
@@ -201,16 +214,17 @@ export function NicheFees() {
             training_type: fee.niche_training.training_type,
             balance_due: balance,
             payment_status: paymentStatus,
-            training_status: fee.niche_training.status
+            training_status: fee.niche_training.status,
+            actual_payments: actualPayments
           }
         }) || []
 
         setFees(formattedFees)
       } else {
         const formattedFees = existingFees?.map(fee => {
-          const balance = fee.course_fee - ((fee as any).sponsored_amount || 0) - fee.total_paid
-          const paymentStatus = balance <= 0 ? 'Paid' : 
-                               fee.total_paid > 0 ? 'Partial' : 'Pending'
+          const actualPayments = paymentTotals[fee.id] || 0
+          const balance = fee.total_paid - ((fee as any).sponsored_amount || 0) - actualPayments
+          const paymentStatus = actualPayments >= fee.course_fee ? 'Paid' : 'Pending'
           
           return {
             ...fee,
@@ -222,7 +236,8 @@ export function NicheFees() {
             training_type: fee.niche_training.training_type,
             balance_due: balance,
             payment_status: paymentStatus,
-            training_status: fee.niche_training.status
+            training_status: fee.niche_training.status,
+            actual_payments: actualPayments
           }
         }) || []
 
@@ -291,14 +306,12 @@ export function NicheFees() {
 
   const flagshipFees = filteredFees.filter(fee => 
     fee.course_name === 'Professional House Manager Training Program' || 
-    fee.course_name === 'Professional Nanny Training Program' ||
-    fee.training_type === '2week'
+    fee.course_name === 'Professional Nanny Training Program'
   )
   
   const specializedFees = filteredFees.filter(fee => 
     fee.course_name !== 'Professional House Manager Training Program' && 
-    fee.course_name !== 'Professional Nanny Training Program' &&
-    fee.training_type !== '2week'
+    fee.course_name !== 'Professional Nanny Training Program'
   )
 
 
@@ -507,10 +520,17 @@ export function NicheFees() {
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
                     {flagshipFees.map((fee, index) => (
-                      <tr key={fee.id} className={fee.payment_status === 'Paid' ? 'bg-green-600 text-white' : 'hover:bg-blue-50'}>
+                      <tr key={fee.id} className="hover:bg-blue-50">
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{index + 1}</td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm font-medium text-gray-900">{fee.student_name}</div>
+                          <div className="text-sm font-medium text-gray-900 flex items-center">
+                            {fee.student_name}
+                            {fee.payment_status === 'Paid' && (
+                              <svg className="w-4 h-4 ml-2 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                              </svg>
+                            )}
+                          </div>
                           <div className="text-sm text-gray-500">{fee.student_phone?.replace(/\D/g, '').replace(/^254/, '+254')}</div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{fee.course_name}</td>
@@ -568,10 +588,17 @@ export function NicheFees() {
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
                     {specializedFees.map((fee, index) => (
-                      <tr key={fee.id} className={fee.payment_status === 'Paid' ? 'bg-green-600 text-white' : 'hover:bg-purple-50'}>
+                      <tr key={fee.id} className="hover:bg-purple-50">
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{index + 1}</td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm font-medium text-gray-900">{fee.student_name}</div>
+                          <div className="text-sm font-medium text-gray-900 flex items-center">
+                            {fee.student_name}
+                            {fee.payment_status === 'Paid' && (
+                              <svg className="w-4 h-4 ml-2 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                              </svg>
+                            )}
+                          </div>
                           <div className="text-sm text-gray-500">{fee.student_phone?.replace(/\D/g, '').replace(/^254/, '+254')}</div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{fee.course_name}</td>

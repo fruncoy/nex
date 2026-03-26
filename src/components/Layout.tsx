@@ -33,7 +33,7 @@ export function Layout() {
   const navigate = useNavigate()
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
   const [isCollapsed, setIsCollapsed] = useState(false)
-  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set(['Candidates', 'NICHE', 'Leads (All)', 'Training Leads', 'Updates', 'Insights']))
+  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set(['NICHE']))
 
   console.log('Layout rendering - user:', user, 'staff:', staff, 'location:', location.pathname)
 
@@ -58,12 +58,13 @@ export function Layout() {
   }, [location.pathname])
 
   const navigation = [
-    { name: 'Dashboard', href: '/', icon: Home },
     { 
       name: 'NICHE', 
-      href: '/niche', 
+      href: '/', 
       icon: GraduationCap,
       subItems: [
+        { name: 'NICHE Candidates', href: '/niche-candidates', icon: Users },
+        { name: 'NICHE Interviews', href: '/niche-interviews', icon: Calendar },
         { name: 'NICHE Training', href: '/niche-training', icon: GraduationCap },
         { name: 'NICHE Courses', href: '/niche-courses', icon: GraduationCap },
         { name: 'NICHE Timetable', href: '/niche-timetable', icon: Calendar },
@@ -75,35 +76,6 @@ export function Layout() {
       ]
     },
     { 
-      name: 'Candidates', 
-      href: '/candidates', 
-      icon: Users,
-      subItems: [
-        { name: 'Interviews', href: '/interviews', icon: Calendar },
-        { name: 'Staff', href: '/staff', icon: UserCheck },
-        { name: 'Blacklisted', href: '/blacklisted', icon: UserX },
-        { name: 'Vetting', href: '/vetting', icon: Shield }
-      ]
-    },
-    { 
-      name: 'Leads (All)', 
-      href: '/leads', 
-      icon: Building2,
-      subItems: [
-        { name: 'Clients', href: '/clients', icon: Target },
-        { name: 'Converted Clients', href: '/converted-clients', icon: CheckCircle },
-        { name: 'Placements', href: '/placements', icon: Users }
-      ]
-    },
-    { 
-      name: 'Training Leads', 
-      href: '/training', 
-      icon: GraduationCap,
-      subItems: [
-        { name: 'Lead Tracker', href: '/lead-tracker', icon: Target }
-      ]
-    },
-    { 
       name: 'Updates', 
       href: '/updates', 
       icon: MessageCircle,
@@ -112,15 +84,7 @@ export function Layout() {
         { name: 'Meeting Notes', href: '/meeting-notes', icon: MessageCircle }
       ]
     },
-    { name: 'Reporting', href: '/reporting', icon: FileText },
-    { 
-      name: 'Insights', 
-      href: '/insights', 
-      icon: BarChart3,
-      subItems: [
-        { name: 'Reports', href: '/reports', icon: FileText }
-      ]
-    },
+    { name: 'Blacklisted', href: '/blacklisted', icon: UserX },
     { name: 'Calendar', href: '/calendar', icon: Calendar },
     { name: 'SMS Management', href: '/sms', icon: MessageCircle },
     { name: 'Nestara AI', href: '/nestara-ai', icon: Brain },
@@ -139,7 +103,7 @@ export function Layout() {
         if (subItem) return subItem.name
       }
     }
-    return 'Dashboard'
+    return 'NICHE'
   }
 
   const toggleExpanded = (itemName: string) => {

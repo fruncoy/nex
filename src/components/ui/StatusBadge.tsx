@@ -2,7 +2,7 @@ import React from 'react'
 
 interface StatusBadgeProps {
   status: string
-  type?: 'candidate' | 'client' | 'training' | 'interview' | 'lead' | 'payment'
+  type?: 'candidate' | 'client' | 'training' | 'interview' | 'lead' | 'payment' | 'niche_candidate'
 }
 
 export function StatusBadge({ status, type = 'candidate' }: StatusBadgeProps) {
@@ -122,6 +122,20 @@ export function StatusBadge({ status, type = 'candidate' }: StatusBadgeProps) {
       'NEEDS-ATTENTION': 'bg-red-100 text-red-800 border border-red-500',
     }
 
+    const nicheStatusColors: Record<string, string> = {
+      'PENDING': 'bg-yellow-100 text-yellow-800',
+      'INTERVIEW SCHEDULED': 'bg-blue-100 text-blue-800',
+      'LOST - NO SHOW INTERVIEW': 'bg-orange-100 text-orange-800',
+      'LOST - FAILED INTERVIEW': 'bg-red-100 text-red-800',
+      'LOST - AGE': 'bg-red-100 text-red-800',
+      'LOST - NO REFERENCES': 'bg-red-100 text-red-800',
+      'LOST - NO RESPONSE': 'bg-red-100 text-red-800',
+      'LOST - OTHER': 'bg-red-100 text-red-800',
+      'BLACKLISTED': 'bg-gray-800 text-white',
+      'GRADUATED': 'bg-green-100 text-green-800',
+      'ACTIVE IN TRAINING': 'bg-emerald-100 text-emerald-800',
+    }
+
     const paymentStatusColors: Record<string, string> = {
       'PENDING': 'bg-yellow-100 text-yellow-800',
       'PARTIAL': 'bg-orange-100 text-orange-800',
@@ -136,6 +150,7 @@ export function StatusBadge({ status, type = 'candidate' }: StatusBadgeProps) {
       training: trainingStatusColors,
       interview: interviewStatusColors,
       payment: paymentStatusColors,
+      niche_candidate: nicheStatusColors,
     }
 
     const colors = mapByType[type] || candidateStatusColors

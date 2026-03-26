@@ -4,7 +4,6 @@ import { Users, GraduationCap, Award, CheckCircle, AlertCircle, Star, Eye, FileT
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
 import NicheCertificate from '../components/NicheCertificate'
-import html2pdf from 'html2pdf.js'
 
 interface NicheCohort {
   id: string
@@ -744,147 +743,286 @@ export function NicheGrading() {
     setShowPreview(true)
   }
 
-  const downloadPDF = () => {
-    // Filter records based on selected cohort
-    let recordsToExport = gradedRecords
-    if (selectedCohortForExport !== 'all') {
-      recordsToExport = gradedRecords.filter(record => record.cohort_id === selectedCohortForExport)
+  const downloadPDF = async () => {
+    // Check if running locally
+    const isLocal = window.location.hostname === 'localhost' || 
+                   window.location.hostname === '127.0.0.1' || 
+                   window.location.hostname.includes('192.168') ||
+                   window.location.port !== ''
+    
+    if (!isLocal) {
+      alert('PDF download is only available when running locally. Please use your browser\'s print function (Ctrl+P) and select "Save as PDF".')
+      return
     }
 
-    // Get cohort info for title
-    const selectedCohortInfo = selectedCohortForExport !== 'all' 
-      ? cohorts.find(c => c.id === selectedCohortForExport)
-      : null
+    try {
+      // Filter records based on selected cohort
+      let recordsToExport = gradedRecords
+      if (selectedCohortForExport !== 'all') {
+        recordsToExport = gradedRecords.filter(record => record.cohort_id === selectedCohortForExport)
+      }
 
-    // Separate records by training type
-    const nannyRecords = recordsToExport.filter(record => record.training_type === 'nanny')
-    const houseManagerRecords = recordsToExport.filter(record => record.training_type === 'house_manager')
+      // Get cohort info for title
+      const selectedCohortInfo = selectedCohortForExport !== 'all' 
+        ? cohorts.find(c => c.id === selectedCohortForExport)
+        : null
 
-    // Create a temporary element for PDF generation
-    const element = document.createElement('div')
-    element.innerHTML = `
-      <div style="font-family: Arial, sans-serif; padding: 20px; color: #333; background: white;">
-        <div style="text-align: center; margin-bottom: 30px; border-bottom: 3px solid #AE491E; padding-bottom: 20px;">
-          <h1 style="font-size: 22px; margin: 0 0 10px 0; color: #AE491E; font-weight: bold;">Nestara Institute of Care and Hospitality Excellence</h1>
-          <h2 style="font-size: 16px; margin: 0; color: #666;">NICHE Professionals Report${selectedCohortInfo ? ` - Cohort ${getRomanNumeral(selectedCohortInfo.cohort_number)}` : ''}</h2>
-          ${selectedCohortInfo ? `<p style="margin: 8px 0 0 0; font-size: 12px; color: #666;">${new Date(selectedCohortInfo.start_date).toLocaleDateString()} to ${new Date(selectedCohortInfo.end_date).toLocaleDateString()}</p>` : ''}
-        </div>
+      // Separate records by training type
+      const nannyRecords = recordsToExport.filter(record => record.training_type === 'nanny')
+      const houseManagerRecords = recordsToExport.filter(record => record.training_type === 'house_manager')
 
-        ${nannyRecords.length > 0 ? `
-          <div style="margin-bottom: 30px;">
-            <h3 style="font-size: 16px; font-weight: bold; margin: 30px 0 15px 0; color: #AE491E; border-bottom: 2px solid #AE491E; padding-bottom: 8px;">
-              Nanny Professionals (${nannyRecords.length})
-            </h3>
-            <table style="width: 100%; border-collapse: collapse; margin-bottom: 25px; font-size: 10px;">
-              <thead>
-                <tr style="background: #AE491E; color: white;">
-                  <th style="border: 1px solid #ddd; padding: 8px; text-align: center; font-weight: bold;">#</th>
-                  <th style="border: 1px solid #ddd; padding: 8px; text-align: left; font-weight: bold;">Name</th>
-                  <th style="border: 1px solid #ddd; padding: 8px; text-align: center; font-weight: bold;">Childcare & Development</th>
-                  <th style="border: 1px solid #ddd; padding: 8px; text-align: center; font-weight: bold;">Professional Conduct</th>
-                  <th style="border: 1px solid #ddd; padding: 8px; text-align: center; font-weight: bold;">Housekeeping</th>
-                  <th style="border: 1px solid #ddd; padding: 8px; text-align: center; font-weight: bold;">Cooking & Nutrition</th>
-                  <th style="border: 1px solid #ddd; padding: 8px; text-align: center; font-weight: bold;">Final Score</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${nannyRecords.map((record, index) => `
-                  <tr style="${index % 2 === 0 ? 'background-color: #f9f9f9;' : ''}">
-                    <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${index + 1}</td>
-                    <td style="border: 1px solid #ddd; padding: 8px; font-weight: 500;">${record.trainee_name}</td>
-                    <td style="border: 1px solid #ddd; padding: 8px; text-align: center; font-weight: bold;">${record.pillar1_weighted?.toFixed(1)}/45</td>
-                    <td style="border: 1px solid #ddd; padding: 8px; text-align: center; font-weight: bold;">${record.pillar2_weighted?.toFixed(1)}/30</td>
-                    <td style="border: 1px solid #ddd; padding: 8px; text-align: center; font-weight: bold;">${record.pillar3_weighted?.toFixed(1)}/15</td>
-                    <td style="border: 1px solid #ddd; padding: 8px; text-align: center; font-weight: bold;">${record.pillar4_weighted?.toFixed(1)}/10</td>
-                    <td style="border: 1px solid #ddd; padding: 8px; text-align: center; font-weight: bold; color: #AE491E;">${record.final_score?.toFixed(1)}% - ${record.tier}</td>
+      // Create HTML content for PDF
+      const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <title>NICHE Professionals Report</title>
+          <style>
+            body { 
+              font-family: Arial, sans-serif; 
+              padding: 20px; 
+              color: #333; 
+              background: white;
+              margin: 0;
+            }
+            .header {
+              text-align: center;
+              margin-bottom: 30px;
+              border-bottom: 3px solid #AE491E;
+              padding-bottom: 20px;
+            }
+            .header h1 {
+              font-size: 22px;
+              margin: 0 0 10px 0;
+              color: #AE491E;
+              font-weight: bold;
+            }
+            .header h2 {
+              font-size: 16px;
+              margin: 0;
+              color: #666;
+            }
+            .header p {
+              margin: 8px 0 0 0;
+              font-size: 12px;
+              color: #666;
+            }
+            .section {
+              margin-bottom: 30px;
+            }
+            .section h3 {
+              font-size: 16px;
+              font-weight: bold;
+              margin: 30px 0 15px 0;
+              color: #AE491E;
+              border-bottom: 2px solid #AE491E;
+              padding-bottom: 8px;
+            }
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-bottom: 25px;
+              font-size: 10px;
+            }
+            th {
+              background: #AE491E;
+              color: white;
+              border: 1px solid #ddd;
+              padding: 8px;
+              text-align: center;
+              font-weight: bold;
+            }
+            th.left { text-align: left; }
+            td {
+              border: 1px solid #ddd;
+              padding: 8px;
+              text-align: center;
+            }
+            td.left { text-align: left; font-weight: 500; }
+            td.score { font-weight: bold; }
+            td.final { font-weight: bold; color: #AE491E; }
+            tr:nth-child(even) { background-color: #f9f9f9; }
+            .legend {
+              margin-top: 25px;
+              padding: 15px;
+              background-color: #f8f9fa;
+              border-radius: 8px;
+              border: 1px solid #e9ecef;
+            }
+            .legend h4 {
+              margin: 0 0 12px 0;
+              color: #AE491E;
+              font-size: 14px;
+            }
+            .legend-items {
+              display: flex;
+              flex-wrap: wrap;
+              gap: 15px;
+              font-size: 10px;
+            }
+            .legend-item {
+              display: flex;
+              align-items: center;
+              gap: 6px;
+            }
+            .legend-badge {
+              padding: 3px 8px;
+              border-radius: 12px;
+              font-weight: bold;
+              font-size: 9px;
+            }
+            .master { background: #f3e8ff; color: #7c3aed; }
+            .distinguished { background: #dbeafe; color: #2563eb; }
+            .exceptional { background: #d1fae5; color: #059669; }
+            .excellent { background: #fef3c7; color: #d97706; }
+            .footer {
+              margin-top: 30px;
+              text-align: center;
+              font-size: 10px;
+              color: #666;
+              border-top: 1px solid #ddd;
+              padding-top: 15px;
+            }
+            .page-break { page-break-before: always; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1>Nestara Institute of Care and Hospitality Excellence</h1>
+            <h2>NICHE Professionals Report${selectedCohortInfo ? ` - Cohort ${getRomanNumeral(selectedCohortInfo.cohort_number)}` : ''}</h2>
+            ${selectedCohortInfo ? `<p>${new Date(selectedCohortInfo.start_date).toLocaleDateString()} to ${new Date(selectedCohortInfo.end_date).toLocaleDateString()}</p>` : ''}
+          </div>
+
+          ${nannyRecords.length > 0 ? `
+            <div class="section">
+              <h3>Nanny Professionals (${nannyRecords.length})</h3>
+              <table>
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th class="left">Name</th>
+                    <th>Childcare & Development</th>
+                    <th>Professional Conduct</th>
+                    <th>Housekeeping</th>
+                    <th>Cooking & Nutrition</th>
+                    <th>Final Score</th>
                   </tr>
-                `).join('')}
-              </tbody>
-            </table>
-          </div>
-        ` : ''}
+                </thead>
+                <tbody>
+                  ${nannyRecords.map((record, index) => `
+                    <tr>
+                      <td>${index + 1}</td>
+                      <td class="left">${record.trainee_name}</td>
+                      <td class="score">${record.pillar1_weighted?.toFixed(1)}/45</td>
+                      <td class="score">${record.pillar2_weighted?.toFixed(1)}/30</td>
+                      <td class="score">${record.pillar3_weighted?.toFixed(1)}/15</td>
+                      <td class="score">${record.pillar4_weighted?.toFixed(1)}/10</td>
+                      <td class="final">${record.final_score?.toFixed(1)}% - ${record.tier}</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          ` : ''}
 
-        ${houseManagerRecords.length > 0 ? `
-          <div style="margin-bottom: 30px; ${nannyRecords.length > 8 ? 'page-break-before: always;' : ''}">
-            <h3 style="font-size: 16px; font-weight: bold; margin: 30px 0 15px 0; color: #AE491E; border-bottom: 2px solid #AE491E; padding-bottom: 8px;">
-              House Manager Professionals (${houseManagerRecords.length})
-            </h3>
-            <table style="width: 100%; border-collapse: collapse; margin-bottom: 25px; font-size: 10px;">
-              <thead>
-                <tr style="background: #AE491E; color: white;">
-                  <th style="border: 1px solid #ddd; padding: 8px; text-align: center; font-weight: bold;">#</th>
-                  <th style="border: 1px solid #ddd; padding: 8px; text-align: left; font-weight: bold;">Name</th>
-                  <th style="border: 1px solid #ddd; padding: 8px; text-align: center; font-weight: bold;">Professional Conduct</th>
-                  <th style="border: 1px solid #ddd; padding: 8px; text-align: center; font-weight: bold;">Housekeeping & Systems</th>
-                  <th style="border: 1px solid #ddd; padding: 8px; text-align: center; font-weight: bold;">Cooking & Kitchen</th>
-                  <th style="border: 1px solid #ddd; padding: 8px; text-align: center; font-weight: bold;">Childcare Literacy</th>
-                  <th style="border: 1px solid #ddd; padding: 8px; text-align: center; font-weight: bold;">Final Score</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${houseManagerRecords.map((record, index) => `
-                  <tr style="${index % 2 === 0 ? 'background-color: #f9f9f9;' : ''}">
-                    <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${index + 1}</td>
-                    <td style="border: 1px solid #ddd; padding: 8px; font-weight: 500;">${record.trainee_name}</td>
-                    <td style="border: 1px solid #ddd; padding: 8px; text-align: center; font-weight: bold;">${record.pillar1_weighted?.toFixed(1)}/30</td>
-                    <td style="border: 1px solid #ddd; padding: 8px; text-align: center; font-weight: bold;">${record.pillar2_weighted?.toFixed(1)}/30</td>
-                    <td style="border: 1px solid #ddd; padding: 8px; text-align: center; font-weight: bold;">${record.pillar3_weighted?.toFixed(1)}/25</td>
-                    <td style="border: 1px solid #ddd; padding: 8px; text-align: center; font-weight: bold;">${record.pillar4_weighted?.toFixed(1)}/15</td>
-                    <td style="border: 1px solid #ddd; padding: 8px; text-align: center; font-weight: bold; color: #AE491E;">${record.final_score?.toFixed(1)}% - ${record.tier}</td>
+          ${houseManagerRecords.length > 0 ? `
+            <div class="section ${nannyRecords.length > 8 ? 'page-break' : ''}">
+              <h3>House Manager Professionals (${houseManagerRecords.length})</h3>
+              <table>
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th class="left">Name</th>
+                    <th>Professional Conduct</th>
+                    <th>Housekeeping & Systems</th>
+                    <th>Cooking & Kitchen</th>
+                    <th>Childcare Literacy</th>
+                    <th>Final Score</th>
                   </tr>
-                `).join('')}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  ${houseManagerRecords.map((record, index) => `
+                    <tr>
+                      <td>${index + 1}</td>
+                      <td class="left">${record.trainee_name}</td>
+                      <td class="score">${record.pillar1_weighted?.toFixed(1)}/30</td>
+                      <td class="score">${record.pillar2_weighted?.toFixed(1)}/30</td>
+                      <td class="score">${record.pillar3_weighted?.toFixed(1)}/25</td>
+                      <td class="score">${record.pillar4_weighted?.toFixed(1)}/15</td>
+                      <td class="final">${record.final_score?.toFixed(1)}% - ${record.tier}</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          ` : ''}
+
+          <div class="legend">
+            <h4>Performance Tiers</h4>
+            <div class="legend-items">
+              <div class="legend-item">
+                <span class="legend-badge master">MASTER</span>
+                <span>95+ points</span>
+              </div>
+              <div class="legend-item">
+                <span class="legend-badge distinguished">DISTINGUISHED</span>
+                <span>90-94 points</span>
+              </div>
+              <div class="legend-item">
+                <span class="legend-badge exceptional">EXCEPTIONAL</span>
+                <span>80-89 points</span>
+              </div>
+              <div class="legend-item">
+                <span class="legend-badge excellent">EXCELLENT</span>
+                <span>70-79 points</span>
+              </div>
+            </div>
           </div>
-        ` : ''}
 
-        <div style="margin-top: 25px; padding: 15px; background-color: #f8f9fa; border-radius: 8px; border: 1px solid #e9ecef;">
-          <h4 style="margin: 0 0 12px 0; color: #AE491E; font-size: 14px;">Performance Tiers</h4>
-          <div style="display: flex; flex-wrap: wrap; gap: 15px; font-size: 10px;">
-            <div style="display: flex; align-items: center; gap: 6px;">
-              <span style="padding: 3px 8px; border-radius: 12px; font-weight: bold; font-size: 9px; background: #f3e8ff; color: #7c3aed;">MASTER</span>
-              <span>95+ points</span>
-            </div>
-            <div style="display: flex; align-items: center; gap: 6px;">
-              <span style="padding: 3px 8px; border-radius: 12px; font-weight: bold; font-size: 9px; background: #dbeafe; color: #2563eb;">DISTINGUISHED</span>
-              <span>90-94 points</span>
-            </div>
-            <div style="display: flex; align-items: center; gap: 6px;">
-              <span style="padding: 3px 8px; border-radius: 12px; font-weight: bold; font-size: 9px; background: #d1fae5; color: #059669;">EXCEPTIONAL</span>
-              <span>80-89 points</span>
-            </div>
-            <div style="display: flex; align-items: center; gap: 6px;">
-              <span style="padding: 3px 8px; border-radius: 12px; font-weight: bold; font-size: 9px; background: #fef3c7; color: #d97706;">EXCELLENT</span>
-              <span>70-79 points</span>
-            </div>
+          <div class="footer">
+            NICHE Academy | Total Professionals: ${recordsToExport.length}
           </div>
-        </div>
+        </body>
+        </html>
+      `
 
-        <div style="margin-top: 30px; text-align: center; font-size: 10px; color: #666; border-top: 1px solid #ddd; padding-top: 15px;">
-          NICHE Academy | Total Professionals: ${recordsToExport.length}
-        </div>
-      </div>
-    `
-
-    // Configure PDF options
-    const opt = {
-      margin: [15, 10, 15, 10],
-      filename: `niche-professionals-report${selectedCohortInfo ? `-cohort-${selectedCohortInfo.cohort_number}` : ''}-${new Date().toISOString().split('T')[0]}.pdf`,
-      image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 2, useCORS: true },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+      // Send to Puppeteer service
+      const response = await fetch('http://localhost:3001/generate-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          html: htmlContent,
+          filename: `niche-professionals-report${selectedCohortInfo ? `-cohort-${selectedCohortInfo.cohort_number}` : ''}-${new Date().toISOString().split('T')[0]}.pdf`,
+          options: {
+            format: 'A4',
+            printBackground: true,
+            margin: { top: '15mm', bottom: '15mm', left: '10mm', right: '10mm' }
+          }
+        })
+      })
+      
+      if (response.ok) {
+        const blob = await response.blob()
+        const url = window.URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `niche-professionals-report${selectedCohortInfo ? `-cohort-${selectedCohortInfo.cohort_number}` : ''}-${new Date().toISOString().split('T')[0]}.pdf`
+        a.click()
+        window.URL.revokeObjectURL(url)
+        
+        const cohortName = selectedCohortInfo ? ` for Cohort ${getRomanNumeral(selectedCohortInfo.cohort_number)}` : ''
+        showToast(`PDF downloaded successfully${cohortName}`, 'success')
+        setShowPreview(false)
+        setShowExportModal(false)
+      } else {
+        const errorData = await response.json()
+        throw new Error(errorData.details || 'PDF generation failed')
+      }
+    } catch (error) {
+      console.error('PDF generation failed:', error)
+      showToast(`PDF generation failed: ${error.message}. Make sure the PDF service is running on localhost:3001`, 'error')
     }
-
-    // Generate and download PDF
-    html2pdf().set(opt).from(element).save().then(() => {
-      const cohortName = selectedCohortInfo ? ` for Cohort ${getRomanNumeral(selectedCohortInfo.cohort_number)}` : ''
-      showToast(`PDF downloaded successfully${cohortName}`, 'success')
-      setShowPreview(false)
-      setShowExportModal(false)
-    }).catch((error) => {
-      console.error('PDF generation error:', error)
-      showToast('Failed to generate PDF', 'error')
-    })
   }
 
   const liveScores = calculatePillarScores()

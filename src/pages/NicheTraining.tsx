@@ -30,14 +30,14 @@ interface NicheTraining {
   name: string
   phone?: string
   role?: string
-  status: 'Pending' | 'Active' | 'Graduated' | 'Expelled'
+  status: 'Active' | 'Graduated' | 'Expelled'  // Removed 'Pending'
   course?: string
   description?: string
   date_started?: string
   date_completed?: string
   notes?: string
   cohort_id?: string
-  training_type?: '2week' | 'weekend' | 'refresher'
+  training_type?: 'weekend'  // Removed 'refresher'
   accommodation_type?: 'live_in' | 'live_out'
   enrolled_courses?: string[]
   created_at: string
@@ -53,6 +53,7 @@ interface Candidate {
   name: string
   phone: string
   role: string
+  status: string
 }
 
 export function NicheTraining() {
@@ -74,16 +75,24 @@ export function NicheTraining() {
   const [selectedCandidates, setSelectedCandidates] = useState<string[]>([])
   const [showBulkUpdate, setShowBulkUpdate] = useState(false)
   const [bulkStatus, setBulkStatus] = useState('')
+  const [showCourseSelectionModal, setShowCourseSelectionModal] = useState(false)
+  const [importData, setImportData] = useState<Record<string, {
+    courseType: 'short_course' | '2week_flagship' | '',
+    cohort_id: string,
+    course: string,
+    enrolled_courses: string[]
+  }>>({})
   const [formData, setFormData] = useState({
     candidate_id: '',
     name: '',
     phone: '',
     email: '',
     role: '',
-    status: 'Pending' as 'Pending' | 'Active' | 'Graduated' | 'Expelled',
+    source: '',
+    status: 'Active' as 'Active' | 'Graduated' | 'Expelled',  // Removed 'Pending', default to 'Active'
     course: '',
     cohort_id: '',
-    training_type: '2week' as '2week' | 'weekend' | 'refresher',
+    training_type: 'weekend' as 'weekend',  // Only 'weekend' option
     accommodation_type: '' as '' | 'live_in' | 'live_out',
     enrolled_courses: [] as string[]
   })
@@ -112,6 +121,7 @@ export function NicheTraining() {
           *,
           cohorts:niche_cohorts(id, cohort_number, start_date, end_date, status)
         `)
+        .in('status', ['Active', 'Graduated', 'Expelled'])  // Only load these statuses
         .order('created_at', { ascending: false })
 
       if (error) throw error
@@ -144,8 +154,9 @@ export function NicheTraining() {
   const loadCandidates = async () => {
     try {
       const { data, error } = await supabase
-        .from('candidates')
-        .select('id, name, phone, role')
+        .from('niche_candidates')
+        .select('id, name, phone, role, status')
+        .in('status', ['New Inquiry', 'Qualified', 'Pending Outcome', 'Interview Scheduled'])
         .order('name')
 
       if (error) throw error
@@ -237,6 +248,7 @@ export function NicheTraining() {
         name: formData.name.trim(),
         phone: formData.phone.trim() || null,
         role: formData.role || null,
+        source: formData.source || null,
         status: formData.status,
         course: formData.course || null,
         cohort_id: formData.cohort_id || null,
@@ -267,14 +279,44 @@ export function NicheTraining() {
         showToast('Training record updated successfully', 'success')
       } else {
         // Create new record
-        const { error } = await supabase
+        const { data: newRecord, error } = await supabase
           .from('niche_training')
           .insert({
             ...payload,
             created_by: staff?.name || user?.email || 'Unknown'
           })
+          .select()
+          .single()
 
         if (error) throw error
+
+        // Sync to niche_candidates table
+        if (newRecord) {
+          const candidatePayload = {
+            name: formData.name.trim(),
+            phone: formData.phone.trim() || null,
+            source: formData.source || 'Short Course Training',
+            role: formData.role || null,
+            inquiry_date: new Date().toISOString().split('T')[0],
+            status: 'Active in Training',
+            category: 'Short Course',
+            assigned_to: user?.id,
+            added_by: staff?.name || 'System'
+          }
+
+          // Check if candidate already exists by phone
+          const { data: existingCandidate } = await supabase
+            .from('niche_candidates')
+            .select('id')
+            .eq('phone', formData.phone.trim())
+            .single()
+
+          if (!existingCandidate) {
+            await supabase
+              .from('niche_candidates')
+              .insert(candidatePayload)
+          }
+        }
 
         // Log activity
         await ActivityLogger.logCreate(
@@ -304,10 +346,11 @@ export function NicheTraining() {
       phone: '',
       email: '',
       role: '',
-      status: 'Pending',
+      source: '',
+      status: 'Active',  // Default to 'Active' instead of 'Pending'
       course: '',
       cohort_id: '',
-      training_type: '2week',
+      training_type: 'weekend',  // Default to 'weekend' instead of '2week'
       accommodation_type: '',
       enrolled_courses: []
     })
@@ -322,10 +365,11 @@ export function NicheTraining() {
       name: record.name,
       phone: record.phone || '',
       role: record.role || '',
+      source: (record as any).source || '',
       status: record.status,
       course: record.course || '',
       cohort_id: record.cohort_id || '',
-      training_type: (record as any).training_type || '2week',
+      training_type: (record as any).training_type || 'weekend',  // Default to 'weekend' instead of '2week'
       accommodation_type: (record as any).accommodation_type || '',
       enrolled_courses: (record as any).enrolled_courses || [record.course].filter(Boolean)
     })
@@ -399,6 +443,21 @@ export function NicheTraining() {
     })
   }
 
+  const getCohortsForNewTrainee = () => {
+    // Get active cohort and next 3 cohorts only for adding new trainees
+    const sortedCohorts = cohorts.sort((a, b) => a.cohort_number - b.cohort_number)
+    const activeCohort = sortedCohorts.find(c => c.status === 'active')
+    
+    if (activeCohort) {
+      // Find active cohort index and get it + next 3
+      const activeIndex = sortedCohorts.findIndex(c => c.id === activeCohort.id)
+      return sortedCohorts.slice(activeIndex, activeIndex + 4) // Active + next 3
+    } else {
+      // If no active cohort, get first 4 upcoming cohorts
+      return sortedCohorts.filter(c => c.status === 'upcoming').slice(0, 4)
+    }
+  }
+
   const createNextCohorts = async () => {
     try {
       // Update existing cohort statuses first
@@ -423,18 +482,55 @@ export function NicheTraining() {
       return
     }
 
-    try {
-      const candidatesToImport = candidates.filter(c => selectedCandidates.includes(c.id))
+    // Move to course selection modal
+    setShowImportModal(false)
+    setShowCourseSelectionModal(true)
+  }
+
+  const handleFinalImport = async () => {
+    const candidatesToImport = candidates.filter(c => selectedCandidates.includes(c.id))
+    
+    // Validate that all selected candidates have course assignments
+    for (const candidate of candidatesToImport) {
+      const candidateData = importData[candidate.id]
+      if (!candidateData || !candidateData.courseType) {
+        showToast(`Please select course type for ${candidate.name}`, 'error')
+        return
+      }
       
-      const trainingRecords = candidatesToImport.map(candidate => ({
-        candidate_id: candidate.id,
-        name: candidate.name,
-        phone: candidate.phone,
-        role: candidate.role,
-        status: 'Pending' as const,
-        created_by: staff?.name || user?.email || 'Unknown',
-        updated_by: staff?.name || user?.email || 'Unknown'
-      }))
+      if (!candidateData.cohort_id) {
+        showToast(`Please select cohort for ${candidate.name}`, 'error')
+        return
+      }
+      
+      if (candidateData.courseType === '2week_flagship' && !candidateData.course) {
+        showToast(`Please select program for ${candidate.name}`, 'error')
+        return
+      }
+      
+      if (candidateData.courseType === 'short_course' && candidateData.enrolled_courses.length === 0) {
+        showToast(`Please select at least one course for ${candidate.name}`, 'error')
+        return
+      }
+    }
+
+    try {
+      const trainingRecords = candidatesToImport.map(candidate => {
+        const candidateData = importData[candidate.id]
+        return {
+          candidate_id: candidate.id,
+          name: candidate.name,
+          phone: candidate.phone,
+          role: candidate.role,
+          status: 'Active' as const,
+          course: candidateData.courseType === '2week_flagship' ? candidateData.course : candidateData.enrolled_courses[0],
+          cohort_id: candidateData.cohort_id,
+          training_type: candidateData.courseType === 'short_course' ? 'weekend' : '2week',
+          enrolled_courses: candidateData.courseType === 'short_course' ? candidateData.enrolled_courses : null,
+          created_by: staff?.name || user?.email || 'Unknown',
+          updated_by: staff?.name || user?.email || 'Unknown'
+        }
+      })
 
       const { error } = await supabase
         .from('niche_training')
@@ -442,20 +538,41 @@ export function NicheTraining() {
 
       if (error) throw error
 
+      // Update candidate statuses and categories
+      const candidateUpdates = candidatesToImport.map(candidate => {
+        const candidateData = importData[candidate.id]
+        return {
+          id: candidate.id,
+          status: 'Active in Training',
+          category: candidateData.courseType === 'short_course' ? 'Short Course' : '2-Week Flagship'
+        }
+      })
+
+      for (const update of candidateUpdates) {
+        const { error: candidateUpdateError } = await supabase
+          .from('niche_candidates')
+          .update({ status: update.status, category: update.category })
+          .eq('id', update.id)
+
+        if (candidateUpdateError) throw candidateUpdateError
+      }
+
       // Log activity for each imported trainee
       for (const candidate of candidatesToImport) {
+        const candidateData = importData[candidate.id]
         await ActivityLogger.logCreate(
           user?.id || '',
           'niche_training',
           '',
-          `Imported ${candidate.name} as trainee`,
+          `Imported ${candidate.name} as ${candidateData.courseType === '2week_flagship' ? '2-week flagship' : 'short course'} trainee`,
           staff?.name || user?.email || 'Unknown'
         )
       }
 
       showToast(`Successfully imported ${selectedCandidates.length} trainee(s)`, 'success')
-      setShowImportModal(false)
+      setShowCourseSelectionModal(false)
       setSelectedCandidates([])
+      setImportData({})
       loadTrainingRecords()
     } catch (error: any) {
       console.error('Error importing trainees:', error)
@@ -478,7 +595,7 @@ export function NicheTraining() {
       const { error } = await supabase
         .from('niche_training')
         .update({ 
-          status: bulkStatus as 'Pending' | 'Active' | 'Graduated' | 'Expelled',
+          status: bulkStatus as 'Active' | 'Graduated' | 'Expelled',  // Removed 'Pending'
           updated_by: staff?.name || user?.email || 'Unknown'
         })
         .in('id', selectedRecords)
@@ -515,7 +632,7 @@ export function NicheTraining() {
       <div className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">NICHE Training</h1>
-          <p className="text-gray-600">Manage specialized training programs</p>
+          <p className="text-gray-600">Manage short course and skills training programs</p>
         </div>
         <div className="flex gap-3">
           <button
@@ -524,13 +641,6 @@ export function NicheTraining() {
           >
             <UserPlus className="w-4 h-4 mr-2" />
             Import Trainee
-          </button>
-          <button
-            onClick={() => setShowModal(true)}
-            className="flex items-center px-4 py-2 bg-nestalk-primary text-white rounded-lg hover:bg-nestalk-primary/90 transition-colors"
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            Add Trainee
           </button>
         </div>
       </div>
@@ -679,7 +789,6 @@ export function NicheTraining() {
                 className="px-3 py-1 border border-orange-300 rounded text-sm"
               >
                 <option value="">Select status</option>
-                <option value="Pending">Pending</option>
                 <option value="Active">Active</option>
                 <option value="Graduated">Graduated</option>
                 <option value="Expelled">Expelled</option>
@@ -821,13 +930,14 @@ export function NicheTraining() {
                           className="rounded border-gray-300 text-nestalk-primary focus:ring-nestalk-primary"
                         />
                       </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">#</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Phone</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Role</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {filteredCandidates.map((candidate) => (
+                    {filteredCandidates.map((candidate, index) => (
                       <tr key={candidate.id} className="hover:bg-gray-50">
                         <td className="px-4 py-3">
                           <input
@@ -837,9 +947,12 @@ export function NicheTraining() {
                             className="rounded border-gray-300 text-nestalk-primary focus:ring-nestalk-primary"
                           />
                         </td>
+                        <td className="px-4 py-3 text-sm text-gray-500">{index + 1}</td>
                         <td className="px-4 py-3 text-sm font-medium text-gray-900">{candidate.name}</td>
-                        <td className="px-4 py-3 text-sm text-gray-500">{candidate.phone}</td>
                         <td className="px-4 py-3 text-sm text-gray-500">{candidate.role}</td>
+                        <td className="px-4 py-3 text-sm">
+                          <StatusBadge status={candidate.status} type="niche_candidate" />
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -873,7 +986,7 @@ export function NicheTraining() {
                     disabled={selectedCandidates.length === 0}
                     className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
                   >
-                    Import {selectedCandidates.length} Trainee(s)
+                    Next: Select Courses
                   </button>
                 </div>
               </div>
@@ -888,7 +1001,7 @@ export function NicheTraining() {
           <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">
-                {selectedRecord ? 'Edit Training Record' : 'Add Training Record'}
+                {selectedRecord ? 'Edit Short Course Training' : 'Add Short Course Trainee'}
               </h2>
 
               <form onSubmit={handleSubmit} className="space-y-4">
@@ -948,50 +1061,15 @@ export function NicheTraining() {
                         <input
                           type="radio"
                           name="course_type"
-                          value="2week"
-                          checked={formData.training_type === '2week'}
-                          onChange={() => setFormData({ ...formData, training_type: '2week', enrolled_courses: [] })}
-                          className="mr-2 text-nestalk-primary focus:ring-nestalk-primary"
-                        />
-                        2 Week Programs
-                      </label>
-                      <label className="flex items-center">
-                        <input
-                          type="radio"
-                          name="course_type"
-                          value="skills"
+                          value="weekend"
                           checked={formData.training_type === 'weekend'}
                           onChange={() => setFormData({ ...formData, training_type: 'weekend', enrolled_courses: [] })}
                           className="mr-2 text-purple-600 focus:ring-purple-600"
                         />
-                        Skills Training
+                        Skills Training (Short Courses)
                       </label>
                     </div>
                   </div>
-
-                  {formData.training_type === '2week' && (
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Select Course *</label>
-                      <div className="space-y-2">
-                        {courses.filter(course => course.name.includes('Professional')).map(course => (
-                          <label key={course.id} className="flex items-center space-x-2">
-                            <input
-                              type="radio"
-                              name="flagship_course"
-                              checked={formData.enrolled_courses.includes(course.name)}
-                              onChange={() => setFormData({ 
-                                ...formData, 
-                                enrolled_courses: [course.name],
-                                course: course.name
-                              })}
-                              className="text-nestalk-primary focus:ring-nestalk-primary"
-                            />
-                            <span className="text-sm text-gray-700">{course.name}</span>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                  )}
 
                   {formData.training_type === 'weekend' && (
                     <div>
@@ -1024,37 +1102,22 @@ export function NicheTraining() {
                     </div>
                   )}
 
-                  {formData.training_type === '2week' && (
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Accommodation *</label>
-                        <select
-                          required
-                          value={formData.accommodation_type}
-                          onChange={(e) => setFormData({ ...formData, accommodation_type: e.target.value as any })}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
-                        >
-                          <option value="">Select accommodation</option>
-                          <option value="live_in">Live In</option>
-                          <option value="live_out">Live Out</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Cohort *</label>
-                        <select
-                          required
-                          value={formData.cohort_id}
-                          onChange={(e) => setFormData({ ...formData, cohort_id: e.target.value })}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
-                        >
-                          <option value="">Select cohort</option>
-                          {cohorts.map(cohort => (
-                            <option key={cohort.id} value={cohort.id}>
-                              Cohort {getRomanNumeral(cohort.cohort_number)} ({new Date(cohort.start_date).toLocaleDateString()} - {new Date(cohort.end_date).toLocaleDateString()}) - {cohort.status}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
+                  {formData.training_type === 'weekend' && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Cohort *</label>
+                      <select
+                        required
+                        value={formData.cohort_id}
+                        onChange={(e) => setFormData({ ...formData, cohort_id: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-600 focus:border-transparent"
+                      >
+                        <option value="">Select cohort</option>
+                        {getCohortsForNewTrainee().map(cohort => (
+                          <option key={cohort.id} value={cohort.id}>
+                            Cohort {getRomanNumeral(cohort.cohort_number)} ({new Date(cohort.start_date).toLocaleDateString()} - {new Date(cohort.end_date).toLocaleDateString()}) - {cohort.status}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                   )}
 
@@ -1065,7 +1128,6 @@ export function NicheTraining() {
                       onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
                     >
-                      <option value="Pending">Pending</option>
                       <option value="Active">Active</option>
                       <option value="Graduated">Graduated</option>
                       <option value="Expelled">Expelled</option>
@@ -1092,6 +1154,177 @@ export function NicheTraining() {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Course Selection Modal */}
+      {showCourseSelectionModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">
+                Select Course Type for Each Trainee
+              </h2>
+
+              <div className="space-y-6">
+                {candidates.filter(c => selectedCandidates.includes(c.id)).map((candidate) => {
+                  const candidateData = importData[candidate.id] || { courseType: '', cohort_id: '', course: '', enrolled_courses: [] }
+                  
+                  return (
+                    <div key={candidate.id} className="border border-gray-200 rounded-lg p-4">
+                      <h3 className="font-medium text-gray-900 mb-3">{candidate.name} - {candidate.role}</h3>
+                      
+                      <div className="space-y-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Course Type</label>
+                          <div className="flex gap-4">
+                            <label className="flex items-center">
+                              <input
+                                type="radio"
+                                name={`courseType_${candidate.id}`}
+                                value="short_course"
+                                checked={candidateData.courseType === 'short_course'}
+                                onChange={() => setImportData(prev => ({
+                                  ...prev,
+                                  [candidate.id]: { courseType: 'short_course', cohort_id: '', course: '', enrolled_courses: [] }
+                                }))}
+                                className="mr-2 text-purple-600 focus:ring-purple-600"
+                              />
+                              <span className="text-sm">Short Course</span>
+                            </label>
+                            
+                            <label className="flex items-center">
+                              <input
+                                type="radio"
+                                name={`courseType_${candidate.id}`}
+                                value="2week_flagship"
+                                checked={candidateData.courseType === '2week_flagship'}
+                                onChange={() => setImportData(prev => ({
+                                  ...prev,
+                                  [candidate.id]: { courseType: '2week_flagship', cohort_id: '', course: '', enrolled_courses: [] }
+                                }))}
+                                className="mr-2 text-orange-600 focus:ring-orange-600"
+                              />
+                              <span className="text-sm">2-Week Flagship</span>
+                            </label>
+                          </div>
+                        </div>
+
+                        {candidateData.courseType === 'short_course' && (
+                          <div className="space-y-4">
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">Select Skills</label>
+                              <div className="grid grid-cols-2 gap-2 max-h-24 overflow-y-auto border border-gray-300 rounded p-2">
+                                {courses.filter(course => !course.name.includes('Professional')).map(course => (
+                                  <label key={course.id} className="flex items-center space-x-2 text-sm">
+                                    <input
+                                      type="checkbox"
+                                      checked={candidateData.enrolled_courses.includes(course.name)}
+                                      onChange={(e) => {
+                                        let newCourses = [...candidateData.enrolled_courses]
+                                        if (e.target.checked) {
+                                          newCourses = [...newCourses, course.name]
+                                        } else {
+                                          newCourses = newCourses.filter(c => c !== course.name)
+                                        }
+                                        setImportData(prev => ({
+                                          ...prev,
+                                          [candidate.id]: { ...candidateData, enrolled_courses: newCourses }
+                                        }))
+                                      }}
+                                      className="rounded border-gray-300 text-purple-600 focus:ring-purple-600"
+                                    />
+                                    <span>{course.name}</span>
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
+                            
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">Cohort</label>
+                              <select
+                                value={candidateData.cohort_id}
+                                onChange={(e) => setImportData(prev => ({
+                                  ...prev,
+                                  [candidate.id]: { ...candidateData, cohort_id: e.target.value }
+                                }))}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-600"
+                              >
+                                <option value="">Select cohort</option>
+                                {getCohortsForNewTrainee().map(cohort => (
+                                  <option key={cohort.id} value={cohort.id}>
+                                    Cohort {getRomanNumeral(cohort.cohort_number)} - {cohort.status}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                        )}
+
+                        {candidateData.courseType === '2week_flagship' && (
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">Program</label>
+                              <select
+                                value={candidateData.course}
+                                onChange={(e) => setImportData(prev => ({
+                                  ...prev,
+                                  [candidate.id]: { ...candidateData, course: e.target.value }
+                                }))}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-orange-600"
+                              >
+                                <option value="">Select program</option>
+                                <option value="Professional Nanny Training Program">Professional Nanny</option>
+                                <option value="Professional House Manager Training Program">Professional House Manager</option>
+                              </select>
+                            </div>
+                            
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">Cohort</label>
+                              <select
+                                value={candidateData.cohort_id}
+                                onChange={(e) => setImportData(prev => ({
+                                  ...prev,
+                                  [candidate.id]: { ...candidateData, cohort_id: e.target.value }
+                                }))}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-orange-600"
+                              >
+                                <option value="">Select cohort</option>
+                                {getCohortsForNewTrainee().map(cohort => (
+                                  <option key={cohort.id} value={cohort.id}>
+                                    Cohort {getRomanNumeral(cohort.cohort_number)} - {cohort.status}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+
+              <div className="flex justify-between items-center mt-6">
+                <button
+                  onClick={() => {
+                    setShowCourseSelectionModal(false)
+                    setShowImportModal(true)
+                    setImportData({})
+                  }}
+                  className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                >
+                  Back
+                </button>
+                <button
+                  onClick={handleFinalImport}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  Import {selectedCandidates.length} Trainee(s)
+                </button>
+              </div>
             </div>
           </div>
         </div>

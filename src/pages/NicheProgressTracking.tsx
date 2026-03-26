@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
-import { jsPDF } from 'jspdf'
-import html2canvas from 'html2canvas'
 
 interface ProgressAssessment {
   id?: number
@@ -407,148 +405,230 @@ const NicheProgressTracking: React.FC = () => {
     setSelectedProgressDay('all')
   }
 
-  const downloadProgressPDF = async () => {
+  const downloadDailyProgressPDF = async () => {
+    // Check if running locally
+    const isLocal = window.location.hostname === 'localhost' || 
+                   window.location.hostname === '127.0.0.1' || 
+                   window.location.hostname.includes('192.168') ||
+                   window.location.port !== ''
+    
+    if (!isLocal) {
+      alert('PDF download is only available when running locally. Please use your browser\'s print function (Ctrl+P) and select "Save as PDF".')
+      return
+    }
+
     try {
-      // Get all student sections
-      const studentSections = document.querySelectorAll('.student-section') as NodeListOf<HTMLElement>
-      if (studentSections.length === 0) {
-        alert('No student sections found for PDF generation')
+      // Get the progress content that's currently displayed
+      const progressContent = document.querySelector('.progress-content')
+      if (!progressContent) {
+        alert('No progress content found for PDF generation')
         return
       }
       
-      // Create PDF
-      const pdf = new jsPDF({
-        orientation: 'portrait',
-        unit: 'mm',
-        format: 'a4',
-        compress: true
+      // Get the complete HTML with styles
+      const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <title>NICHE Progress Report</title>
+          <script src="https://cdn.tailwindcss.com"></script>
+          <style>
+            @media print {
+              .print\\:hidden { display: none !important; }
+              .print\\:p-0 { padding: 0 !important; }
+            }
+            body { 
+              font-family: system-ui, -apple-system, sans-serif;
+              margin: 0;
+              padding: 0;
+              background: white;
+              font-size: 12px;
+            }
+            /* Ensure burnt orange colors are preserved */
+            .bg-\\[\\#AE491E\\] { background-color: #AE491E !important; }
+            .text-\\[\\#AE491E\\] { color: #AE491E !important; }
+            .border-\\[\\#AE491E\\] { border-color: #AE491E !important; }
+            .border-b-\\[\\#AE491E\\] { border-bottom-color: #AE491E !important; }
+            .border-t-\\[\\#AE491E\\] { border-top-color: #AE491E !important; }
+            /* Hide print-hidden elements */
+            .print\\:hidden { display: none !important; }
+            
+            /* Fix text wrapping and spacing issues */
+            .text-xs { font-size: 10px !important; line-height: 1.3 !important; }
+            .text-sm { font-size: 11px !important; line-height: 1.4 !important; }
+            .text-lg { font-size: 14px !important; line-height: 1.4 !important; }
+            
+            /* Ensure proper text wrapping in grid cells */
+            .grid > div {
+              word-wrap: break-word !important;
+              overflow-wrap: break-word !important;
+              hyphens: auto !important;
+              min-width: 0 !important;
+            }
+            
+            /* Fix column headers to prevent text overlap */
+            .grid-cols-5 > div {
+              padding: 4px 2px !important;
+              text-align: center !important;
+              word-break: break-word !important;
+              line-height: 1.2 !important;
+            }
+            
+            /* Specific fixes for pillar names */
+            .text-center {
+              text-align: center !important;
+              word-break: break-word !important;
+              hyphens: auto !important;
+            }
+            
+            /* Ensure adequate spacing */
+            .gap-2 { gap: 4px !important; }
+            .gap-4 { gap: 8px !important; }
+            .gap-6 { gap: 12px !important; }
+            
+            /* Fix for assessment section headers */
+            .tracking-wide {
+              letter-spacing: 0.05em !important;
+              word-spacing: 0.1em !important;
+            }
+            
+            /* Better spacing for small text */
+            .uppercase {
+              font-size: 9px !important;
+              font-weight: bold !important;
+              line-height: 1.1 !important;
+            }
+          </style>
+        </head>
+        <body>
+          ${progressContent.outerHTML}
+        </body>
+        </html>
+      `
+      
+      // Send to Puppeteer service
+      const response = await fetch('http://localhost:3001/generate-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          html: htmlContent,
+          filename: `NICHE_Progress_Report_${selectedCohort?.replace(/[^a-zA-Z0-9]/g, '_') || 'All_Cohorts'}_${new Date().toISOString().split('T')[0]}.pdf`,
+          options: {
+            format: 'A4',
+            printBackground: true,
+            margin: { top: '10mm', bottom: '10mm', left: '10mm', right: '10mm' },
+            preferCSSPageSize: true
+          }
+        })
       })
       
-      // A4 dimensions in mm
-      const pdfWidth = 210
-      const pdfHeight = 297
-      const margin = 10
-      const contentWidth = pdfWidth - (margin * 2)
-      const contentHeight = pdfHeight - (margin * 2)
-      
-      let currentY = margin
-      let isFirstPage = true
-      
-      // Add header only to first page
-      if (isFirstPage) {
-        pdf.setFontSize(16)
-        pdf.setFont('helvetica', 'bold')
-        pdf.text('NICHE Progress Tracking Report', pdfWidth / 2, margin + 10, { align: 'center' })
-        pdf.setFontSize(10)
-        pdf.setFont('helvetica', 'normal')
-        pdf.text('All Assessment Days (Day 1, 3, 5, 10)', pdfWidth / 2, margin + 18, { align: 'center' })
-        currentY = margin + 30
-        isFirstPage = false
+      if (response.ok) {
+        const blob = await response.blob()
+        const url = window.URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `NICHE_Progress_Report_${selectedCohort?.replace(/[^a-zA-Z0-9]/g, '_') || 'All_Cohorts'}_${new Date().toISOString().split('T')[0]}.pdf`
+        a.click()
+        window.URL.revokeObjectURL(url)
+        
+        console.log('Progress report PDF downloaded successfully')
+      } else {
+        const errorData = await response.json()
+        throw new Error(errorData.details || 'PDF generation failed')
       }
-      
-      // Process each student section
-      for (let i = 0; i < studentSections.length; i++) {
-        const section = studentSections[i]
-        
-        // Temporarily make section visible and capture its dimensions
-        const originalOverflow = section.style.overflow
-        const originalMaxHeight = section.style.maxHeight
-        section.style.overflow = 'visible'
-        section.style.maxHeight = 'none'
-        
-        // Wait for layout to settle
-        await new Promise(resolve => setTimeout(resolve, 50))
-        
-        // Create canvas for this section
-        const canvas = await html2canvas(section, {
-          scale: 2,
-          useCORS: true,
-          allowTaint: true,
-          backgroundColor: '#ffffff',
-          width: section.scrollWidth,
-          height: section.scrollHeight,
-          logging: false,
-          imageTimeout: 0,
-          removeContainer: true,
-          scrollX: 0,
-          scrollY: 0
-        })
-        
-        // Restore original styles
-        section.style.overflow = originalOverflow
-        section.style.maxHeight = originalMaxHeight
-        
-        // Calculate section dimensions in PDF units
-        const sectionWidth = contentWidth
-        const sectionHeight = (canvas.height * contentWidth) / canvas.width
-        
-        // Check if section fits on current page
-        const spaceRemaining = pdfHeight - currentY - margin
-        
-        // If section doesn't fit and we're not on a fresh page, start new page
-        if (sectionHeight > spaceRemaining && currentY > margin) {
-          pdf.addPage()
-          currentY = margin
-        }
-        
-        // If section is too tall for a single page, we need to handle it differently
-        if (sectionHeight > contentHeight) {
-          // For very tall sections, split them but try to keep logical breaks
-          let remainingHeight = sectionHeight
-          let sourceY = 0
-          
-          while (remainingHeight > 0) {
-            const availableHeight = pdfHeight - currentY - margin
-            const pageHeight = Math.min(remainingHeight, availableHeight)
-            const sourceHeight = (pageHeight * canvas.height) / sectionHeight
-            
-            // Create canvas for this page portion
-            const pageCanvas = document.createElement('canvas')
-            pageCanvas.width = canvas.width
-            pageCanvas.height = sourceHeight
-            const pageCtx = pageCanvas.getContext('2d')
-            
-            if (pageCtx) {
-              pageCtx.drawImage(
-                canvas,
-                0, sourceY,
-                canvas.width, sourceHeight,
-                0, 0,
-                canvas.width, sourceHeight
-              )
-              
-              const pageImgData = pageCanvas.toDataURL('image/jpeg', 0.95)
-              pdf.addImage(pageImgData, 'JPEG', margin, currentY, sectionWidth, pageHeight)
-            }
-            
-            sourceY += sourceHeight
-            remainingHeight -= pageHeight
-            
-            if (remainingHeight > 0) {
-              pdf.addPage()
-              currentY = margin
-            } else {
-              currentY += pageHeight + 5 // Add small gap after section
-            }
-          }
-        } else {
-          // Section fits as a whole unit
-          const imgData = canvas.toDataURL('image/jpeg', 0.95)
-          pdf.addImage(imgData, 'JPEG', margin, currentY, sectionWidth, sectionHeight)
-          currentY += sectionHeight + 5 // Add small gap after section
-        }
-      }
-      
-      // Generate filename
-      const cohortText = selectedCohort ? selectedCohort.replace(/[^a-zA-Z0-9]/g, '_') : 'All_Cohorts'
-      const fileName = `NICHE_Progress_All_Days_${cohortText}_${new Date().toISOString().split('T')[0]}.pdf`
-      
-      pdf.save(fileName)
-      
     } catch (error) {
-      console.error('Error generating PDF:', error)
-      alert('Error generating PDF. Please try again.')
+      console.error('Progress report PDF generation failed:', error)
+      alert(`PDF generation failed: ${error.message}. Make sure the PDF service is running on localhost:3001`)
     }
+  }
+
+  const downloadProgressPDF = async () => {
+    // Check if running locally
+    const isLocal = window.location.hostname === 'localhost' || 
+                   window.location.hostname === '127.0.0.1' || 
+                   window.location.hostname.includes('192.168') ||
+                   window.location.port !== ''
+    
+    if (isLocal) {
+      // Use Puppeteer for local development
+      await downloadPuppeteerPDF()
+    } else {
+      // Fallback for online - use print dialog or disable
+      handleOnlinePDFRequest()
+    }
+  }
+
+  const downloadPuppeteerPDF = async () => {
+    try {
+      // Get the progress content HTML
+      const progressContent = document.querySelector('.progress-content')
+      if (!progressContent) {
+        alert('No content found for PDF generation')
+        return
+      }
+      
+      // Get the complete HTML with styles
+      const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <title>NICHE Progress Report</title>
+          <script src="https://cdn.tailwindcss.com"></script>
+          <style>
+            @media print {
+              .print\\:hidden { display: none !important; }
+              .print\\:p-0 { padding: 0 !important; }
+            }
+            body { font-family: system-ui, -apple-system, sans-serif; }
+          </style>
+        </head>
+        <body>
+          ${progressContent.outerHTML}
+        </body>
+        </html>
+      `
+      
+      // Send to Puppeteer service
+      const response = await fetch('http://localhost:3001/generate-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          html: htmlContent,
+          filename: `NICHE_Progress_${selectedCohort?.replace(/[^a-zA-Z0-9]/g, '_') || 'Report'}_${new Date().toISOString().split('T')[0]}.pdf`
+        })
+      })
+      
+      if (response.ok) {
+        const blob = await response.blob()
+        const url = window.URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `NICHE_Progress_${selectedCohort?.replace(/[^a-zA-Z0-9]/g, '_') || 'Report'}_${new Date().toISOString().split('T')[0]}.pdf`
+        a.click()
+        window.URL.revokeObjectURL(url)
+        
+        console.log('PDF downloaded successfully')
+      } else {
+        const errorData = await response.json()
+        throw new Error(errorData.details || 'PDF generation failed')
+      }
+    } catch (error) {
+      console.error('Puppeteer PDF generation failed:', error)
+      alert(`PDF generation failed: ${error.message}. Make sure the PDF service is running on localhost:3001`)
+    }
+  }
+
+  const handleOnlinePDFRequest = () => {
+    // Option 1: Show message that PDF download is only available locally
+    alert('PDF download is only available when running locally. Please use your browser\'s print function (Ctrl+P) and select "Save as PDF".')
+    
+    // Option 2: Automatically open print dialog
+    // window.print()
+    
+    // Option 3: Redirect to a server-side PDF generation endpoint
+    // window.open(`/api/pdf-report?cohort=${encodeURIComponent(selectedCohort || '')}`, '_blank')
   }
 
   const saveAssessment = async () => {
@@ -774,6 +854,15 @@ const NicheProgressTracking: React.FC = () => {
               </div>
               <div className="flex items-center gap-3">
                 <button
+                  onClick={downloadDailyProgressPDF}
+                  className="bg-[#AE491E] text-white px-4 py-2 rounded-lg hover:bg-[#8B3A18] transition-colors flex items-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  Export Daily Report
+                </button>
+                <button
                   onClick={handleCloseAllProgress}
                   className="text-gray-500 hover:text-gray-700 text-xl font-bold w-8 h-8 flex items-center justify-center"
                 >
@@ -783,24 +872,20 @@ const NicheProgressTracking: React.FC = () => {
             </div>
             {/* Full Page Content */}
             <div className="flex-1 overflow-y-auto p-6 print:p-0">
-              <div className="max-w-7xl mx-auto">
+              <div className="max-w-7xl mx-auto progress-content">
                 {/* PDF Header */}
                 <div className="text-center mb-8 print:mb-6">
-                  <h1 className="text-2xl font-bold text-gray-900 mb-2">NICHE Progress Tracking Report</h1>
-                  <p className="text-gray-600">
-                    {selectedProgressDay === 'all' 
-                      ? 'All Assessment Days (Day 1, 3, 5, 10)'
-                      : selectedProgressDay === 1 
-                        ? 'Day 1 (MON) Assessment Details'
-                        : `Day ${selectedProgressDay} Assessment Details`
-                    }
-                  </p>
+                  <div className="bg-[#AE491E] text-white px-6 py-6 w-full">
+                    <h1 className="text-3xl font-bold mb-2 tracking-wide">NICHE PROGRESS TRACKING REPORT</h1>
+                    <p className="text-lg font-semibold">COHORT IV</p>
+                  </div>
                 </div>
 
                 {/* Chart Visualization */}
                 <div className="space-y-8">
                   {filteredTrainees.map((trainee, traineeIndex) => {
                     const traineeAssessments = assessments.filter(a => a.trainee_id === trainee.id)
+                    const traineePracticalAssessments = practicalAssessments.filter(a => a.trainee_id === trainee.id)
                     
                     // Skip trainees with no assessments if viewing specific day
                     if (selectedProgressDay !== 'all' && !traineeAssessments.some(a => a.assessment_day === selectedProgressDay)) {
@@ -812,110 +897,206 @@ const NicheProgressTracking: React.FC = () => {
                     const days = selectedProgressDay === 'all' ? [1, 3, 5, 10] : [selectedProgressDay as number]
                     
                     return (
-                      <div key={trainee.id} className="student-section border border-gray-300 rounded-lg p-6 mb-6 break-inside-avoid">
-                        <div className="mb-6">
-                          <h3 className="text-lg font-semibold text-gray-900">{traineeIndex + 1}. {trainee.name}</h3>
-                          <p className="text-sm text-gray-600">{trainee.course || trainee.role || 'N/A'}</p>
-                          {trainee.niche_cohorts && (
-                            <p className="text-xs text-gray-500">Cohort {trainee.niche_cohorts.cohort_number}</p>
-                          )}
+                      <div key={trainee.id} className="student-section border-2 border-[#AE491E] rounded-lg mb-8 break-inside-avoid bg-white">
+                        {/* Student Header */}
+                        <div className="bg-white border-b-2 border-[#AE491E] p-4 rounded-t-lg">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <h3 className="text-xl font-bold text-[#AE491E]">{traineeIndex + 1}. {trainee.name.toUpperCase()}</h3>
+                              <p className="text-gray-600 text-sm mt-1">
+                                <span className="font-medium">Program:</span> {trainee.course || trainee.role || 'N/A'}
+                              </p>
+                            </div>
+                            {trainee.niche_cohorts && (
+                              <div className="text-right">
+                                <div className="bg-[#AE491E] text-white px-3 py-1 rounded-full text-sm font-bold">
+                                  COHORT {trainee.niche_cohorts.cohort_number}
+                                </div>
+                                <p className="text-xs text-gray-500 mt-1 capitalize">{trainee.niche_cohorts.status}</p>
+                              </div>
+                            )}
+                          </div>
                         </div>
                         
-                        {/* Chart Grid */}
-                        <div className="bg-gray-50 p-4 rounded-lg">
-                          <div className="grid grid-cols-5 gap-2 mb-4">
-                            {/* Header Row */}
-                            <div className="text-xs font-medium text-gray-600 text-center">Pillar</div>
-                            {days.map(day => (
-                              <div key={day} className="text-xs font-medium text-gray-600 text-center">
-                                Day {day}
+                        {/* Assessment Content */}
+                        <div className="p-6">
+                          {/* Two Column Layout: Regular + Practical */}
+                          <div className="grid grid-cols-2 gap-6">
+                            {/* Column 1: Regular Assessment */}
+                            <div className="border border-[#AE491E] rounded-lg overflow-hidden">
+                              <div className="bg-white border-b border-[#AE491E] p-3">
+                                <h4 className="text-sm font-bold tracking-wide text-center text-[#AE491E]">REGULAR ASSESSMENT</h4>
+                                <p className="text-xs text-gray-600 text-center mt-1">Behavioral & Knowledge Evaluation</p>
                               </div>
-                            ))}
-                            
-                            {/* Data Rows */}
-                            {allPillars.map(pillar => {
-                              return (
-                                <React.Fragment key={pillar}>
-                                  <div className="text-xs font-medium text-gray-700 py-2 pr-2 text-right">
-                                    {pillar}
-                                  </div>
-                                  {days.map(day => {
-                                    const dayAssessment = traineeAssessments.find(a => a.assessment_day === day)
-                                    const dayQuestion = questions.find(q => q.assessment_day === day && q.pillar_focus === pillar)
-                                    const score = dayQuestion && dayAssessment 
-                                      ? dayAssessment[`question_${dayQuestion.question_number}_score` as keyof ProgressAssessment] as number | null
-                                      : null
-                                    
+                              <div className="bg-white p-4">
+                                <div className="grid grid-cols-5 gap-2 mb-4">
+                                  {/* Header Row */}
+                                  <div className="text-xs font-bold text-[#AE491E] text-center border-b border-[#AE491E] pb-2">PILLAR</div>
+                                  {days.map(day => (
+                                    <div key={day} className="text-xs font-bold text-[#AE491E] text-center border-b border-[#AE491E] pb-2">
+                                      DAY {day}
+                                    </div>
+                                  ))}
+                                  
+                                  {/* Data Rows */}
+                                  {allPillars.map(pillar => {
                                     return (
-                                      <div key={`${pillar}-${day}`} className="flex items-center justify-center py-2">
-                                        <div className={`rounded-full text-xs font-bold ${
-                                          !score ? 'bg-gray-200 text-gray-400' :
-                                          score <= 2 ? 'bg-red-500 text-white' :
-                                          score === 3 ? 'bg-yellow-500 text-white' :
-                                          'bg-green-500 text-white'
-                                        }`} style={{
-                                          width: '32px',
-                                          height: '32px',
-                                          lineHeight: '32px',
-                                          textAlign: 'center',
-                                          display: 'inline-block'
-                                        }}>
-                                          {score || '-'}
+                                      <React.Fragment key={pillar}>
+                                        <div className="text-xs font-semibold text-[#AE491E] py-2 pr-2 text-right border-r border-[#AE491E]">
+                                          {pillar.toUpperCase()}
                                         </div>
-                                      </div>
+                                        {days.map(day => {
+                                          const dayAssessment = traineeAssessments.find(a => a.assessment_day === day)
+                                          const dayQuestion = questions.find(q => q.assessment_day === day && q.pillar_focus === pillar)
+                                          const score = dayQuestion && dayAssessment 
+                                            ? dayAssessment[`question_${dayQuestion.question_number}_score` as keyof ProgressAssessment] as number | null
+                                            : null
+                                          
+                                          return (
+                                            <div key={`${pillar}-${day}`} className="flex items-center justify-center py-2">
+                                              <div className={`rounded-full text-xs font-bold border-2 ${
+                                                !score ? 'bg-gray-200 text-gray-400 border-gray-300' :
+                                                score <= 2 ? 'bg-red-500 text-white border-red-600' :
+                                                score === 3 ? 'bg-[#AE491E] text-white border-[#AE491E]' :
+                                                'bg-green-500 text-white border-green-600'
+                                              }`} style={{
+                                                width: '30px',
+                                                height: '30px',
+                                                lineHeight: '26px',
+                                                textAlign: 'center',
+                                                display: 'inline-block'
+                                              }}>
+                                                {score || '-'}
+                                              </div>
+                                            </div>
+                                          )
+                                        })}
+                                      </React.Fragment>
                                     )
                                   })}
-                                </React.Fragment>
-                              )
-                            })}
-                          </div>
-                          
-                          {/* Legend */}
-                          <div className="flex justify-center gap-4 text-xs text-gray-600 mt-4 pt-4 border-t border-gray-200">
-                            <div className="flex items-center gap-1">
-                              <div className="w-3 h-3 bg-red-500 rounded-full"></div>
-                              <span>1-2 (Needs Work)</span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
-                              <span>3 (Developing)</span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                              <span>4-5 (Good/Strong)</span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <div className="w-3 h-3 bg-gray-200 rounded-full"></div>
-                              <span>Not Assessed</span>
-                            </div>
-                          </div>
-                          
-                          {/* Comments Section */}
-                          {traineeAssessments.some(a => a.grader_comments) && (
-                            <div className="mt-4 pt-4 border-t border-gray-200">
-                              <h4 className="text-sm font-medium text-gray-700 mb-2">Comments:</h4>
-                              <div className="space-y-1">
-                                {days.map(day => {
-                                  const dayAssessment = traineeAssessments.find(a => a.assessment_day === day)
-                                  if (!dayAssessment?.grader_comments) return null
-                                  return (
-                                    <div key={day} className="text-xs">
-                                      <span className="font-medium text-gray-600">Day {day}: </span>
-                                      <span className="text-gray-600">{dayAssessment.grader_comments}</span>
+                                </div>
+                                
+                                {/* Comments Section */}
+                                {traineeAssessments.some(a => a.grader_comments) && (
+                                  <div className="mt-4 pt-4 border-t-2 border-[#AE491E]">
+                                    <h5 className="text-xs font-bold text-[#AE491E] mb-2 uppercase tracking-wide">Instructor Comments:</h5>
+                                    <div className="space-y-2">
+                                      {days.map(day => {
+                                        const dayAssessment = traineeAssessments.find(a => a.assessment_day === day)
+                                        if (!dayAssessment?.grader_comments) return null
+                                        return (
+                                          <div key={day} className="text-xs bg-orange-50 p-2 rounded border border-[#AE491E]">
+                                            <span className="font-bold text-[#AE491E]">DAY {day}: </span>
+                                            <span className="text-gray-700">{dayAssessment.grader_comments}</span>
+                                          </div>
+                                        )
+                                      })}
                                     </div>
-                                  )
-                                })}
+                                  </div>
+                                )}
                               </div>
                             </div>
-                          )}
+
+                            {/* Column 2: Practical Assessment */}
+                            <div className="border border-[#AE491E] rounded-lg overflow-hidden">
+                              <div className="bg-white border-b border-[#AE491E] p-3">
+                                <h4 className="text-sm font-bold tracking-wide text-center text-[#AE491E]">PRACTICAL ASSESSMENT</h4>
+                                <p className="text-xs text-gray-600 text-center mt-1">Equipment Operation & Skills</p>
+                              </div>
+                              <div className="bg-white p-4">
+                                {traineePracticalAssessments.length > 0 ? (
+                                  <div className="grid grid-cols-3 gap-2 mb-4">
+                                    {/* Header Row */}
+                                    <div className="text-xs font-bold text-[#AE491E] text-center border-b border-[#AE491E] pb-2">CATEGORY</div>
+                                    <div className="text-xs font-bold text-[#AE491E] text-center border-b border-[#AE491E] pb-2">WEEK 1</div>
+                                    <div className="text-xs font-bold text-[#AE491E] text-center border-b border-[#AE491E] pb-2">WEEK 2</div>
+                                    
+                                    {/* Equipment Categories */}
+                                    {Object.entries(equipmentCategories).map(([categoryKey, equipment]) => {
+                                      const categoryName = categoryKey.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())
+                                      
+                                      return (
+                                        <React.Fragment key={categoryKey}>
+                                          <div className="text-xs font-semibold text-[#AE491E] py-2 pr-2 text-right border-r border-[#AE491E]">
+                                            {categoryName.toUpperCase()}
+                                          </div>
+                                          {[1, 2].map(week => {
+                                            const weekAssessment = traineePracticalAssessments.find(a => a.assessment_week === week)
+                                            
+                                            // Calculate average score for this category
+                                            let categoryScore = null
+                                            if (weekAssessment) {
+                                              const scores = equipment.map(eq => weekAssessment[eq.key as keyof PracticalAssessment] as number | null).filter(s => s !== null) as number[]
+                                              if (scores.length > 0) {
+                                                categoryScore = Math.round(scores.reduce((sum, s) => sum + s, 0) / scores.length)
+                                              }
+                                            }
+                                            
+                                            return (
+                                              <div key={`${categoryKey}-${week}`} className="flex items-center justify-center py-2">
+                                                <div className={`rounded-full text-xs font-bold border-2 ${
+                                                  !categoryScore ? 'bg-gray-200 text-gray-400 border-gray-300' :
+                                                  categoryScore <= 2 ? 'bg-red-500 text-white border-red-600' :
+                                                  categoryScore === 3 ? 'bg-[#AE491E] text-white border-[#AE491E]' :
+                                                  'bg-green-500 text-white border-green-600'
+                                                }`} style={{
+                                                  width: '30px',
+                                                  height: '30px',
+                                                  lineHeight: '26px',
+                                                  textAlign: 'center',
+                                                  display: 'inline-block'
+                                                }}>
+                                                  {categoryScore || '-'}
+                                                </div>
+                                              </div>
+                                            )
+                                          })}
+                                        </React.Fragment>
+                                      )
+                                    })}
+                                  </div>
+                                ) : (
+                                  <div className="text-center text-gray-600 py-12 border-2 border-dashed border-[#AE491E] rounded-lg">
+                                    <p className="text-sm font-medium text-[#AE491E]">NO PRACTICAL ASSESSMENTS</p>
+                                    <p className="text-xs text-gray-500 mt-1">Assessments pending</p>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+
                         </div>
                       </div>
                     )
                   }).filter(Boolean)}
                 </div>
 
+                {/* Assessment Scale - Moved to end */}
+                <div className="mt-8 pt-6 border-t-2 border-[#AE491E] bg-orange-50 p-6 rounded-lg">
+                  <h5 className="text-lg font-bold text-[#AE491E] text-center mb-4 uppercase tracking-wide">Assessment Scale</h5>
+                  <div className="flex justify-center gap-8 text-sm text-gray-700">
+                    <div className="flex items-center gap-2">
+                      <div className="w-5 h-5 bg-red-500 rounded-full border-2 border-red-600"></div>
+                      <span className="font-semibold">1-2 NEEDS WORK</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-5 h-5 bg-[#AE491E] rounded-full border-2 border-[#AE491E]"></div>
+                      <span className="font-semibold">3 DEVELOPING</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-5 h-5 bg-green-500 rounded-full border-2 border-green-600"></div>
+                      <span className="font-semibold">4-5 PROFICIENT</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-5 h-5 bg-gray-200 rounded-full border-2 border-gray-300"></div>
+                      <span className="font-semibold">NOT ASSESSED</span>
+                    </div>
+                  </div>
+                </div>
+                
                 {/* Footer */}
-                <div className="mt-8 pt-4 text-center text-xs text-gray-500">
+                <div className="mt-6 pt-4 text-center text-xs text-gray-500">
                   <p>Internal Assessment Report</p>
                 </div>
               </div>

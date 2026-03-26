@@ -1,0 +1,19 @@
+// Fix for NicheFees.tsx display issue
+// The problem: Table shows fee.total_paid instead of fee.actual_payments
+
+// In the flagship table around line 450, change:
+// <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-green-600">KSh {fee.total_paid.toLocaleString()}</td>
+// TO:
+// <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-green-600">KSh {(fee.actual_payments || 0).toLocaleString()}</td>
+
+// And change the balance calculation from:
+// <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-red-600">KSh {(fee.course_fee - ((fee as any).sponsored_amount || 0) - fee.total_paid).toLocaleString()}</td>
+// TO:
+// <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-red-600">KSh {(fee.course_fee - ((fee as any).sponsored_amount || 0) - (fee.actual_payments || 0)).toLocaleString()}</td>
+
+// Same changes needed for the specialized skills table around line 490
+
+// This will fix Brenda's display to show:
+// Total Paid: KSh 2,000 (actual payments made)
+// Balance: KSh 2,000 (remaining amount)
+// Status: Pending (correct)
