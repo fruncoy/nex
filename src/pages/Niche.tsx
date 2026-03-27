@@ -110,53 +110,99 @@ export function Niche() {
 
   const loadRecentActivities = async () => {
     try {
-      // Pull from activity_logs for NICHE entities (has staff name in description)
+      // Pull from activity_logs for NICHE entities
       const { data: loggedActivities } = await supabase
         .from('activity_logs')
-        .select('description, created_at, action_type, entity_type, staff(name)')
-        .in('entity_type', ['niche_training', 'niche_fees'])
+        .select('description, created_at, action_type, entity_type, user_id, staff(name)')
+        .in('entity_type', ['niche_training', 'niche_fees', 'niche_candidates'])
         .order('created_at', { ascending: false })
-        .limit(15)
+        .limit(20)
 
       if (loggedActivities && loggedActivities.length > 0) {
         return loggedActivities.map(a => ({
           text: a.description,
           created_at: a.created_at,
           type: a.entity_type,
-          by: a.staff?.name || null
+          by: a.staff?.name || 'System'
         }))
       }
 
-      // Fallback: raw records (no "who" info available)
+      // Fallback: Get recent activities from NICHE tables directly
       const activities: any[] = []
 
+      // Recent training activities
       const { data: trainingActivities } = await supabase
         .from('niche_training')
-        .select('name, status, created_at, assigned_to')
-        .order('created_at', { ascending: false })
+        .select('name, status, created_at, updated_at, created_by, updated_by')
+        .order('updated_at', { ascending: false })
         .limit(10)
 
       trainingActivities?.forEach(a => {
         activities.push({
-          text: `New trainee: ${a.name} (${a.status})`,
-          created_at: a.created_at,
-          type: 'training',
-          by: a.assigned_to || null
+          text: `Training record updated: ${a.name} (${a.status})`,
+          created_at: a.updated_at || a.created_at,
+          type: 'niche_training',
+          by: a.updated_by || a.created_by || 'System'
         })
       })
 
+      // Recent candidate activities
+      const { data: candidateActivities } = await supabase
+        .from('niche_candidates')
+        .select('name, status, created_at, updated_at, added_by')
+        .order('updated_at', { ascending: false })
+        .limit(10)
+
+      candidateActivities?.forEach(a => {
+        activities.push({
+          text: `Candidate updated: ${a.name} (${a.status})`,
+          created_at: a.updated_at || a.created_at,
+          type: 'niche_candidates',
+          by: a.added_by || 'System'
+        })
+      })
+
+      // Recent payment activities
       const { data: paymentActivities } = await supabase
         .from('niche_payments')
-        .select('amount, payment_date, niche_fees!inner(niche_training!inner(name))')
-        .order('payment_date', { ascending: false })
+        .select(`
+          amount, 
+          payment_date, 
+          created_at,
+          niche_fees!inner(
+            niche_training!inner(name)
+          )
+        `)
+        .order('created_at', { ascending: false })
         .limit(5)
 
       paymentActivities?.forEach(a => {
         activities.push({
-          text: `Payment: KES ${a.amount.toLocaleString()} from ${a.niche_fees?.niche_training?.name || 'Unknown'}`,
-          created_at: a.payment_date,
-          type: 'payment',
-          by: null
+          text: `Payment received: KES ${a.amount.toLocaleString()} from ${a.niche_fees?.niche_training?.name || 'Unknown'}`,
+          created_at: a.created_at,
+          type: 'niche_payments',
+          by: 'System'
+        })
+      })
+
+      // Recent fee activities
+      const { data: feeActivities } = await supabase
+        .from('niche_fees')
+        .select(`
+          amount,
+          payment_status,
+          created_at,
+          niche_training!inner(name)
+        `)
+        .order('created_at', { ascending: false })
+        .limit(5)
+
+      feeActivities?.forEach(a => {
+        activities.push({
+          text: `Fee record created: KES ${a.amount.toLocaleString()} for ${a.niche_training?.name || 'Unknown'} (${a.payment_status})`,
+          created_at: a.created_at,
+          type: 'niche_fees',
+          by: 'System'
         })
       })
 
@@ -249,25 +295,76 @@ export function Niche() {
 
       {/* Recent Activities */}
       <div className="bg-white rounded-lg shadow">
-        <div className="px-6 py-4 border-b border-gray-200">
+        <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
           <h2 className="text-lg font-semibold text-gray-900">Recent NICHE Activities</h2>
+          <button
+            onClick={loadNicheStats}
+            className="text-sm text-nestalk-primary hover:text-nestalk-primary/80 font-medium"
+          >
+            Refresh
+          </button>
         </div>
         <div className="p-6">
           {stats.recentActivities.length > 0 ? (
             <div className="space-y-4">
-              {stats.recentActivities.map((activity, index) => (
-                <div key={index} className="flex items-start space-x-3 p-3 bg-gray-50 rounded-lg">
-                  <div className="flex-shrink-0">
-                    <div className="w-2 h-2 bg-nestalk-primary rounded-full mt-2"></div>
+              {stats.recentActivities.map((activity, index) => {
+                const getActivityIcon = (type: string) => {
+                  switch (type) {
+                    case 'niche_training':
+                      return <GraduationCap className="w-4 h-4 text-blue-500" />
+                    case 'niche_candidates':
+                      return <Users className="w-4 h-4 text-green-500" />
+                    case 'niche_payments':
+                      return <DollarSign className="w-4 h-4 text-emerald-500" />
+                    case 'niche_fees':
+                      return <Clock className="w-4 h-4 text-orange-500" />
+                    default:
+                      return <AlertCircle className="w-4 h-4 text-gray-500" />
+                  }
+                }
+
+                const getActivityColor = (type: string) => {
+                  switch (type) {
+                    case 'niche_training':
+                      return 'bg-blue-50 border-blue-200'
+                    case 'niche_candidates':
+                      return 'bg-green-50 border-green-200'
+                    case 'niche_payments':
+                      return 'bg-emerald-50 border-emerald-200'
+                    case 'niche_fees':
+                      return 'bg-orange-50 border-orange-200'
+                    default:
+                      return 'bg-gray-50 border-gray-200'
+                  }
+                }
+
+                return (
+                  <div key={index} className={`flex items-start space-x-3 p-4 rounded-lg border ${getActivityColor(activity.type)}`}>
+                    <div className="flex-shrink-0 mt-0.5">
+                      {getActivityIcon(activity.type)}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-gray-900 font-medium">{activity.text}</p>
+                      <div className="flex items-center space-x-2 mt-1">
+                        <p className="text-xs text-gray-500">
+                          {new Date(activity.created_at).toLocaleDateString('en-US', {
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </p>
+                        {activity.by && activity.by !== 'System' && (
+                          <>
+                            <span className="text-xs text-gray-400">•</span>
+                            <p className="text-xs text-gray-600 font-medium">{activity.by}</p>
+                          </>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex-1">
-                    <p className="text-sm text-gray-900">{activity.text}</p>
-                    <p className="text-xs text-gray-500 mt-1">
-                      {new Date(activity.created_at).toLocaleDateString()} • {activity.type}
-                    </p>
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           ) : (
             <div className="text-center py-8">

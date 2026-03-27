@@ -3,7 +3,7 @@ import { supabase } from './supabase'
 interface ActivityLogParams {
   userId: string
   actionType: 'status_change' | 'edit' | 'create' | 'delete' | 'reschedule' | 'bulk_upload'
-  entityType?: 'candidate' | 'client' | 'training_lead' | 'interview' | 'meeting_note' | 'niche_training' | 'niche_fees'
+  entityType?: 'candidate' | 'client' | 'training_lead' | 'interview' | 'meeting_note' | 'niche_training' | 'niche_fees' | 'niche_candidates'
   entityId?: string
   entityName?: string
   oldValue?: string
@@ -76,16 +76,42 @@ export class ActivityLogger {
     })
   }
 
+  static async logNicheStatusChange(
+    userId: string,
+    entityType: 'niche_training' | 'niche_candidates',
+    entityId: string,
+    entityName: string,
+    oldStatus: string,
+    newStatus: string,
+    userName: string
+  ) {
+    const entityTypeDisplay = entityType === 'niche_training' ? 'NICHE trainee' : 'NICHE candidate'
+    
+    await this.log({
+      userId,
+      actionType: 'status_change',
+      entityType,
+      entityId,
+      entityName,
+      oldValue: oldStatus,
+      newValue: newStatus,
+      description: `${userName} changed ${entityName} (${entityTypeDisplay}) status from ${oldStatus} to ${newStatus}`
+    })
+  }
+
   static async logEdit(
     userId: string,
-    entityType: 'candidate' | 'client' | 'training_lead' | 'meeting_note' | 'niche_training' | 'niche_fees',
+    entityType: 'candidate' | 'client' | 'training_lead' | 'meeting_note' | 'niche_training' | 'niche_fees' | 'niche_candidates',
     entityId: string,
     entityName: string,
     userName: string
   ) {
     const entityTypeDisplay = entityType === 'candidate' ? 'candidate' : 
                              entityType === 'client' ? 'client' : 
-                             entityType === 'meeting_note' ? 'meeting note' : 'training lead'
+                             entityType === 'meeting_note' ? 'meeting note' : 
+                             entityType === 'niche_training' ? 'NICHE trainee' :
+                             entityType === 'niche_candidates' ? 'NICHE candidate' :
+                             entityType === 'niche_fees' ? 'NICHE fee record' : 'training lead'
     
     await this.log({
       userId,
@@ -93,20 +119,23 @@ export class ActivityLogger {
       entityType,
       entityId,
       entityName,
-      description: `${userName} updated ${entityName} (${entityTypeDisplay}) profile`
+      description: `${userName} updated ${entityName} (${entityTypeDisplay})`
     })
   }
 
   static async logCreate(
     userId: string,
-    entityType: 'candidate' | 'client' | 'training_lead' | 'meeting_note' | 'niche_training' | 'niche_fees',
+    entityType: 'candidate' | 'client' | 'training_lead' | 'meeting_note' | 'niche_training' | 'niche_fees' | 'niche_candidates',
     entityId: string,
     entityName: string,
     userName: string
   ) {
     const entityTypeDisplay = entityType === 'candidate' ? 'Candidate' : 
                              entityType === 'client' ? 'Client' : 
-                             entityType === 'meeting_note' ? 'Meeting Note' : 'Training Lead'
+                             entityType === 'meeting_note' ? 'Meeting Note' : 
+                             entityType === 'niche_training' ? 'NICHE Trainee' :
+                             entityType === 'niche_candidates' ? 'NICHE Candidate' :
+                             entityType === 'niche_fees' ? 'NICHE Fee Record' : 'Training Lead'
     
     await this.log({
       userId,
@@ -164,6 +193,30 @@ export class ActivityLogger {
       actionType: 'bulk_upload',
       entityType,
       description: `${userName} uploaded ${count} ${entityTypeDisplay} in bulk`
+    })
+  }
+
+  static async logDelete(
+    userId: string,
+    entityType: 'candidate' | 'client' | 'training_lead' | 'meeting_note' | 'niche_training' | 'niche_fees' | 'niche_candidates',
+    entityId: string,
+    entityName: string,
+    userName: string
+  ) {
+    const entityTypeDisplay = entityType === 'candidate' ? 'Candidate' : 
+                             entityType === 'client' ? 'Client' : 
+                             entityType === 'meeting_note' ? 'Meeting Note' : 
+                             entityType === 'niche_training' ? 'NICHE Trainee' :
+                             entityType === 'niche_candidates' ? 'NICHE Candidate' :
+                             entityType === 'niche_fees' ? 'NICHE Fee Record' : 'Training Lead'
+    
+    await this.log({
+      userId,
+      actionType: 'delete',
+      entityType,
+      entityId,
+      entityName,
+      description: `${userName} deleted ${entityTypeDisplay}: ${entityName}`
     })
   }
 }
