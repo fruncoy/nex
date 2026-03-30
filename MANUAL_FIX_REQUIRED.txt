@@ -1,0 +1,23 @@
+// MANUAL FIX REQUIRED FOR NicheFees.tsx
+// 
+// Find these TWO sections in the file and replace them:
+//
+// SECTION 1 - Around line 450 in flagship table:
+// FIND:
+// <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-green-600">KSh {fee.total_paid.toLocaleString()}</td>
+// <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-red-600">KSh {(fee.course_fee - ((fee as any).sponsored_amount || 0) - fee.total_paid).toLocaleString()}</td>
+//
+// REPLACE WITH:
+// <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-green-600">KSh {(fee.actual_payments || 0).toLocaleString()}</td>
+// <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-red-600">KSh {(fee.course_fee - ((fee as any).sponsored_amount || 0) - (fee.actual_payments || 0)).toLocaleString()}</td>
+//
+// SECTION 2 - Around line 490 in specialized skills table:
+// FIND:
+// <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-green-600">KSh {fee.total_paid.toLocaleString()}</td>
+// <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-red-600">KSh {(fee.course_fee - ((fee as any).sponsored_amount || 0) - fee.total_paid).toLocaleString()}</td>
+//
+// REPLACE WITH:
+// <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-green-600">KSh {(fee.actual_payments || 0).toLocaleString()}</td>
+// <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-red-600">KSh {(fee.course_fee - ((fee as any).sponsored_amount || 0) - (fee.actual_payments || 0)).toLocaleString()}</td>
+//
+// This will fix ALL students to show correct payment amounts and balances.

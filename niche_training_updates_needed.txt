@@ -1,0 +1,112 @@
+// Updated NicheTraining.tsx - Remove Pending status and modify Add Trainee for short courses only
+
+// Key changes needed:
+// 1. Remove 'Pending' from status options
+// 2. Filter out pending records from display
+// 3. Modify Add Trainee button to only show weekend/skills courses
+// 4. Remove 2-week program options from Add Trainee modal
+
+// In the interface, change status type:
+interface NicheTraining {
+  // ... other fields
+  status: 'Active' | 'Graduated' | 'Expelled'  // Remove 'Pending'
+  // ... other fields
+}
+
+// In formData, change default status:
+const [formData, setFormData] = useState({
+  // ... other fields
+  status: 'Active' as 'Active' | 'Graduated' | 'Expelled',  // Remove 'Pending', default to 'Active'
+  training_type: 'weekend' as 'weekend' | 'refresher',  // Remove '2week' option
+  // ... other fields
+})
+
+// In loadTrainingRecords, filter out pending records:
+const loadTrainingRecords = async () => {
+  try {
+    const { data, error } = await supabase
+      .from('niche_training')
+      .select(`
+        *,
+        cohorts:niche_cohorts(id, cohort_number, start_date, end_date, status)
+      `)
+      .in('status', ['Active', 'Graduated', 'Expelled'])  // Only load these statuses
+      .order('created_at', { ascending: false })
+
+    // ... rest of the function
+  } catch (error) {
+    // ... error handling
+  }
+}
+
+// In the Add Trainee modal, remove 2-week program option:
+<div>
+  <label className="block text-sm font-medium text-gray-700 mb-1">Course Type *</label>
+  <div className="flex gap-6">
+    <label className="flex items-center">
+      <input
+        type="radio"
+        name="course_type"
+        value="weekend"
+        checked={formData.training_type === 'weekend'}
+        onChange={() => setFormData({ ...formData, training_type: 'weekend', enrolled_courses: [] })}
+        className="mr-2 text-purple-600 focus:ring-purple-600"
+      />
+      Skills Training (Short Courses)
+    </label>
+    <label className="flex items-center">
+      <input
+        type="radio"
+        name="course_type"
+        value="refresher"
+        checked={formData.training_type === 'refresher'}
+        onChange={() => setFormData({ ...formData, training_type: 'refresher', enrolled_courses: [] })}
+        className="mr-2 text-green-600 focus:ring-green-600"
+      />
+      Refresher Training
+    </label>
+  </div>
+</div>
+
+// Remove the 2-week program course selection section entirely
+// Remove accommodation and cohort selection (only needed for 2-week programs)
+
+// In status dropdown, remove Pending option:
+<select
+  value={formData.status}
+  onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
+  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
+>
+  <option value="Active">Active</option>
+  <option value="Graduated">Graduated</option>
+  <option value="Expelled">Expelled</option>
+</select>
+
+// In bulk status update, remove Pending option:
+<select
+  value={bulkStatus}
+  onChange={(e) => setBulkStatus(e.target.value)}
+  className="px-3 py-1 border border-orange-300 rounded text-sm"
+>
+  <option value="">Select status</option>
+  <option value="Active">Active</option>
+  <option value="Graduated">Graduated</option>
+  <option value="Expelled">Expelled</option>
+</select>
+
+// Update button text and description:
+<button
+  onClick={() => setShowModal(true)}
+  className="flex items-center px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+>
+  <Plus className="w-4 h-4 mr-2" />
+  Add Short Course Trainee
+</button>
+
+// Update modal title:
+<h2 className="text-lg font-semibold text-gray-900 mb-4">
+  {selectedRecord ? 'Edit Short Course Training' : 'Add Short Course Trainee'}
+</h2>
+
+// Update page description:
+<p className="text-gray-600">Manage short course and skills training programs</p>
