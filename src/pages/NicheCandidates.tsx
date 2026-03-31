@@ -80,11 +80,19 @@ export function NicheCandidates() {
   const [importPreview, setImportPreview] = useState<{ toAdd: any[]; toSkip: any[] }>({ toAdd: [], toSkip: [] })
   const [importStep, setImportStep] = useState<'upload' | 'preview' | 'importing'>('upload')
   const [importProgress, setImportProgress] = useState(0)
+  const [syncingData, setSyncingData] = useState(false)
+  const [syncResults, setSyncResults] = useState<any[]>([])
+  const [showSyncResults, setShowSyncResults] = useState(false)
+  const [showSyncMenu, setShowSyncMenu] = useState(false)
+  const [showCriticalActionModal, setShowCriticalActionModal] = useState(false)
+  const [criticalActionData, setCriticalActionData] = useState<{ candidate: NicheCandidate; newStatus: string; onConfirm: () => void } | null>(null)
 
   const { user, staff } = useAuth()
   const { showToast } = useToast()
 
-  const statusOptions = ['New Inquiry', 'Interview Scheduled', 'Lost - No Show Interview', 'Lost - Failed Interview', 'Lost - Age', 'Lost - No References', 'Lost - No Response', 'Lost - Good Conduct', 'Lost - Experience', 'Pending Outcome', 'Qualified', 'Active in Training', 'Graduated', 'BLACKLISTED']
+  // Status options for manual selection (excluding 'Active in Training' - this is auto-managed)
+  const statusOptions = ['New Inquiry', 'Interview Scheduled', 'Lost - No Show Interview', 'Lost - Failed Interview', 'Lost - Age', 'Lost - No References', 'Lost - No Response', 'Lost - Good Conduct', 'Lost - Experience', 'Lost - Finance', 'Pending Outcome', 'Qualified', 'Graduated', 'BLACKLISTED']
+  // Filter options include 'Active in Training' for viewing
   const filterStatusOptions = ['all', 'New Inquiry', 'Interview Scheduled', 'All Lost', 'Pending Outcome', 'Qualified', 'Active in Training', 'Graduated', 'BLACKLISTED']
   const roleOptions = ['Nanny', 'House Manager', 'Chef', 'Driver', 'Night Nurse', 'Caregiver', 'Housekeeper']
   const sourceOptions = ['TikTok', 'Facebook', 'Instagram', 'Google Search', 'Website', 'Referral', 'LinkedIn', 'Walk-in poster', 'Youtube', 'Referred By Church']
@@ -95,6 +103,19 @@ export function NicheCandidates() {
   }, [])
 
                   // Debounced duplicate checking - removed live search, only checks on form submission
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (showSyncMenu) {
+        setShowSyncMenu(false)
+      }
+    }
+    
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [showSyncMenu])
 
   useEffect(() => {
     filterCandidates()
@@ -605,6 +626,42 @@ export function NicheCandidates() {
     }
   }
   
+  const handleForceSync = async () => {
+    const confirmed = confirm(
+      '🔄 COMPREHENSIVE FORCE SYNC\n\n' +
+      'This will synchronize ALL data between:\n' +
+      '• NICHE Candidates ↔ NICHE Training\n' +
+      '• Update statuses in both directions\n' +
+      '• Remove inactive trainees from training\n' +
+      '• Add missing candidates\n' +
+      '• Update blacklist entries\n\n' +
+      'This action affects multiple tables and pages.\n' +
+      'Continue with comprehensive sync?'
+    )
+    
+    if (!confirmed) return
+    
+    setSyncingData(true)
+    try {
+      const { data, error } = await supabase.rpc('force_sync_all_niche_data')
+      
+      if (error) throw error
+      
+      setSyncResults(data || [])
+      setShowSyncResults(true)
+      
+      // Reload candidates to show updated data
+      await loadCandidates()
+      
+      showToast(`Comprehensive sync completed: ${data?.length || 0} changes processed`, 'success')
+    } catch (error: any) {
+      console.error('Error syncing data:', error)
+      showToast(`Sync failed: ${error?.message || 'Unknown error'}`, 'error')
+    } finally {
+      setSyncingData(false)
+    }
+  }
+
   const downloadTemplate = () => {
     // Create sample data with proper format
     const templateData = [
@@ -754,6 +811,41 @@ export function NicheCandidates() {
             <Plus className="w-4 h-4 mr-2" />
             Add NICHE Candidate
           </button>
+          <div className="relative">
+            <button
+              onClick={() => setShowSyncMenu(!showSyncMenu)}
+              className="flex items-center px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+              title="More Actions"
+            >
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+              </svg>
+            </button>
+            {showSyncMenu && (
+              <div className="absolute right-0 top-full mt-1 w-56 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
+                <div className="py-1">
+                  <button
+                    onClick={() => {
+                      setShowSyncMenu(false)
+                      handleForceSync()
+                    }}
+                    disabled={syncingData}
+                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                  >
+                    {syncingData ? (
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-3"></div>
+                    ) : (
+                      <CheckCircle className="w-4 h-4 mr-3 text-blue-600" />
+                    )}
+                    <div>
+                      <div className="font-medium">{syncingData ? 'Syncing...' : 'Force Sync'}</div>
+                      <div className="text-xs text-gray-500">Updates ALL tables and pages</div>
+                    </div>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -894,6 +986,41 @@ export function NicheCandidates() {
                           if (newStatus === 'Schedule Interview') {
                             setScheduleModal({ open: true, candidate, dateOnly: '' })
                           } else if (newStatus) {
+                            // CRITICAL: Check if changing from Active in Training to non-training status
+                            if (candidate.status === 'Active in Training' && 
+                                ['New Inquiry', 'Interview Scheduled', 'Qualified', 'Pending Outcome', 'Lost - No Show Interview', 'Lost - Failed Interview', 'Lost - Age', 'Lost - No References', 'Lost - No Response', 'Lost - Good Conduct', 'Lost - Experience', 'Lost - Finance'].includes(newStatus)) {
+                              
+                              setCriticalActionData({
+                                candidate,
+                                newStatus,
+                                onConfirm: async () => {
+                                  try {
+                                    const { error } = await supabase
+                                      .from('niche_candidates')
+                                      .update({ status: newStatus })
+                                      .eq('id', candidate.id)
+                                    if (error) throw error
+                                    
+                                    setCandidates(prev => prev.map(c => c.id === candidate.id ? { ...c, status: newStatus } : c))
+                                    showToast(`${candidate.name} removed from training and status updated to ${newStatus}`, 'success')
+                                  } catch (error: any) {
+                                    console.error('Error updating status:', error)
+                                    showToast(`Error updating status: ${error?.message || 'Unknown error'}`, 'error')
+                                  }
+                                }
+                              })
+                              setShowCriticalActionModal(true)
+                              e.target.selectedIndex = 0
+                              return
+                            }
+                            
+                            // Prevent manual update to 'Active in Training' - this should only come from training system
+                            if (newStatus === 'Active in Training') {
+                              showToast('"Active in Training" status is automatically managed by the training system', 'error')
+                              e.target.selectedIndex = 0
+                              return
+                            }
+                            
                             try {
                               const { error } = await supabase
                                 .from('niche_candidates')
@@ -902,10 +1029,9 @@ export function NicheCandidates() {
                               if (error) throw error
                               
                               setCandidates(prev => prev.map(c => c.id === candidate.id ? { ...c, status: newStatus } : c))
-                              // Status updated successfully - no toast needed
                             } catch (error: any) {
                               console.error('Error updating status:', error)
-                              // Could show error in a warning card if needed
+                              showToast(`Error updating status: ${error?.message || 'Unknown error'}`, 'error')
                             }
                           }
                           e.target.selectedIndex = 0
@@ -1140,13 +1266,29 @@ export function NicheCandidates() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
                   <select
                     value={formData.status}
-                    onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
+                    onChange={(e) => {
+                      const newStatus = e.target.value
+                      if (newStatus === 'Active in Training' && !selectedCandidate) {
+                        showToast('"Active in Training" status is automatically set by the training system', 'error')
+                        return
+                      }
+                      setFormData({ ...formData, status: newStatus as any })
+                    }}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
                   >
                     {statusOptions.map(status => (
                       <option key={status} value={status}>{status}</option>
                     ))}
+                    {/* Show 'Active in Training' only if it's the current status (for editing existing records) */}
+                    {selectedCandidate?.status === 'Active in Training' && (
+                      <option value="Active in Training">Active in Training (Auto-managed)</option>
+                    )}
                   </select>
+                  {formData.status === 'Active in Training' && (
+                    <p className="text-sm text-blue-600 mt-1">
+                      ℹ️ This status is automatically managed by the training system
+                    </p>
+                  )}
                 </div>
 
                 <div className="flex gap-3 pt-4">
@@ -1675,6 +1817,176 @@ export function NicheCandidates() {
                   <p className="text-gray-600">{importProgress}% Complete</p>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Sync Results Modal */}
+      {showSyncResults && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold text-gray-900">
+                  Sync Results
+                </h2>
+                <button
+                  onClick={() => {
+                    setShowSyncResults(false)
+                    setSyncResults([])
+                  }}
+                  className="text-gray-400 hover:text-gray-600 p-1"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              
+              {syncResults.length === 0 ? (
+                <div className="text-center py-8">
+                  <CheckCircle className="mx-auto h-12 w-12 text-green-500 mb-4" />
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">All Systems Synchronized! 🔄</h3>
+                  <p className="text-gray-600">No changes were needed. All tables are perfectly synchronized.</p>
+                </div>
+              ) : (
+                <>
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <h3 className="font-medium text-blue-900 mb-2">
+                      Processed {syncResults.length} change(s) across multiple tables
+                    </h3>
+                    <p className="text-sm text-blue-700">
+                      🔄 Bidirectional sync: Candidates ↔ Training • Blacklist • All Pages Updated
+                    </p>
+                  </div>
+                  
+                  <div className="max-h-96 overflow-y-auto space-y-2">
+                    {syncResults.map((result, index) => (
+                      <div key={index} className={`p-3 rounded border ${
+                        result.sync_action?.includes('UPDATED') 
+                          ? 'bg-yellow-50 border-yellow-200' 
+                          : result.sync_action?.includes('REMOVED')
+                          ? 'bg-red-50 border-red-200'
+                          : 'bg-green-50 border-green-200'
+                      }`}>
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                              result.sync_action?.includes('UPDATED') 
+                                ? 'bg-yellow-100 text-yellow-800' 
+                                : result.sync_action?.includes('REMOVED')
+                                ? 'bg-red-100 text-red-800'
+                                : 'bg-green-100 text-green-800'
+                            }`}>
+                              {result.sync_action || result.action}
+                            </span>
+                            <span className="ml-2 font-medium">{result.sync_name || result.name}</span>
+                            <span className="ml-2 text-xs text-gray-500">({result.sync_table || 'candidates'})</span>
+                          </div>
+                          <span className="text-sm text-gray-600">{result.sync_phone || result.phone}</span>
+                        </div>
+                        <div className="mt-1 text-sm text-gray-600">
+                          {result.sync_action?.includes('UPDATED') 
+                            ? `${result.sync_old_status || result.old_status} → ${result.sync_new_status || result.new_status}`
+                            : result.sync_action?.includes('REMOVED')
+                            ? `Removed from training: ${result.sync_details || 'Status change'}`
+                            : `Added: ${result.sync_new_status || result.new_status}`
+                          }
+                        </div>
+                        {result.sync_details && (
+                          <div className="mt-1 text-xs text-gray-500 italic">
+                            {result.sync_details}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+              
+              <div className="flex justify-end mt-6">
+                <button
+                  onClick={() => {
+                    setShowSyncResults(false)
+                    setSyncResults([])
+                  }}
+                  className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Critical Action Confirmation Modal */}
+      {showCriticalActionModal && criticalActionData && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-md w-full">
+            <div className="p-6">
+              <div className="flex items-center mb-4">
+                <div className="flex-shrink-0">
+                  <svg className="w-8 h-8 text-red-500" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <h3 className="text-lg font-medium text-gray-900">
+                    ⚠️ CRITICAL ACTION WARNING
+                  </h3>
+                </div>
+              </div>
+              
+              <div className="mb-6">
+                <p className="text-sm text-gray-700 mb-4">
+                  Changing <strong>{criticalActionData.candidate.name}'s</strong> status from <strong>"Active in Training"</strong> to <strong>"{criticalActionData.newStatus}"</strong> will:
+                </p>
+                
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+                  <ul className="space-y-2 text-sm text-red-800">
+                    <li className="flex items-center">
+                      <span className="mr-2">🚫</span>
+                      <span>REMOVE them from NICHE Training permanently</span>
+                    </li>
+                    <li className="flex items-center">
+                      <span className="mr-2">🚫</span>
+                      <span>Delete their training record</span>
+                    </li>
+                    <li className="flex items-center">
+                      <span className="mr-2">🚫</span>
+                      <span>This action is NOT REVERSIBLE</span>
+                    </li>
+                  </ul>
+                </div>
+                
+                <p className="text-sm font-medium text-gray-900">
+                  Are you absolutely sure you want to remove <strong>{criticalActionData.candidate.name}</strong> from training?
+                </p>
+              </div>
+              
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowCriticalActionModal(false)
+                    setCriticalActionData(null)
+                  }}
+                  className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    criticalActionData.onConfirm()
+                    setShowCriticalActionModal(false)
+                    setCriticalActionData(null)
+                  }}
+                  className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium"
+                >
+                  Yes, Remove from Training
+                </button>
+              </div>
             </div>
           </div>
         </div>

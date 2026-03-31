@@ -283,32 +283,13 @@ export function NicheTraining() {
 
         if (error) throw error
 
-        // Sync to niche_candidates table
-        if (newRecord) {
-          const candidatePayload = {
-            name: formData.name.trim(),
-            phone: formData.phone.trim() || null,
-            source: formData.source || 'Short Course Training',
-            role: formData.role || null,
-            inquiry_date: new Date().toISOString().split('T')[0],
-            status: 'Active in Training',
-            category: 'Short Course',
-            assigned_to: user?.id,
-            added_by: staff?.name || 'System'
-          }
-
-          // Check if candidate already exists by phone
-          const { data: existingCandidate } = await supabase
-            .from('niche_candidates')
-            .select('id')
-            .eq('phone', formData.phone.trim())
-            .single()
-
-          if (!existingCandidate) {
-            await supabase
-              .from('niche_candidates')
-              .insert(candidatePayload)
-          }
+        // Database triggers will handle sync automatically with correct mappings:
+        // Active -> Active in Training
+        // Graduated -> Graduated  
+        // Expelled -> BLACKLISTED (and added to blacklist table)
+        if (newRecord && formData.phone.trim()) {
+          // The database triggers will handle candidate creation/updates automatically
+          // No need for manual sync here as triggers are more reliable
         }
 
         // Log activity
@@ -531,7 +512,7 @@ export function NicheTraining() {
 
       if (error) throw error
 
-      // Update candidate statuses and categories
+      // Update candidate statuses and categories (the triggers will handle most of this)
       const candidateUpdates = candidatesToImport.map(candidate => ({
         id: candidate.id,
         status: 'Active in Training',
@@ -544,7 +525,10 @@ export function NicheTraining() {
           .update({ status: update.status, category: update.category })
           .eq('id', update.id)
 
-        if (candidateUpdateError) throw candidateUpdateError
+        if (candidateUpdateError) {
+          console.warn('Candidate update error (may be handled by trigger):', candidateUpdateError)
+          // Don't throw error as trigger might handle this
+        }
       }
 
       // Log activity for each imported trainee

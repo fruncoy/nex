@@ -188,25 +188,29 @@ const NicheProgressTracking: React.FC = () => {
     console.log('Starting to fetch trainees...')
     
     try {
-      // First, let's fetch cohorts 4 and above with active/completed status
+      // First, let's fetch cohorts 4 and above with active/completed/graduated status
       const { data: cohortsData, error: cohortsError } = await supabase
         .from('niche_cohorts')
         .select('id, cohort_number, status')
         .gte('cohort_number', 4)
-        .in('status', ['active', 'completed'])
+        .in('status', ['active', 'completed', 'graduated'])
         .order('cohort_number')
         
       console.log('Cohorts query:', { cohortsData, cohortsError })
       
-      // First, let's see ALL records in niche_training
-      const { data: allData, error: allError } = await supabase
+      // Let's see ALL records in niche_training to understand the data
+      const { data: allTrainingData, error: allTrainingError } = await supabase
         .from('niche_training')
         .select('*')
         .order('created_at', { ascending: false })
       
-      console.log('ALL niche_training records:', { allData, allError, count: allData?.length })
+      console.log('ALL niche_training records:', { allTrainingData, allTrainingError, count: allTrainingData?.length })
       
-      // Now fetch active trainees from cohort 4+ only
+      // Let's also check what statuses exist in niche_training
+      const uniqueStatuses = [...new Set(allTrainingData?.map(t => t.status) || [])]
+      console.log('Unique statuses in niche_training:', uniqueStatuses)
+      
+      // Now fetch trainees from cohort 4+ with Active or Graduated status
       const { data, error, count } = await supabase
         .from('niche_training')
         .select(`
@@ -219,16 +223,19 @@ const NicheProgressTracking: React.FC = () => {
           status,
           niche_cohorts!cohort_id(cohort_number, status)
         `, { count: 'exact' })
-        .eq('status', 'Active')
+        .in('status', ['Active', 'Graduated'])
         .order('created_at', { ascending: false })
 
-      // Filter to only include trainees from cohort 4+
-      const filteredData = data?.filter(trainee => 
-        trainee.niche_cohorts && trainee.niche_cohorts.cohort_number >= 4
-      ) || []
-
-      console.log('Trainees query with join:', { data, error, count })
+      console.log('Trainees query with join (before filtering):', { data, error, count })
       
+      // Filter to only include trainees from cohort 4+
+      const filteredData = data?.filter(trainee => {
+        console.log('Checking trainee:', trainee.name, 'cohort:', trainee.niche_cohorts)
+        return trainee.niche_cohorts && trainee.niche_cohorts.cohort_number >= 4
+      }) || []
+      
+      console.log('Filtered trainees (cohort 4+):', filteredData)
+
       if (error) {
         console.error('Error fetching trainees:', error)
       } else {
@@ -240,9 +247,12 @@ const NicheProgressTracking: React.FC = () => {
           const cohortLabels = cohortsData.map(c => `Cohort ${c.cohort_number} (${c.status})`)
           setAllCohorts(cohortLabels)
           console.log('Setting cohorts for dropdown:', cohortLabels)
-          // Set default to first cohort
+          
+          // Set default to active cohort, or first cohort if no active cohort exists
           if (!selectedCohort) {
-            setSelectedCohort(cohortLabels[0])
+            const activeCohort = cohortLabels.find(label => label.includes('(active)'))
+            setSelectedCohort(activeCohort || cohortLabels[0])
+            console.log('Setting default cohort to:', activeCohort || cohortLabels[0])
           }
         }
       }
@@ -292,9 +302,12 @@ const NicheProgressTracking: React.FC = () => {
   }
 
   const handleAssessTrainee = (traineeId: string) => {
+    const trainee = trainees.find(t => t.id === traineeId)
+    const isGraduated = trainee?.status === 'Graduated'
+    
     setSelectedTrainee(traineeId)
     setShowAssessmentForm(true)
-    setIsEditMode(false)
+    setIsEditMode(!isGraduated) // Only allow edit mode for non-graduated students
     setAssessmentType('regular')
     
     // Find the next unassessed day
@@ -323,11 +336,14 @@ const NicheProgressTracking: React.FC = () => {
         assessed_by: staff?.name || user?.email || 'Unknown',
         grader_comments: ''
       }))
-      setIsEditMode(true)
+      setIsEditMode(!isGraduated) // Only allow edit mode for non-graduated students
     }
   }
 
   const handleDaySelect = (day: number) => {
+    const trainee = trainees.find(t => t.id === selectedTrainee)
+    const isGraduated = trainee?.status === 'Graduated'
+    
     setSelectedDay(day)
     setIsEditMode(false) // Reset to view mode when switching days
     setCurrentAssessment(prev => ({ ...prev, assessment_day: day, assessed_by: staff?.name || user?.email || 'Unknown' }))
@@ -349,12 +365,15 @@ const NicheProgressTracking: React.FC = () => {
           assessed_by: staff?.name || user?.email || 'Unknown',
           grader_comments: ''
         }))
-        setIsEditMode(true) // New assessment starts in edit mode
+        setIsEditMode(!isGraduated) // Only allow edit mode for non-graduated students
       }
     }
   }
 
   const handleWeekSelect = (week: number) => {
+    const trainee = trainees.find(t => t.id === selectedTrainee)
+    const isGraduated = trainee?.status === 'Graduated'
+    
     setSelectedWeek(week)
     setIsEditMode(false)
     if (selectedTrainee) {
@@ -368,7 +387,7 @@ const NicheProgressTracking: React.FC = () => {
           assessment_week: week,
           assessed_by: staff?.name || user?.email || 'Unknown'
         }))
-        setIsEditMode(true)
+        setIsEditMode(!isGraduated) // Only allow edit mode for non-graduated students
       }
     }
   }
@@ -804,6 +823,11 @@ const NicheProgressTracking: React.FC = () => {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="font-medium text-gray-900">{trainee.name}</div>
+                          {trainee.status === 'Graduated' && (
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 mt-1">
+                              Graduated
+                            </span>
+                          )}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                           {trainee.course || trainee.role || 'N/A'}
@@ -829,12 +853,21 @@ const NicheProgressTracking: React.FC = () => {
                           )}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <button
-                            onClick={() => handleAssessTrainee(trainee.id)}
-                            className="bg-[#AE491E] text-white px-3 py-1 rounded-lg text-sm hover:bg-[#8B3A18] transition-colors"
-                          >
-                            Assess
-                          </button>
+                          {trainee.status === 'Active' ? (
+                            <button
+                              onClick={() => handleAssessTrainee(trainee.id)}
+                              className="bg-[#AE491E] text-white px-3 py-1 rounded-lg text-sm hover:bg-[#8B3A18] transition-colors"
+                            >
+                              Assess
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleAssessTrainee(trainee.id)}
+                              className="bg-gray-500 text-white px-3 py-1 rounded-lg text-sm hover:bg-gray-600 transition-colors"
+                            >
+                              View Only
+                            </button>
+                          )}
                         </td>
                       </tr>
                     )
@@ -1334,7 +1367,7 @@ const NicheProgressTracking: React.FC = () => {
 
                 {/* Edit/Cancel buttons - Bottom right of entire form */}
                 <div className="flex justify-end gap-3 mb-6">
-                  {assessmentType === 'regular' && assessments.find(a => a.trainee_id === selectedTrainee && a.assessment_day === selectedDay) && !isEditMode && (
+                  {selectedTraineeData?.status !== 'Graduated' && assessmentType === 'regular' && assessments.find(a => a.trainee_id === selectedTrainee && a.assessment_day === selectedDay) && !isEditMode && (
                     <button
                       onClick={() => setIsEditMode(true)}
                       className="bg-blue-600 text-white px-3 py-1 rounded-lg text-sm hover:bg-blue-700 transition-colors"
@@ -1342,7 +1375,7 @@ const NicheProgressTracking: React.FC = () => {
                       Edit
                     </button>
                   )}
-                  {assessmentType === 'practical' && practicalAssessments.find(a => a.trainee_id === selectedTrainee && a.assessment_week === selectedWeek) && !isEditMode && (
+                  {selectedTraineeData?.status !== 'Graduated' && assessmentType === 'practical' && practicalAssessments.find(a => a.trainee_id === selectedTrainee && a.assessment_week === selectedWeek) && !isEditMode && (
                     <button
                       onClick={() => setIsEditMode(true)}
                       className="bg-blue-600 text-white px-3 py-1 rounded-lg text-sm hover:bg-blue-700 transition-colors"
