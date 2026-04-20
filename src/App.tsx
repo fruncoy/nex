@@ -14,7 +14,7 @@ import { NicheCourses } from './pages/NicheCourses'
 import { NicheTraining } from './pages/NicheTraining'
 import { NicheFees } from './pages/NicheFees'
 import { NicheTimetable } from './pages/NicheTimetable'
-import { NicheCohorts } from './pages/NicheCohorts'
+import { NicheReports } from './pages/NicheReports'
 import { NicheGrading } from './pages/NicheGrading'
 import { Blacklisted } from './pages/Blacklisted'
 import { SMSManagement } from './pages/SMSManagement'
@@ -58,7 +58,7 @@ function AppRoutes() {
         <Route path="niche-interviews" element={<NicheInterviews />} />
         <Route path="niche" element={<Niche />} />
         <Route path="niche-courses" element={<NicheCourses />} />
-        <Route path="niche-cohorts" element={<NicheCohorts />} />
+        <Route path="niche-reports" element={<NicheReports />} />
         <Route path="niche-training" element={<NicheTraining />} />
         <Route path="niche-fees" element={<NicheFees />} />
         <Route path="niche-timetable" element={<NicheTimetable />} />

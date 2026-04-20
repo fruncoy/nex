@@ -70,7 +70,7 @@ export function Layout() {
         { name: 'NICHE Timetable', href: '/niche-timetable', icon: Calendar },
         { name: 'NICHE Fees', href: '/niche-fees', icon: GraduationCap },
         { name: 'Progress Tracking', href: '/niche-progress', icon: BarChart3 },
-        { name: 'NICHE Cohorts', href: '/niche-cohorts', icon: Users },
+        { name: 'NICHE Reports', href: '/niche-reports', icon: BarChart3 },
         { name: 'NICHE Grading', href: '/niche-grading', icon: Award },
         { name: 'GetMatch', href: '/get-match', icon: Heart }
       ]

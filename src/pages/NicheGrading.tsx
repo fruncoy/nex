@@ -247,6 +247,9 @@ export function NicheGrading() {
 
       if (error) throw error
       setCohorts(data || [])
+      // Default to active cohort
+      const activeCohort = (data || []).find(c => c.status === 'active')
+      if (activeCohort) setCohortFilter(activeCohort.id)
     } catch (error) {
       console.error('Error loading cohorts:', error)
       showToast('Failed to load cohorts', 'error')
@@ -1253,165 +1256,79 @@ export function NicheGrading() {
             </div>
           </div>
 
-          {/* Nanny Professionals Table */}
+          {/* Combined Professionals Table */}
           <div className="bg-white rounded-lg shadow">
             <div className="px-6 py-4 border-b border-gray-200">
-              <h2 className="text-lg font-semibold text-gray-900 flex items-center">
-                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 mr-3">
-                  Nanny
-                </span>
-                NICHE Professionals
-              </h2>
+              <h2 className="text-lg font-semibold text-gray-900">NICHE Professionals</h2>
             </div>
-            
-            {filteredRecords.filter(record => record.training_type === 'nanny').length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Course</th>
-                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Childcare & Development</th>
-                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Professional Conduct</th>
-                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Housekeeping</th>
-                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Cooking & Nutrition</th>
-                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Final Score</th>
-                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Tier</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {filteredRecords.filter(record => record.training_type === 'nanny').map((record, index) => (
-                      <tr key={record.id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 flex items-center gap-2">
-                          {index + 1}
-                          <button
-                            onClick={() => handleViewChoice(record)}
-                            className="text-blue-600 hover:text-blue-900 p-1 rounded hover:bg-blue-50"
-                            title="View Certificate or Transcript"
-                          >
-                            <Eye className="w-4 h-4" />
-                          </button>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                          {record.trainee_name}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                          {record.trainee_course}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-center font-semibold text-gray-900">
-                          {record.pillar1_weighted?.toFixed(1)}/45
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-center font-semibold text-gray-900">
-                          {record.pillar2_weighted?.toFixed(1)}/30
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-center font-semibold text-gray-900">
-                          {record.pillar3_weighted?.toFixed(1)}/15
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-center font-semibold text-gray-900">
-                          {record.pillar4_weighted?.toFixed(1)}/10
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-center font-bold text-nestalk-primary">
-                          {record.final_score?.toFixed(1)}%
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-center">
-                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${getTierColor(record.tier)}`}>
-                            <Star className="w-3 h-3 mr-1" />
-                            {record.tier}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="text-center py-12">
-                <h3 className="mt-2 text-sm font-medium text-gray-900">No Nanny professionals found</h3>
-                <p className="mt-1 text-sm text-gray-500">
-                  {searchTerm || cohortFilter !== 'all' ? 'Try adjusting your search or filter criteria.' : 'No Nanny trainees have been graded yet.'}
-                </p>
-              </div>
-            )}
-          </div>
 
-          {/* House Manager Professionals Table */}
-          <div className="bg-white rounded-lg shadow">
-            <div className="px-6 py-4 border-b border-gray-200">
-              <h2 className="text-lg font-semibold text-gray-900 flex items-center">
-                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 mr-3">
-                  House Manager
-                </span>
-                NICHE Professionals
-              </h2>
-            </div>
-            
-            {filteredRecords.filter(record => record.training_type === 'house_manager').length > 0 ? (
+            {filteredRecords.length > 0 ? (
               <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
+                <table className="min-w-full divide-y divide-gray-200 text-sm">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Course</th>
-                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Professional Conduct</th>
-                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Housekeeping & Systems</th>
-                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Cooking & Kitchen</th>
-                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Childcare Literacy</th>
-                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Final Score</th>
-                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Tier</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-10">#</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
+                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Pillar 1</th>
+                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Pillar 2</th>
+                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Pillar 3</th>
+                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Pillar 4</th>
+                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Final Score</th>
+                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Tier</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {filteredRecords.filter(record => record.training_type === 'house_manager').map((record, index) => (
-                      <tr key={record.id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 flex items-center gap-2">
-                          {index + 1}
-                          <button
-                            onClick={() => handleViewChoice(record)}
-                            className="text-blue-600 hover:text-blue-900 p-1 rounded hover:bg-blue-50"
-                            title="View Certificate or Transcript"
-                          >
-                            <Eye className="w-4 h-4" />
-                          </button>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                          {record.trainee_name}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                          {record.trainee_course}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-center font-semibold text-gray-900">
-                          {record.pillar1_weighted?.toFixed(1)}/30
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-center font-semibold text-gray-900">
-                          {record.pillar2_weighted?.toFixed(1)}/30
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-center font-semibold text-gray-900">
-                          {record.pillar3_weighted?.toFixed(1)}/25
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-center font-semibold text-gray-900">
-                          {record.pillar4_weighted?.toFixed(1)}/15
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-center font-bold text-nestalk-primary">
-                          {record.final_score?.toFixed(1)}%
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-center">
-                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${getTierColor(record.tier)}`}>
-                            <Star className="w-3 h-3 mr-1" />
-                            {record.tier}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
+                    {filteredRecords.map((record, index) => {
+                      const isNanny = record.training_type === 'nanny'
+                      const p1Max = isNanny ? 45 : 30
+                      const p2Max = isNanny ? 30 : 30
+                      const p3Max = isNanny ? 15 : 25
+                      const p4Max = isNanny ? 10 : 15
+                      return (
+                        <tr key={record.id} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 whitespace-nowrap text-gray-500 text-center">
+                            <div className="flex items-center gap-1">
+                              <span>{index + 1}</span>
+                              <button
+                                onClick={() => handleViewChoice(record)}
+                                className="text-blue-500 hover:text-blue-700 p-0.5 rounded hover:bg-blue-50"
+                                title="View Certificate or Transcript"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap font-medium text-gray-900">{record.trainee_name}</td>
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                              isNanny ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'
+                            }`}>
+                              {isNanny ? 'Nanny' : 'House Manager'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-center text-gray-700">{record.pillar1_weighted?.toFixed(1)}/{p1Max}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-center text-gray-700">{record.pillar2_weighted?.toFixed(1)}/{p2Max}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-center text-gray-700">{record.pillar3_weighted?.toFixed(1)}/{p3Max}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-center text-gray-700">{record.pillar4_weighted?.toFixed(1)}/{p4Max}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-center font-bold text-nestalk-primary">{record.final_score?.toFixed(1)}%</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-center">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getTierColor(record.tier)}`}>
+                              <Star className="w-3 h-3 mr-1" />
+                              {record.tier}
+                            </span>
+                          </td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>
             ) : (
               <div className="text-center py-12">
-                <h3 className="mt-2 text-sm font-medium text-gray-900">No House Manager professionals found</h3>
+                <h3 className="text-sm font-medium text-gray-900">No graded professionals found</h3>
                 <p className="mt-1 text-sm text-gray-500">
-                  {searchTerm || cohortFilter !== 'all' ? 'Try adjusting your search or filter criteria.' : 'No House Manager trainees have been graded yet.'}
+                  {searchTerm || cohortFilter !== 'all' ? 'Try adjusting your search or filter.' : 'No trainees have been graded yet.'}
                 </p>
               </div>
             )}

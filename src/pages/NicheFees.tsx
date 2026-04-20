@@ -62,7 +62,7 @@ export function NicheFees() {
   const [cohorts, setCohorts] = useState<NicheCohort[]>([])
   const [searchTerm, setSearchTerm] = useState('')
   const [filterStatus, setFilterStatus] = useState('all')
-  const [filterCohort, setFilterCohort] = useState('active')
+  const [filterCohort, setFilterCohort] = useState('all')
   const [loading, setLoading] = useState(true)
 
   const [showPaymentModal, setShowPaymentModal] = useState(false)
@@ -284,12 +284,7 @@ export function NicheFees() {
       filtered = filtered.filter(fee => fee.payment_status === filterStatus)
     }
 
-    if (filterCohort === 'active') {
-      filtered = filtered.filter(fee => {
-        const cohort = cohorts.find(c => c.id === fee.cohort_id)
-        return cohort?.status === 'active'
-      })
-    } else if (filterCohort !== 'all') {
+    if (filterCohort !== 'all') {
       filtered = filtered.filter(fee => fee.cohort_id === filterCohort)
     }
 
@@ -492,14 +487,11 @@ export function NicheFees() {
             className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
           >
             <option value="all">All Cohorts</option>
-            {getVisibleCohorts().map(cohort => {
-              const isActive = cohort.status === 'active'
-              return (
-                <option key={cohort.id} value={isActive ? 'active' : cohort.id}>
-                  Cohort {getRomanNumeral(cohort.cohort_number)}{isActive ? ' (active)' : ''}
-                </option>
-              )
-            })}
+            {getVisibleCohorts().map(cohort => (
+              <option key={cohort.id} value={cohort.id}>
+                Cohort {getRomanNumeral(cohort.cohort_number)}{cohort.status === 'active' ? ' (active)' : ''}
+              </option>
+            ))}
           </select>
         </div>
       </div>

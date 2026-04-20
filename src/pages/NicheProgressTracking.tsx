@@ -81,7 +81,7 @@ const NicheProgressTracking: React.FC = () => {
   const [questions, setQuestions] = useState<AssessmentQuestion[]>([])
   const [assessments, setAssessments] = useState<ProgressAssessment[]>([])
   const [practicalAssessments, setPracticalAssessments] = useState<PracticalAssessment[]>([])
-  const [selectedCohort, setSelectedCohort] = useState<string>('')
+  const [selectedCohort, setSelectedCohort] = useState<string>('active')
   const [searchTerm, setSearchTerm] = useState<string>('')
   const [selectedTrainee, setSelectedTrainee] = useState<string | null>(null)
   const [selectedDay, setSelectedDay] = useState<number>(1)
@@ -134,6 +134,7 @@ const NicheProgressTracking: React.FC = () => {
     assessed_by: staff?.name || user?.email || 'Unknown'
   })
   const [loading, setLoading] = useState(false)
+  const [pdfLoading, setPdfLoading] = useState(false)
 
   const assessmentDays = [
     { day: 1, label: 'Baseline Assessment' },
@@ -185,78 +186,42 @@ const NicheProgressTracking: React.FC = () => {
   }, [])
 
   const fetchTrainees = async () => {
-    console.log('Starting to fetch trainees...')
-    
     try {
-      // First, let's fetch cohorts 4 and above with active/completed/graduated status
-      const { data: cohortsData, error: cohortsError } = await supabase
+      const { data: cohortsData } = await supabase
         .from('niche_cohorts')
         .select('id, cohort_number, status')
         .gte('cohort_number', 4)
-        .in('status', ['active', 'completed', 'graduated'])
+        .in('status', ['active', 'completed', 'upcoming'])
         .order('cohort_number')
-        
-      console.log('Cohorts query:', { cohortsData, cohortsError })
-      
-      // Let's see ALL records in niche_training to understand the data
-      const { data: allTrainingData, error: allTrainingError } = await supabase
-        .from('niche_training')
-        .select('*')
-        .order('created_at', { ascending: false })
-      
-      console.log('ALL niche_training records:', { allTrainingData, allTrainingError, count: allTrainingData?.length })
-      
-      // Let's also check what statuses exist in niche_training
-      const uniqueStatuses = [...new Set(allTrainingData?.map(t => t.status) || [])]
-      console.log('Unique statuses in niche_training:', uniqueStatuses)
-      
-      // Now fetch trainees from cohort 4+ with Active or Graduated status
-      const { data, error, count } = await supabase
+
+      const { data, error } = await supabase
         .from('niche_training')
         .select(`
-          id, 
-          name, 
-          cohort_id, 
-          role,
-          course,
-          training_type, 
-          status,
+          id, name, cohort_id, role, course, training_type, status,
           niche_cohorts!cohort_id(cohort_number, status)
-        `, { count: 'exact' })
+        `)
         .in('status', ['Active', 'Graduated'])
         .order('created_at', { ascending: false })
 
-      console.log('Trainees query with join (before filtering):', { data, error, count })
-      
-      // Filter to only include trainees from cohort 4+
-      const filteredData = data?.filter(trainee => {
-        console.log('Checking trainee:', trainee.name, 'cohort:', trainee.niche_cohorts)
-        return trainee.niche_cohorts && trainee.niche_cohorts.cohort_number >= 4
-      }) || []
-      
-      console.log('Filtered trainees (cohort 4+):', filteredData)
+      if (error) { console.error('Error fetching trainees:', error); return }
 
-      if (error) {
-        console.error('Error fetching trainees:', error)
-      } else {
-        setTrainees(filteredData)
-        console.log('Trainees set:', filteredData.length)
-        
-        // Set cohorts for dropdown from separate query
-        if (cohortsData && cohortsData.length > 0) {
-          const cohortLabels = cohortsData.map(c => `Cohort ${c.cohort_number} (${c.status})`)
-          setAllCohorts(cohortLabels)
-          console.log('Setting cohorts for dropdown:', cohortLabels)
-          
-          // Set default to active cohort, or first cohort if no active cohort exists
-          if (!selectedCohort) {
-            const activeCohort = cohortLabels.find(label => label.includes('(active)'))
-            setSelectedCohort(activeCohort || cohortLabels[0])
-            console.log('Setting default cohort to:', activeCohort || cohortLabels[0])
-          }
+      // Filter to cohort 4+ only
+      const filtered = (data || []).filter(t => t.niche_cohorts && t.niche_cohorts.cohort_number >= 4)
+      setTrainees(filtered)
+
+      if (cohortsData && cohortsData.length > 0) {
+        // Only show cohorts that have trainees
+        const cohortIdsWithTrainees = new Set(filtered.map(t => t.cohort_id))
+        const relevantCohorts = cohortsData.filter(c => cohortIdsWithTrainees.has(c.id))
+        const cohortLabels = relevantCohorts.map(c => `Cohort ${c.cohort_number} (${c.status})`)
+        setAllCohorts(cohortLabels)
+
+        if (selectedCohort === 'active') {
+          const activeCohort = relevantCohorts.find(c => c.status === 'active')
+          const defaultCohort = activeCohort || relevantCohorts[relevantCohorts.length - 1]
+          setSelectedCohort(defaultCohort ? `Cohort ${defaultCohort.cohort_number} (${defaultCohort.status})` : '')
         }
       }
-      
     } catch (err) {
       console.error('Unexpected error:', err)
     }
@@ -436,6 +401,7 @@ const NicheProgressTracking: React.FC = () => {
       return
     }
 
+    setPdfLoading(true)
     try {
       // Get the progress content that's currently displayed
       const progressContent = document.querySelector('.progress-content')
@@ -464,60 +430,35 @@ const NicheProgressTracking: React.FC = () => {
               background: white;
               font-size: 12px;
             }
-            /* Ensure burnt orange colors are preserved */
+            /* Tailwind arbitrary color overrides for Puppeteer */
             .bg-\\[\\#AE491E\\] { background-color: #AE491E !important; }
             .text-\\[\\#AE491E\\] { color: #AE491E !important; }
             .border-\\[\\#AE491E\\] { border-color: #AE491E !important; }
             .border-b-\\[\\#AE491E\\] { border-bottom-color: #AE491E !important; }
             .border-t-\\[\\#AE491E\\] { border-top-color: #AE491E !important; }
-            /* Hide print-hidden elements */
-            .print\\:hidden { display: none !important; }
-            
-            /* Fix text wrapping and spacing issues */
-            .text-xs { font-size: 10px !important; line-height: 1.3 !important; }
-            .text-sm { font-size: 11px !important; line-height: 1.4 !important; }
-            .text-lg { font-size: 14px !important; line-height: 1.4 !important; }
-            
-            /* Ensure proper text wrapping in grid cells */
-            .grid > div {
-              word-wrap: break-word !important;
-              overflow-wrap: break-word !important;
-              hyphens: auto !important;
-              min-width: 0 !important;
-            }
-            
-            /* Fix column headers to prevent text overlap */
-            .grid-cols-5 > div {
-              padding: 4px 2px !important;
-              text-align: center !important;
-              word-break: break-word !important;
-              line-height: 1.2 !important;
-            }
-            
-            /* Specific fixes for pillar names */
-            .text-center {
-              text-align: center !important;
-              word-break: break-word !important;
-              hyphens: auto !important;
-            }
-            
-            /* Ensure adequate spacing */
-            .gap-2 { gap: 4px !important; }
-            .gap-4 { gap: 8px !important; }
-            .gap-6 { gap: 12px !important; }
-            
-            /* Fix for assessment section headers */
-            .tracking-wide {
-              letter-spacing: 0.05em !important;
-              word-spacing: 0.1em !important;
-            }
-            
-            /* Better spacing for small text */
-            .uppercase {
-              font-size: 9px !important;
-              font-weight: bold !important;
-              line-height: 1.1 !important;
-            }
+            .bg-orange-50 { background-color: #fff7ed !important; }
+            /* Fix circles - flexbox centering */
+            .rounded-full { display: inline-flex !important; align-items: center !important; justify-content: center !important; }
+            /* Fix pillar label column - give it more width */
+            .grid-cols-5 { grid-template-columns: 2fr 1fr 1fr 1fr 1fr !important; }
+            .grid-cols-5 > div { font-size: 9px !important; line-height: 1.3 !important; }
+            /* Assessment scale - avoid page cut */
+            .mt-8.pt-6 { page-break-inside: avoid !important; }
+            /* Reduce card size to fit 2 per page */
+            .student-section { margin-bottom: 8px !important; }
+            .student-section .p-6 { padding: 8px !important; }
+            .student-section .p-4 { padding: 6px !important; }
+            .student-section .p-3 { padding: 4px !important; }
+            .student-section .p-4.rounded-t-lg { padding: 8px !important; }
+            .student-section .gap-6 { gap: 8px !important; }
+            .student-section .mb-4 { margin-bottom: 4px !important; }
+            .student-section .py-2 { padding-top: 2px !important; padding-bottom: 2px !important; }
+            .student-section .py-12 { padding-top: 16px !important; padding-bottom: 16px !important; }
+            .student-section .text-xl { font-size: 13px !important; }
+            .student-section .text-sm { font-size: 10px !important; }
+            .student-section .text-xs { font-size: 9px !important; }
+            /* Page layout: 2 students per page */
+            .page-break-before { page-break-before: always !important; break-before: always !important; }
           </style>
         </head>
         <body>
@@ -559,6 +500,8 @@ const NicheProgressTracking: React.FC = () => {
     } catch (error) {
       console.error('Progress report PDF generation failed:', error)
       alert(`PDF generation failed: ${error.message}. Make sure the PDF service is running on localhost:3001`)
+    } finally {
+      setPdfLoading(false)
     }
   }
 
@@ -732,10 +675,19 @@ const NicheProgressTracking: React.FC = () => {
   const selectedTraineeData = trainees.find(t => t.id === selectedTrainee)
   const traineeAssessments = assessments.filter(a => a.trainee_id === selectedTrainee)
   
-  // Filter and search logic with cohorts (cohort 4+ only)
-  const uniqueCohorts = allCohorts.length > 0 ? allCohorts : [...new Set(trainees.map(t => t.niche_cohorts && t.niche_cohorts.cohort_number >= 4 ? `Cohort ${t.niche_cohorts.cohort_number} (${t.niche_cohorts.status})` : null).filter(Boolean))].sort()
+  // Build cohort labels from all trainees (covers any cohort not in allCohorts yet)
+  const uniqueCohorts = allCohorts.length > 0
+    ? allCohorts
+    : [...new Set(
+        trainees
+          .map(t => t.niche_cohorts ? `Cohort ${t.niche_cohorts.cohort_number} (${t.niche_cohorts.status})` : null)
+          .filter(Boolean) as string[]
+      )].sort()
+
   const filteredTrainees = trainees.filter(trainee => {
-    const cohortLabel = trainee.niche_cohorts ? `Cohort ${trainee.niche_cohorts.cohort_number} (${trainee.niche_cohorts.status})` : null
+    const cohortLabel = trainee.niche_cohorts
+      ? `Cohort ${trainee.niche_cohorts.cohort_number} (${trainee.niche_cohorts.status})`
+      : null
     const matchesCohort = !selectedCohort || cohortLabel === selectedCohort
     const matchesSearch = !searchTerm || trainee.name.toLowerCase().includes(searchTerm.toLowerCase())
     return matchesCohort && matchesSearch
@@ -888,12 +840,25 @@ const NicheProgressTracking: React.FC = () => {
               <div className="flex items-center gap-3">
                 <button
                   onClick={downloadDailyProgressPDF}
-                  className="bg-[#AE491E] text-white px-4 py-2 rounded-lg hover:bg-[#8B3A18] transition-colors flex items-center gap-2"
+                  disabled={pdfLoading}
+                  className="bg-[#AE491E] text-white px-4 py-2 rounded-lg hover:bg-[#8B3A18] transition-colors flex items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                  Export Daily Report
+                  {pdfLoading ? (
+                    <>
+                      <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                      </svg>
+                      Generating...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      Export Daily Report
+                    </>
+                  )}
                 </button>
                 <button
                   onClick={handleCloseAllProgress}
@@ -910,7 +875,14 @@ const NicheProgressTracking: React.FC = () => {
                 <div className="text-center mb-8 print:mb-6">
                   <div className="bg-[#AE491E] text-white px-6 py-6 w-full">
                     <h1 className="text-3xl font-bold mb-2 tracking-wide">NICHE PROGRESS TRACKING REPORT</h1>
-                    <p className="text-lg font-semibold">COHORT IV</p>
+                    <p className="text-lg font-semibold">
+                      {selectedCohort
+                        ? selectedCohort.replace(/Cohort (\d+).*/, (_, n) => {
+                            const romanNumerals = ['','I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII']
+                            return 'COHORT ' + (romanNumerals[parseInt(n)] || n)
+                          })
+                        : 'ALL COHORTS'}
+                    </p>
                   </div>
                 </div>
 
@@ -930,7 +902,7 @@ const NicheProgressTracking: React.FC = () => {
                     const days = selectedProgressDay === 'all' ? [1, 3, 5, 10] : [selectedProgressDay as number]
                     
                     return (
-                      <div key={trainee.id} className="student-section border-2 border-[#AE491E] rounded-lg mb-8 break-inside-avoid bg-white">
+                      <div key={trainee.id} className="student-section border-2 border-[#AE491E] rounded-lg mb-8 bg-white" style={traineeIndex > 0 && traineeIndex % 2 === 0 ? {pageBreakBefore: 'always', breakBefore: 'always'} : {}}>
                         {/* Student Header */}
                         <div className="bg-white border-b-2 border-[#AE491E] p-4 rounded-t-lg">
                           <div className="flex items-center justify-between">
@@ -943,7 +915,11 @@ const NicheProgressTracking: React.FC = () => {
                             {trainee.niche_cohorts && (
                               <div className="text-right">
                                 <div className="bg-[#AE491E] text-white px-3 py-1 rounded-full text-sm font-bold">
-                                  COHORT {trainee.niche_cohorts.cohort_number}
+                                  {(() => {
+                                    const romanNumerals = ['','I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII']
+                                    const n = trainee.niche_cohorts.cohort_number
+                                    return 'COHORT ' + (romanNumerals[n] || n)
+                                  })()}
                                 </div>
                                 <p className="text-xs text-gray-500 mt-1 capitalize">{trainee.niche_cohorts.status}</p>
                               </div>
@@ -995,9 +971,9 @@ const NicheProgressTracking: React.FC = () => {
                                               }`} style={{
                                                 width: '30px',
                                                 height: '30px',
-                                                lineHeight: '26px',
-                                                textAlign: 'center',
-                                                display: 'inline-block'
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center'
                                               }}>
                                                 {score || '-'}
                                               </div>
@@ -1075,9 +1051,9 @@ const NicheProgressTracking: React.FC = () => {
                                                 }`} style={{
                                                   width: '30px',
                                                   height: '30px',
-                                                  lineHeight: '26px',
-                                                  textAlign: 'center',
-                                                  display: 'inline-block'
+                                                  display: 'inline-flex',
+                                                  alignItems: 'center',
+                                                  justifyContent: 'center'
                                                 }}>
                                                   {categoryScore || '-'}
                                                 </div>

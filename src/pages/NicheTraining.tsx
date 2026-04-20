@@ -65,7 +65,7 @@ export function NicheTraining() {
   const [cohorts, setCohorts] = useState<NicheCohort[]>([])
   const [searchTerm, setSearchTerm] = useState('')
   const [filterCourse, setFilterCourse] = useState('all')
-  const [filterCohort, setFilterCohort] = useState('active')
+  const [filterCohort, setFilterCohort] = useState('all')
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [showImportModal, setShowImportModal] = useState(false)
@@ -203,9 +203,7 @@ export function NicheTraining() {
       )
     }
 
-    if (filterCohort === 'active') {
-      filtered = filtered.filter(record => record.cohorts?.status === 'active')
-    } else if (filterCohort !== 'all') {
+    if (filterCohort !== 'all') {
       filtered = filtered.filter(record => record.cohort_id === filterCohort)
     }
 
@@ -637,15 +635,43 @@ export function NicheTraining() {
             className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
           >
             <option value="all">All Cohorts</option>
-            {getVisibleCohorts().map(cohort => {
-              const isActive = cohort.status === 'active'
-              return (
-                <option key={cohort.id} value={isActive ? 'active' : cohort.id}>
-                  Cohort {getRomanNumeral(cohort.cohort_number)}{isActive ? ' (active)' : ''}
-                </option>
-              )
-            })}
+            {getVisibleCohorts().map(cohort => (
+              <option key={cohort.id} value={cohort.id}>
+                Cohort {getRomanNumeral(cohort.cohort_number)}{cohort.status === 'active' ? ' (active)' : ''}
+              </option>
+            ))}
           </select>
+        </div>
+      </div>
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-4 gap-4 mt-4 mb-6">
+        <div className="bg-white rounded-lg shadow p-4 border-l-4 border-green-500">
+          <div className="text-2xl font-bold text-gray-900">
+            {filteredRecords.filter(r => r.status === 'Active' || r.status === 'Graduated').length}
+          </div>
+          <div className="text-sm text-gray-500 mt-1">Active / Graduated</div>
+          <div className="text-xs text-gray-400 mt-1">
+            {filteredRecords.filter(r => r.status === 'Active').length} active · {filteredRecords.filter(r => r.status === 'Graduated').length} graduated
+          </div>
+        </div>
+        <div className="bg-white rounded-lg shadow p-4 border-l-4 border-red-500">
+          <div className="text-2xl font-bold text-gray-900">
+            {filteredRecords.filter(r => r.status === 'Expelled').length}
+          </div>
+          <div className="text-sm text-gray-500 mt-1">Expelled</div>
+        </div>
+        <div className="bg-white rounded-lg shadow p-4 border-l-4" style={{ borderColor: '#ae491e' }}>
+          <div className="text-2xl font-bold text-gray-900">
+            {filteredRecords.filter(r => (r as any).training_type === '2week').length}
+          </div>
+          <div className="text-sm text-gray-500 mt-1">2-Week Flagship</div>
+        </div>
+        <div className="bg-white rounded-lg shadow p-4 border-l-4 border-purple-500">
+          <div className="text-2xl font-bold text-gray-900">
+            {filteredRecords.filter(r => (r as any).training_type === 'weekend').length}
+          </div>
+          <div className="text-sm text-gray-500 mt-1">Short Course</div>
         </div>
       </div>
 
