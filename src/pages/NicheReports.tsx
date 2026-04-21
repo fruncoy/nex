@@ -68,6 +68,8 @@ interface MonthRow {
   revenue: number
   lost: number
   graduationRate: number
+  shortEnrolled: number
+  twoWeekEnrolled: number
 }
 
 interface PerCohortData {
@@ -354,8 +356,11 @@ function useNicheReportsData(dateRange: DateRange) {
         const d = t.date_started || t.created_at
         if (!d) return
         const key = d.substring(0, 7) // YYYY-MM
-        if (!monthMap[key]) monthMap[key] = { month: key, enrolled: 0, graduated: 0, revenue: 0, lost: 0, graduationRate: 0 }
+        if (!monthMap[key]) monthMap[key] = { month: key, enrolled: 0, graduated: 0, revenue: 0, lost: 0, graduationRate: 0, shortEnrolled: 0, twoWeekEnrolled: 0 }
         monthMap[key].enrolled++
+        const tCourses = t.enrolled_courses || [t.course].filter(Boolean)
+        if (tCourses.some((c: string) => isShortCourse(c))) monthMap[key].shortEnrolled++
+        if (tCourses.some((c: string) => !isShortCourse(c))) monthMap[key].twoWeekEnrolled++
         if (t.status === 'Graduated') monthMap[key].graduated++
         if (t.status === 'Expelled') monthMap[key].lost++
         const fee = t.niche_fees?.[0]
@@ -775,6 +780,59 @@ export function OverallTab({ volume, funnel, finance, courseRows, cohortBars, mo
                 <tr><td colSpan={6} className="text-center py-8 text-gray-400 text-sm">No data for selected period</td></tr>
               )}
             </tbody>
+          </table>
+        </div>
+      </section>
+
+      {/* SHORT COURSES + FINANCIALS MONTH OVER MONTH */}
+      <section>
+        <SectionHeader title="Short Courses: Month over Month" />
+        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600">Month</th>
+                <th className="text-center px-3 py-3 text-xs font-semibold text-gray-600">Short Course</th>
+                <th className="text-center px-3 py-3 text-xs font-semibold text-gray-600">2-Week</th>
+                <th className="text-center px-3 py-3 text-xs font-semibold text-gray-600">Total</th>
+                <th className="text-center px-3 py-3 text-xs font-semibold text-gray-600">Short %</th>
+                <th className="text-right px-4 py-3 text-xs font-semibold text-gray-600">Revenue</th>
+                <th className="text-right px-4 py-3 text-xs font-semibold text-gray-600">Grad Rate</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {monthRows.map((m, i) => (
+                <tr key={i} className="hover:bg-gray-50">
+                  <td className="px-4 py-3 font-medium text-gray-900">
+                    {new Date(m.month + '-01').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}
+                  </td>
+                  <td className="text-center px-3 py-3 font-bold text-cyan-700">{m.shortEnrolled}</td>
+                  <td className="text-center px-3 py-3 font-bold text-indigo-700">{m.twoWeekEnrolled}</td>
+                  <td className="text-center px-3 py-3 font-bold text-gray-900">{m.enrolled}</td>
+                  <td className="text-center px-3 py-3 text-gray-600">{pct(m.shortEnrolled, m.enrolled)}%</td>
+                  <td className="text-right px-4 py-3 font-semibold text-green-700">KSh {m.revenue.toLocaleString()}</td>
+                  <td className="text-right px-4 py-3">
+                    <span className={`font-semibold ${m.graduationRate >= 70 ? 'text-emerald-700' : m.graduationRate >= 40 ? 'text-yellow-600' : 'text-gray-500'}`}>
+                      {m.graduationRate}%
+                    </span>
+                  </td>
+                </tr>
+              ))}
+              {monthRows.length === 0 && (
+                <tr><td colSpan={7} className="text-center py-8 text-gray-400 text-sm">No data for selected period</td></tr>
+              )}
+            </tbody>
+            <tfoot className="bg-gray-50 border-t border-gray-200">
+              <tr>
+                <td className="px-4 py-3 text-xs font-bold text-gray-700">TOTAL</td>
+                <td className="text-center px-3 py-3 text-xs font-bold text-cyan-700">{monthRows.reduce((s, m) => s + m.shortEnrolled, 0)}</td>
+                <td className="text-center px-3 py-3 text-xs font-bold text-indigo-700">{monthRows.reduce((s, m) => s + m.twoWeekEnrolled, 0)}</td>
+                <td className="text-center px-3 py-3 text-xs font-bold text-gray-900">{monthRows.reduce((s, m) => s + m.enrolled, 0)}</td>
+                <td className="text-center px-3 py-3 text-xs font-bold text-gray-600">{pct(monthRows.reduce((s, m) => s + m.shortEnrolled, 0), monthRows.reduce((s, m) => s + m.enrolled, 0))}%</td>
+                <td className="text-right px-4 py-3 text-xs font-bold text-green-700">KSh {monthRows.reduce((s, m) => s + m.revenue, 0).toLocaleString()}</td>
+                <td className="text-right px-4 py-3 text-xs font-bold">{pct(monthRows.reduce((s, m) => s + m.graduated, 0), monthRows.reduce((s, m) => s + m.enrolled, 0))}%</td>
+              </tr>
+            </tfoot>
           </table>
         </div>
       </section>

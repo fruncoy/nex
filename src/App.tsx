@@ -23,6 +23,7 @@ import { CreateProfile } from './pages/CreateProfile'
 import { Calendar } from './pages/Calendar'
 import { GetMatch } from './pages/GetMatch'
 import NicheProgressTracking from './pages/NicheProgressTracking'
+import { Digest } from './pages/Digest'
 
 function ProtectedLayout() {
   const { user, loading } = useAuth()
@@ -45,6 +46,17 @@ function ProtectedLayout() {
 
   console.log('ProtectedLayout - user authenticated, showing layout with outlet')
   return <Layout />
+}
+
+function ProtectedDigest() {
+  const { user, loading } = useAuth()
+  if (loading) return (
+    <div className="min-h-screen bg-white flex items-center justify-center">
+      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#AE491E]"></div>
+    </div>
+  )
+  if (!user) return <LoginForm />
+  return <Digest />
 }
 
 function AppRoutes() {
@@ -73,6 +85,7 @@ function AppRoutes() {
         <Route path="meeting-notes" element={<MeetingNotes />} />
         <Route path="blacklisted" element={<Blacklisted />} />
       </Route>
+      <Route path="/digest" element={<ProtectedDigest />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )
