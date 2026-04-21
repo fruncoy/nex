@@ -995,11 +995,11 @@ export function NicheCandidates() {
                                 newStatus,
                                 onConfirm: async () => {
                                   try {
-                                    // 1. Delete all training records for this candidate
+                                    // 1. Delete all training records for this candidate (matched by phone)
                                     const { error: deleteError } = await supabase
                                       .from('niche_training')
                                       .delete()
-                                      .eq('niche_candidate_id', candidate.id)
+                                      .eq('phone', candidate.phone)
                                     if (deleteError) throw deleteError
 
                                     // 2. Update candidate status
