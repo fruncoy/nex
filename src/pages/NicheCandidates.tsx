@@ -995,12 +995,20 @@ export function NicheCandidates() {
                                 newStatus,
                                 onConfirm: async () => {
                                   try {
-                                    const { error } = await supabase
+                                    // 1. Delete all training records for this candidate
+                                    const { error: deleteError } = await supabase
+                                      .from('niche_training')
+                                      .delete()
+                                      .eq('niche_candidate_id', candidate.id)
+                                    if (deleteError) throw deleteError
+
+                                    // 2. Update candidate status
+                                    const { error: updateError } = await supabase
                                       .from('niche_candidates')
                                       .update({ status: newStatus })
                                       .eq('id', candidate.id)
-                                    if (error) throw error
-                                    
+                                    if (updateError) throw updateError
+
                                     setCandidates(prev => prev.map(c => c.id === candidate.id ? { ...c, status: newStatus } : c))
                                     showToast(`${candidate.name} removed from training and status updated to ${newStatus}`, 'success')
                                   } catch (error: any) {
@@ -1952,7 +1960,7 @@ export function NicheCandidates() {
                     </li>
                     <li className="flex items-center">
                       <span className="mr-2">🚫</span>
-                      <span>Delete their training record</span>
+                      <span>Delete ALL their training records</span>
                     </li>
                     <li className="flex items-center">
                       <span className="mr-2">🚫</span>
