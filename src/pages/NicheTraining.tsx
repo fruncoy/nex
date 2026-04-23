@@ -30,7 +30,7 @@ interface NicheTraining {
   name: string
   phone?: string
   role?: string
-  status: 'Active' | 'Graduated' | 'Expelled'  // Removed 'Pending'
+  status: 'Active' | 'Graduated' | 'Expelled' | 'Completed'
   course?: string
   description?: string
   date_started?: string
@@ -78,12 +78,13 @@ export function NicheTraining() {
   const [bulkStatus, setBulkStatus] = useState('')
   const [selectedCohortForImport, setSelectedCohortForImport] = useState('')
   const [selectedCoursesForImport, setSelectedCoursesForImport] = useState<string[]>(['Skills Training'])
+  const [activeTab, setActiveTab] = useState<'2week' | 'shortcourse'>('2week')
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
     email: '',
     role: '',
-    status: 'Active' as 'Active' | 'Graduated' | 'Expelled',  // Removed 'Pending', default to 'Active'
+    status: 'Active' as 'Active' | 'Graduated' | 'Expelled' | 'Completed',
     course: '',
     cohort_id: '',
     training_type: 'weekend' as 'weekend',  // Only 'weekend' option
@@ -115,7 +116,7 @@ export function NicheTraining() {
           *,
           cohorts:niche_cohorts(id, cohort_number, start_date, end_date, status)
         `)
-        .in('status', ['Active', 'Graduated', 'Expelled'])  // Only load these statuses
+        .in('status', ['Active', 'Graduated', 'Expelled', 'Completed'])
         .order('created_at', { ascending: false })
 
       if (error) throw error
@@ -240,7 +241,7 @@ export function NicheTraining() {
         name: formData.name.trim(),
         phone: formData.phone.trim() || null,
         role: formData.role || null,
-        status: formData.status,
+        status: formData.status as 'Active' | 'Graduated' | 'Expelled' | 'Completed',
         course: formData.course || null,
         cohort_id: formData.cohort_id || null,
         training_type: formData.training_type,
@@ -317,10 +318,10 @@ export function NicheTraining() {
       phone: '',
       email: '',
       role: '',
-      status: 'Active',  // Default to 'Active' instead of 'Pending'
+      status: 'Active' as 'Active' | 'Graduated' | 'Expelled' | 'Completed',
       course: '',
       cohort_id: '',
-      training_type: 'weekend',  // Default to 'weekend' instead of '2week'
+      training_type: 'weekend',
       accommodation_type: '',
       enrolled_courses: []
     })
@@ -334,7 +335,7 @@ export function NicheTraining() {
       name: record.name,
       phone: record.phone || '',
       role: record.role || '',
-      status: record.status,
+      status: record.status as 'Active' | 'Graduated' | 'Expelled' | 'Completed',
       course: record.course || '',
       cohort_id: record.cohort_id || '',
       training_type: (record as any).training_type || 'weekend',  // Default to 'weekend' instead of '2week'
@@ -569,7 +570,7 @@ export function NicheTraining() {
       const { error } = await supabase
         .from('niche_training')
         .update({ 
-          status: bulkStatus as 'Active' | 'Graduated' | 'Expelled',  // Removed 'Pending'
+          status: bulkStatus as 'Active' | 'Graduated' | 'Expelled' | 'Completed',
           updated_by: staff?.name || user?.email || 'Unknown'
         })
         .in('id', selectedRecords)
@@ -676,8 +677,26 @@ export function NicheTraining() {
       </div>
 
       <div className="mt-6">
+        {/* Tabs */}
+        <div className="flex border-b border-gray-200 mb-4">
+          <button
+            onClick={() => setActiveTab('2week')}
+            className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === '2week' ? 'border-nestalk-primary text-nestalk-primary' : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}>
+            🎓 2-Week Flagship ({flagshipRecords.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('shortcourse')}
+            className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'shortcourse' ? 'border-purple-600 text-purple-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}>
+            📚 Short Course ({specializedRecords.length})
+          </button>
+        </div>
+
         {/* Flagship Programs Section */}
-      {flagshipRecords.length > 0 && (
+      {activeTab === '2week' && flagshipRecords.length > 0 && (
         <div className="mb-10">
           <div className="rounded-t-lg p-4" style={{ backgroundColor: '#ae491e' }}>
             <h2 className="text-xl font-bold text-white flex items-center">
@@ -778,6 +797,14 @@ export function NicheTraining() {
         </div>
       )}
 
+      {activeTab === '2week' && flagshipRecords.length === 0 && (
+        <div className="text-center py-12">
+          <Users className="mx-auto h-12 w-12 text-gray-400" />
+          <h3 className="mt-2 text-sm font-medium text-gray-900">No 2-week flagship trainees found</h3>
+          <p className="mt-1 text-sm text-gray-500">{searchTerm ? 'Try adjusting your search.' : 'Import trainees to get started.'}</p>
+        </div>
+      )}
+
       {selectedRecords.length > 0 && (
         <div className="mb-4 p-4 bg-orange-50 border border-orange-200 rounded-lg">
           <div className="flex items-center justify-between">
@@ -793,6 +820,7 @@ export function NicheTraining() {
                 <option value="">Select status</option>
                 <option value="Active">Active</option>
                 <option value="Graduated">Graduated</option>
+                <option value="Completed">Completed</option>
                 <option value="Expelled">Expelled</option>
               </select>
               <button
@@ -814,7 +842,7 @@ export function NicheTraining() {
       )}
 
       {/* Specialized Courses Section */}
-      {specializedRecords.length > 0 && (
+      {activeTab === 'shortcourse' && specializedRecords.length > 0 && (
         <div className="mb-8">
           <div className="rounded-t-lg p-4" style={{ backgroundColor: '#ae491e' }}>
             <h2 className="text-xl font-bold text-white flex items-center">
@@ -830,6 +858,20 @@ export function NicheTraining() {
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50 sticky top-0">
                   <tr>
+                    <th className="px-4 py-3 text-left">
+                      <input
+                        type="checkbox"
+                        checked={selectedRecords.length === specializedRecords.length && specializedRecords.length > 0}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedRecords(specializedRecords.map(r => r.id))
+                          } else {
+                            setSelectedRecords([])
+                          }
+                        }}
+                        className="rounded border-gray-300 text-purple-600 focus:ring-purple-600"
+                      />
+                    </th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">#</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Name</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Status</th>
@@ -840,6 +882,20 @@ export function NicheTraining() {
                 <tbody className="bg-white divide-y divide-gray-100">
                   {specializedRecords.map((record, index) => (
                     <tr key={record.id} className="hover:bg-purple-50 transition-colors">
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <input
+                          type="checkbox"
+                          checked={selectedRecords.includes(record.id)}
+                          onChange={() => {
+                            if (selectedRecords.includes(record.id)) {
+                              setSelectedRecords(prev => prev.filter(id => id !== record.id))
+                            } else {
+                              setSelectedRecords(prev => [...prev, record.id])
+                            }
+                          }}
+                          className="rounded border-gray-300 text-purple-600 focus:ring-purple-600"
+                        />
+                      </td>
                       <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600 font-medium">{index + 1}</td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         <div className="text-sm font-semibold text-gray-900 flex items-center">
@@ -883,15 +939,11 @@ export function NicheTraining() {
         </div>
       )}
 
-      {(flagshipRecords.length === 0 && specializedRecords.length === 0) && (
+      {activeTab === 'shortcourse' && specializedRecords.length === 0 && (
         <div className="text-center py-12">
           <Users className="mx-auto h-12 w-12 text-gray-400" />
-          <h3 className="mt-2 text-sm font-medium text-gray-900">No training records found</h3>
-          <p className="mt-1 text-sm text-gray-500">
-            {searchTerm
-              ? 'Try adjusting your search criteria.'
-              : 'Get started by adding your first training record.'}
-          </p>
+          <h3 className="mt-2 text-sm font-medium text-gray-900">No short course trainees found</h3>
+          <p className="mt-1 text-sm text-gray-500">{searchTerm ? 'Try adjusting your search.' : 'Import trainees to get started.'}</p>
         </div>
       )}
 
@@ -1105,6 +1157,7 @@ export function NicheTraining() {
                     >
                       <option value="Active">Active</option>
                       <option value="Graduated">Graduated</option>
+                      <option value="Completed">Completed</option>
                       <option value="Expelled">Expelled</option>
                     </select>
                   </div>

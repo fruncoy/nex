@@ -15,6 +15,9 @@ interface NicheFee {
   payment_plan: 'Full' | 'Installments'
   total_paid: number
   balance_due: number
+  sponsored_amount: number
+  extra_charges: number
+  extra_charges_note: string
   payment_status: 'Pending' | 'Partial' | 'Paid' | 'Overdue'
   created_at: string
   updated_at: string
@@ -64,19 +67,26 @@ export function NicheFees() {
   const [filterStatus, setFilterStatus] = useState('all')
   const [filterCohort, setFilterCohort] = useState('all')
   const [loading, setLoading] = useState(true)
+  const [activeTab, setActiveTab] = useState<'2week' | 'shortcourse'>('2week')
 
   const [showPaymentModal, setShowPaymentModal] = useState(false)
   const [showPaymentHistory, setShowPaymentHistory] = useState(false)
   const [showSponsorModal, setShowSponsorModal] = useState(false)
+  const [showExtraModal, setShowExtraModal] = useState(false)
   const [selectedFee, setSelectedFee] = useState<NicheFee | null>(null)
 
   const [paymentForm, setPaymentForm] = useState({
     amount: '',
-    payment_method: 'Cash'
+    payment_method: 'M-Pesa'
   })
 
   const [sponsorForm, setSponsorForm] = useState({
     amount: ''
+  })
+
+  const [extraForm, setExtraForm] = useState({
+    amount: '',
+    note: ''
   })
 
   const { user, staff } = useAuth()
@@ -124,7 +134,7 @@ export function NicheFees() {
           status,
           cohorts:niche_cohorts(id, cohort_number, start_date, end_date, status)
         `)
-        .in('status', ['Active', 'Graduated'])
+        .in('status', ['Active', 'Graduated', 'Completed'])
 
       if (studentsError) throw studentsError
 
@@ -148,7 +158,7 @@ export function NicheFees() {
           *,
           niche_training!inner(name, phone, course, status, cohort_id, training_type, cohorts:niche_cohorts(id, cohort_number, start_date, end_date, status))
         `)
-        .in('niche_training.status', ['Active', 'Graduated'])
+        .in('niche_training.status', ['Active', 'Graduated', 'Completed'])
         .order('niche_training(name)', { ascending: true })
 
       if (feesError) throw feesError
@@ -183,14 +193,11 @@ export function NicheFees() {
 
         const { error: insertError } = await supabase
           .from('niche_fees')
-          .insert(newFeeRecords)
+          .upsert(newFeeRecords, { onConflict: 'training_id', ignoreDuplicates: true })
 
         if (insertError) {
           console.error('Insert error:', insertError)
-          // If there's a duplicate key error, just continue with existing records
-          if (insertError.code !== '23505') {
-            throw insertError
-          }
+          throw insertError
         }
 
         // Reload fees after inserting new records - Active and Graduated students
@@ -200,15 +207,14 @@ export function NicheFees() {
             *,
             niche_training!inner(name, phone, course, status, cohort_id, training_type, cohorts:niche_cohorts(id, cohort_number, start_date, end_date, status))
           `)
-          .in('niche_training.status', ['Active', 'Graduated'])
-          .order('niche_training(name)', { ascending: true })
-
-        if (updatedError) throw updatedError
+          .in('niche_training.status', ['Active', 'Graduated', 'Completed'])
         
         const formattedFees = updatedFees?.map(fee => {
           const actualPayments = paymentTotals[fee.id] || 0
-          const balance = fee.course_fee - ((fee as any).sponsored_amount || 0) - actualPayments
-          const paymentStatus = actualPayments >= fee.course_fee ? 'Paid' : 'Pending'
+          const sponsoredAmt = (fee as any).sponsored_amount || 0
+          const extraCharges = (fee as any).extra_charges || 0
+          const balance = fee.course_fee + extraCharges - sponsoredAmt - actualPayments
+          const paymentStatus = fee.course_fee > 0 && (actualPayments + sponsoredAmt) >= (fee.course_fee + extraCharges) ? 'Paid' : 'Pending'
           
           return {
             ...fee,
@@ -218,6 +224,9 @@ export function NicheFees() {
             cohort_id: fee.niche_training.cohort_id,
             cohort_number: fee.niche_training.cohorts?.cohort_number,
             training_type: fee.niche_training.training_type,
+            sponsored_amount: sponsoredAmt,
+            extra_charges: extraCharges,
+            extra_charges_note: (fee as any).extra_charges_note || '',
             balance_due: Math.max(0, balance),
             payment_status: paymentStatus,
             training_status: fee.niche_training.status,
@@ -225,17 +234,31 @@ export function NicheFees() {
           }
         }) || []
 
-        // Remove duplicates based on training_id (keep the first occurrence)
+        // Remove duplicates: for flagship (2week) dedupe by training_id, for short course keep all
         const uniqueFees = formattedFees.filter((fee, index, self) => 
-          index === self.findIndex(f => f.training_id === fee.training_id)
+          fee.training_type === '2week' || fee.training_type === null
+            ? index === self.findIndex(f => f.training_id === fee.training_id)
+            : true
         )
 
         setFees(uniqueFees)
       } else {
+        // Fix any existing fees with course_fee = 0 by looking up from courseMap
+        const feesWithZeroCost = existingFees?.filter(fee => fee.course_fee === 0) || []
+        for (const fee of feesWithZeroCost) {
+          const correctFee = courseMap[fee.niche_training.course]
+          if (correctFee && correctFee > 0) {
+            await supabase.from('niche_fees').update({ course_fee: correctFee }).eq('id', fee.id)
+            fee.course_fee = correctFee
+          }
+        }
+
         const formattedFees = existingFees?.map(fee => {
           const actualPayments = paymentTotals[fee.id] || 0
-          const balance = fee.course_fee - ((fee as any).sponsored_amount || 0) - actualPayments
-          const paymentStatus = actualPayments >= fee.course_fee ? 'Paid' : 'Pending'
+          const sponsoredAmt = (fee as any).sponsored_amount || 0
+          const extraCharges = (fee as any).extra_charges || 0
+          const balance = fee.course_fee + extraCharges - sponsoredAmt - actualPayments
+          const paymentStatus = fee.course_fee > 0 && (actualPayments + sponsoredAmt) >= (fee.course_fee + extraCharges) ? 'Paid' : 'Pending'
           
           return {
             ...fee,
@@ -245,6 +268,9 @@ export function NicheFees() {
             cohort_id: fee.niche_training.cohort_id,
             cohort_number: fee.niche_training.cohorts?.cohort_number,
             training_type: fee.niche_training.training_type,
+            sponsored_amount: sponsoredAmt,
+            extra_charges: extraCharges,
+            extra_charges_note: (fee as any).extra_charges_note || '',
             balance_due: Math.max(0, balance),
             payment_status: paymentStatus,
             training_status: fee.niche_training.status,
@@ -252,9 +278,11 @@ export function NicheFees() {
           }
         }) || []
 
-        // Remove duplicates based on training_id (keep the first occurrence)
+        // Remove duplicates: for flagship (2week) dedupe by training_id, for short course keep all
         const uniqueFees = formattedFees.filter((fee, index, self) => 
-          index === self.findIndex(f => f.training_id === fee.training_id)
+          fee.training_type === '2week' || fee.training_type === null
+            ? index === self.findIndex(f => f.training_id === fee.training_id)
+            : true
         )
 
         setFees(uniqueFees)
@@ -285,7 +313,11 @@ export function NicheFees() {
     }
 
     if (filterCohort !== 'all') {
-      filtered = filtered.filter(fee => fee.cohort_id === filterCohort)
+      filtered = filtered.filter(fee =>
+        fee.training_type === 'weekend'
+          ? true  // never filter short course by cohort
+          : fee.cohort_id === filterCohort
+      )
     }
 
     setFilteredFees(filtered)
@@ -366,6 +398,29 @@ export function NicheFees() {
       showToast(`Error: ${error?.message || 'Unknown error'}`, 'error')
     }
   }
+  const handleAddExtra = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!selectedFee) return
+    try {
+      const amount = parseInt(extraForm.amount)
+      if (amount <= 0) { showToast('Invalid amount', 'error'); return }
+      const { error } = await supabase
+        .from('niche_fees')
+        .update({ extra_charges: amount, extra_charges_note: extraForm.note, updated_at: new Date().toISOString() })
+        .eq('id', selectedFee.id)
+      if (error) throw error
+      await ActivityLogger.logCreate(user?.id || '', 'niche_fees', selectedFee.id,
+        `Extra charge of KSh ${amount.toLocaleString()} (${extraForm.note}) added for ${selectedFee.student_name}`,
+        staff?.name || user?.email || 'Unknown')
+      showToast(`Extra charge of KSh ${amount.toLocaleString()} added`, 'success')
+      setShowExtraModal(false)
+      setExtraForm({ amount: '', note: '' })
+      loadFees()
+    } catch (error: any) {
+      showToast(`Error: ${error?.message || 'Unknown error'}`, 'error')
+    }
+  }
+
   const handleAddPayment = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!selectedFee) return
@@ -460,6 +515,87 @@ export function NicheFees() {
         </div>
       </div>
 
+      {/* Stats Cards */}
+      {(() => {
+        const allFees = fees
+        const flagship = fees.filter(f => f.course_name === 'Professional House Manager Training Program' || f.course_name === 'Professional Nanny Training Program')
+        const shortCourse = fees.filter(f => f.course_name !== 'Professional House Manager Training Program' && f.course_name !== 'Professional Nanny Training Program')
+        const totalExpected = allFees.reduce((s, f) => s + f.course_fee + (f.extra_charges || 0), 0)
+        const totalCollected = allFees.reduce((s, f) => s + ((f as any).actual_payments || 0) + (f.sponsored_amount || 0), 0)
+        const totalBalance = allFees.reduce((s, f) => s + f.balance_due, 0)
+        const totalSponsored = allFees.reduce((s, f) => s + (f.sponsored_amount || 0), 0)
+        const flagshipCollected = flagship.reduce((s, f) => s + ((f as any).actual_payments || 0) + (f.sponsored_amount || 0), 0)
+        const flagshipBalance = flagship.reduce((s, f) => s + f.balance_due, 0)
+        const shortCollected = shortCourse.reduce((s, f) => s + ((f as any).actual_payments || 0) + (f.sponsored_amount || 0), 0)
+        const shortBalance = shortCourse.reduce((s, f) => s + f.balance_due, 0)
+        return (
+          <div className="space-y-3 mb-6">
+            <div className="grid grid-cols-4 gap-4">
+              <div className="bg-white rounded-lg shadow p-4 border-l-4" style={{ borderColor: '#ae491e' }}>
+                <div className="text-xs text-gray-500 mb-1">Total Students</div>
+                <div className="text-2xl font-bold text-gray-900">{allFees.length}</div>
+                <div className="text-xs text-gray-400 mt-1">{flagship.length} flagship · {shortCourse.length} short course</div>
+              </div>
+              <div className="bg-white rounded-lg shadow p-4 border-l-4 border-green-500">
+                <div className="text-xs text-gray-500 mb-1">Total Collected</div>
+                <div className="text-2xl font-bold text-green-700">KSh {totalCollected.toLocaleString()}</div>
+                <div className="text-xs text-gray-400 mt-1">{allFees.filter(f => f.payment_status === 'Paid').length} fully paid</div>
+              </div>
+              <div className="bg-white rounded-lg shadow p-4 border-l-4 border-red-500">
+                <div className="text-xs text-gray-500 mb-1">Outstanding Balance</div>
+                <div className="text-2xl font-bold text-red-600">KSh {totalBalance.toLocaleString()}</div>
+                <div className="text-xs text-gray-400 mt-1">{allFees.filter(f => f.balance_due > 0).length} students with balance</div>
+              </div>
+              <div className="bg-white rounded-lg shadow p-4 border-l-4 border-blue-500">
+                <div className="text-xs text-gray-500 mb-1">Total Sponsored</div>
+                <div className="text-2xl font-bold text-blue-600">KSh {totalSponsored.toLocaleString()}</div>
+                <div className="text-xs text-gray-400 mt-1">{allFees.filter(f => (f.sponsored_amount || 0) > 0).length} students sponsored</div>
+              </div>
+            </div>
+            <div className="grid grid-cols-4 gap-4">
+              <div className="bg-orange-50 rounded-lg shadow p-4 border-l-4" style={{ borderColor: '#ae491e' }}>
+                <div className="text-xs text-gray-500 mb-1">Total Revenue Expected</div>
+                <div className="text-2xl font-bold" style={{ color: '#ae491e' }}>KSh {totalExpected.toLocaleString()}</div>
+                <div className="text-xs text-gray-400 mt-1">{Math.round(totalExpected > 0 ? (totalCollected / totalExpected) * 100 : 0)}% collected</div>
+              </div>
+              <div className="bg-orange-50 rounded-lg shadow p-4 border-l-4" style={{ borderColor: '#ae491e' }}>
+                <div className="text-xs text-gray-500 mb-1">🎓 2-Week Collected</div>
+                <div className="text-2xl font-bold text-green-700">KSh {flagshipCollected.toLocaleString()}</div>
+                <div className="text-xs text-red-500 mt-1">KSh {flagshipBalance.toLocaleString()} outstanding</div>
+              </div>
+              <div className="bg-purple-50 rounded-lg shadow p-4 border-l-4 border-purple-500">
+                <div className="text-xs text-gray-500 mb-1">📚 Short Course Collected</div>
+                <div className="text-2xl font-bold text-purple-700">KSh {shortCollected.toLocaleString()}</div>
+                <div className="text-xs text-red-500 mt-1">KSh {shortBalance.toLocaleString()} outstanding</div>
+              </div>
+              <div className="bg-white rounded-lg shadow p-4 border-l-4 border-orange-400">
+                <div className="text-xs text-gray-500 mb-1">Extra Charges</div>
+                <div className="text-2xl font-bold text-orange-600">KSh {allFees.reduce((s, f) => s + (f.extra_charges || 0), 0).toLocaleString()}</div>
+                <div className="text-xs text-gray-400 mt-1">{allFees.filter(f => (f.extra_charges || 0) > 0).length} students with extras</div>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* Tabs */}
+      <div className="flex border-b border-gray-200 mb-4">
+        <button
+          onClick={() => setActiveTab('2week')}
+          className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
+            activeTab === '2week' ? 'border-nestalk-primary text-nestalk-primary' : 'border-transparent text-gray-500 hover:text-gray-700'
+          }`}>
+          🎓 2-Week Flagship ({flagshipFees.length})
+        </button>
+        <button
+          onClick={() => setActiveTab('shortcourse')}
+          className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
+            activeTab === 'shortcourse' ? 'border-purple-600 text-purple-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+          }`}>
+          📚 Short Course ({specializedFees.length})
+        </button>
+      </div>
+
       <div className="flex flex-col gap-3">
         <div className="flex gap-3">
           <input
@@ -481,24 +617,26 @@ export function NicheFees() {
             ))}
           </select>
           
-          <select
-            value={filterCohort}
-            onChange={(e) => setFilterCohort(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
-          >
-            <option value="all">All Cohorts</option>
-            {getVisibleCohorts().map(cohort => (
-              <option key={cohort.id} value={cohort.id}>
-                Cohort {getRomanNumeral(cohort.cohort_number)}{cohort.status === 'active' ? ' (active)' : ''}
-              </option>
-            ))}
-          </select>
+          {activeTab === '2week' && (
+            <select
+              value={filterCohort}
+              onChange={(e) => setFilterCohort(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
+            >
+              <option value="all">All Cohorts</option>
+              {getVisibleCohorts().map(cohort => (
+                <option key={cohort.id} value={cohort.id}>
+                  Cohort {getRomanNumeral(cohort.cohort_number)}{cohort.status === 'active' ? ' (active)' : ''}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
       </div>
 
       <div className="mt-6">
         {/* 2-Week Programs Section */}
-        {flagshipFees.length > 0 && (
+        {activeTab === '2week' && flagshipFees.length > 0 && (
           <div className="mb-10">
             <div className="rounded-t-lg p-4" style={{ backgroundColor: '#ae491e' }}>
               <h2 className="text-xl font-bold text-white flex items-center">
@@ -546,15 +684,16 @@ export function NicheFees() {
                           {fee.cohort_number ? getRomanNumeral(fee.cohort_number) : 'No cohort'}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">KSh {fee.course_fee.toLocaleString()}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-blue-600">KSh {((fee as any).sponsored_amount || 0).toLocaleString()}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-green-600">KSh {fee.total_paid.toLocaleString()}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-red-600">KSh {(fee.course_fee - ((fee as any).sponsored_amount || 0) - fee.total_paid).toLocaleString()}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-blue-600">KSh {(fee.sponsored_amount || 0).toLocaleString()}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-green-600">KSh {((fee as any).actual_payments || 0).toLocaleString()}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-red-600">KSh {fee.balance_due.toLocaleString()}</td>
                         <td className="px-6 py-4 whitespace-nowrap"><StatusBadge status={fee.payment_status} type="payment" /></td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                           <div className="flex items-center gap-1">
                             <button onClick={() => { setSelectedFee(fee); loadPaymentHistory(fee.id); setShowPaymentHistory(true) }} className="text-blue-600 hover:text-blue-800 mr-2" title="View Payment History"><Eye className="w-4 h-4" /></button>
-                            <button onClick={() => { setSelectedFee(fee); setShowPaymentModal(true) }} className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700">Pay Fees</button>
+                            <button onClick={() => { setSelectedFee(fee); setShowPaymentModal(true) }} className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700">Pay</button>
                             <button onClick={() => { setSelectedFee(fee); setShowSponsorModal(true) }} className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 ml-1">Sponsor</button>
+                            <button onClick={() => { setSelectedFee(fee); setExtraForm({ amount: String(fee.extra_charges || ''), note: fee.extra_charges_note || '' }); setShowExtraModal(true) }} className="px-2 py-1 text-xs bg-orange-500 text-white rounded hover:bg-orange-600 ml-1">+ Extra</button>
                           </div>
                         </td>
                       </tr>
@@ -566,8 +705,16 @@ export function NicheFees() {
           </div>
         )}
 
+        {activeTab === '2week' && flagshipFees.length === 0 && (
+          <div className="text-center py-12">
+            <DollarSign className="mx-auto h-12 w-12 text-gray-400" />
+            <h3 className="mt-2 text-sm font-medium text-gray-900">No 2-week flagship fee records found</h3>
+            <p className="mt-1 text-sm text-gray-500">Try adjusting your search or filter criteria.</p>
+          </div>
+        )}
+
         {/* Specialized Skills Section */}
-        {specializedFees.length > 0 && (
+        {activeTab === 'shortcourse' && specializedFees.length > 0 && (
           <div className="mb-8">
             <div className="rounded-t-lg p-4" style={{ backgroundColor: '#ae491e' }}>
               <h2 className="text-xl font-bold text-white flex items-center">
@@ -611,15 +758,16 @@ export function NicheFees() {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{fee.course_name}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">KSh {fee.course_fee.toLocaleString()}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-blue-600">KSh {((fee as any).sponsored_amount || 0).toLocaleString()}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-green-600">KSh {fee.total_paid.toLocaleString()}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-red-600">KSh {(fee.course_fee - ((fee as any).sponsored_amount || 0) - fee.total_paid).toLocaleString()}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-blue-600">KSh {(fee.sponsored_amount || 0).toLocaleString()}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-green-600">KSh {((fee as any).actual_payments || 0).toLocaleString()}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-red-600">KSh {fee.balance_due.toLocaleString()}</td>
                         <td className="px-6 py-4 whitespace-nowrap"><StatusBadge status={fee.payment_status} type="payment" /></td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                           <div className="flex items-center gap-1">
                             <button onClick={() => { setSelectedFee(fee); loadPaymentHistory(fee.id); setShowPaymentHistory(true) }} className="text-blue-600 hover:text-blue-800 mr-2" title="View Payment History"><Eye className="w-4 h-4" /></button>
-                            <button onClick={() => { setSelectedFee(fee); setShowPaymentModal(true) }} className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700">Pay Fees</button>
+                            <button onClick={() => { setSelectedFee(fee); setShowPaymentModal(true) }} className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700">Pay</button>
                             <button onClick={() => { setSelectedFee(fee); setShowSponsorModal(true) }} className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 ml-1">Sponsor</button>
+                            <button onClick={() => { setSelectedFee(fee); setExtraForm({ amount: String(fee.extra_charges || ''), note: fee.extra_charges_note || '' }); setShowExtraModal(true) }} className="px-2 py-1 text-xs bg-orange-500 text-white rounded hover:bg-orange-600 ml-1">+ Extra</button>
                           </div>
                         </td>
                       </tr>
@@ -631,20 +779,52 @@ export function NicheFees() {
           </div>
         )}
 
-        {(flagshipFees.length === 0 && specializedFees.length === 0) && (
+        {activeTab === 'shortcourse' && specializedFees.length === 0 && (
           <div className="text-center py-12">
             <DollarSign className="mx-auto h-12 w-12 text-gray-400" />
-            <h3 className="mt-2 text-sm font-medium text-gray-900">No fee records found</h3>
-            <p className="mt-1 text-sm text-gray-500">
-              {searchTerm || filterStatus !== 'all'
-                ? 'Try adjusting your search or filter criteria.'
-                : 'Active students will appear here automatically.'}
-            </p>
+            <h3 className="mt-2 text-sm font-medium text-gray-900">No short course fee records found</h3>
+            <p className="mt-1 text-sm text-gray-500">Try adjusting your search or filter criteria.</p>
           </div>
         )}
       </div>
 
 
+
+      {/* Extra Charges Modal */}
+      {showExtraModal && selectedFee && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-md w-full">
+            <div className="p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">Add Extra Charge — {selectedFee.student_name}</h2>
+              <div className="mb-4 p-3 bg-gray-50 rounded-lg text-sm text-gray-600">
+                <div>Course Fee: KSh {selectedFee.course_fee.toLocaleString()}</div>
+                {(selectedFee.extra_charges || 0) > 0 && <div className="text-orange-600">Current Extra: KSh {selectedFee.extra_charges.toLocaleString()} ({selectedFee.extra_charges_note})</div>}
+              </div>
+              <form onSubmit={handleAddExtra} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Amount (KSh) *</label>
+                  <input type="number" required min="1" value={extraForm.amount}
+                    onChange={(e) => setExtraForm({ ...extraForm, amount: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary"
+                    placeholder="e.g. 1500" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Reason *</label>
+                  <input type="text" required value={extraForm.note}
+                    onChange={(e) => setExtraForm({ ...extraForm, note: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary"
+                    placeholder="e.g. Good Conduct Certificate" />
+                </div>
+                <div className="flex gap-3 pt-2">
+                  <button type="button" onClick={() => { setShowExtraModal(false); setExtraForm({ amount: '', note: '' }) }}
+                    className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200">Cancel</button>
+                  <button type="submit" className="flex-1 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600">Add Extra</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Add Sponsor Modal */}
       {showSponsorModal && selectedFee && (
@@ -739,7 +919,6 @@ export function NicheFees() {
                     onChange={(e) => setPaymentForm({ ...paymentForm, payment_method: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
                   >
-                    <option value="Cash">Cash</option>
                     <option value="M-Pesa">M-Pesa</option>
                   </select>
                 </div>
@@ -778,14 +957,18 @@ export function NicheFees() {
               </h2>
               
               <div className="mb-4 p-3 bg-gray-50 rounded-lg">
-                <div className="grid grid-cols-3 gap-4 text-sm">
+                <div className="grid grid-cols-4 gap-4 text-sm">
                   <div>
                     <span className="font-medium">Course Fee:</span>
-                    <div>KSh {selectedFee.course_fee.toLocaleString()}</div>
+                    <div>KSh {selectedFee.course_fee.toLocaleString()}{(selectedFee.extra_charges || 0) > 0 && <span className="text-orange-600"> +{selectedFee.extra_charges.toLocaleString()}</span>}</div>
+                  </div>
+                  <div>
+                    <span className="font-medium">Sponsored:</span>
+                    <div className="text-blue-600">KSh {(selectedFee.sponsored_amount || 0).toLocaleString()}</div>
                   </div>
                   <div>
                     <span className="font-medium">Total Paid:</span>
-                    <div className="text-green-600">KSh {selectedFee.total_paid.toLocaleString()}</div>
+                    <div className="text-green-600">KSh {((selectedFee as any).actual_payments || 0).toLocaleString()}</div>
                   </div>
                   <div>
                     <span className="font-medium">Balance:</span>
@@ -795,7 +978,19 @@ export function NicheFees() {
               </div>
 
               <div className="space-y-3">
-                {payments.length === 0 ? (
+                {(selectedFee.sponsored_amount || 0) > 0 && (
+                  <div className="border border-blue-200 bg-blue-50 rounded-lg p-4">
+                    <div className="font-medium text-blue-700">KSh {(selectedFee.sponsored_amount).toLocaleString()}</div>
+                    <div className="text-sm text-blue-600 mt-1">Nestara Sponsorship</div>
+                  </div>
+                )}
+                {(selectedFee.extra_charges || 0) > 0 && (
+                  <div className="border border-orange-200 bg-orange-50 rounded-lg p-4">
+                    <div className="font-medium text-orange-700">+ KSh {(selectedFee.extra_charges).toLocaleString()}</div>
+                    <div className="text-sm text-orange-600 mt-1">Extra Charge: {selectedFee.extra_charges_note || 'Additional fee'}</div>
+                  </div>
+                )}
+                {payments.length === 0 && (selectedFee.sponsored_amount || 0) === 0 ? (
                   <p className="text-gray-500 text-center py-4">No payments recorded yet</p>
                 ) : (
                   payments.map((payment) => (

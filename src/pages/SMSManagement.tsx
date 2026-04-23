@@ -363,33 +363,46 @@ function GraduationTab({ onRefresh }: { onRefresh: () => void }) {
   const [sending, setSending] = useState(false)
   const [loading, setLoading] = useState(true)
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
+  const [smsType, setSmsType] = useState<'graduated' | 'completed'>('graduated')
 
   useEffect(() => {
     loadCohorts()
     loadCampaigns()
   }, [])
 
+  useEffect(() => {
+    // Reset selections when type changes
+    setSelectedCohorts([])
+    setTrainees([])
+    setMessage('')
+  }, [smsType])
+
   const loadCohorts = async () => {
     setLoading(true)
     const { data } = await supabase
       .from('niche_cohorts')
       .select('*')
-      .in('status', ['completed', 'graduated'])
+      .in('status', ['completed', 'graduated', 'active'])
       .order('cohort_number', { ascending: false })
 
     const withCounts = await Promise.all((data || []).map(async c => {
-      const { count } = await supabase.from('niche_training')
+      const { count: gradCount } = await supabase.from('niche_training')
         .select('*', { count: 'exact', head: true })
-        .eq('cohort_id', c.id).not('phone', 'is', null).neq('phone', '')
-      return { ...c, trainee_count: count || 0 }
+        .eq('cohort_id', c.id).eq('status', 'Graduated')
+        .not('phone', 'is', null).neq('phone', '')
+      const { count: compCount } = await supabase.from('niche_training')
+        .select('*', { count: 'exact', head: true })
+        .eq('cohort_id', c.id).eq('status', 'Completed')
+        .not('phone', 'is', null).neq('phone', '')
+      return { ...c, trainee_count: gradCount || 0, completed_count: compCount || 0 }
     }))
-    setCohorts(withCounts.filter(c => c.trainee_count > 0))
+    setCohorts(withCounts.filter(c => (c.trainee_count > 0 || (c as any).completed_count > 0)))
     setLoading(false)
   }
 
   const loadCampaigns = async () => {
     const { data } = await supabase.from('sms_campaigns')
-      .select('*').eq('type', 'graduation')
+      .select('*').eq('campaign_type', 'graduation')
       .order('created_at', { ascending: false }).limit(10)
     setCampaigns(data || [])
   }
@@ -402,10 +415,13 @@ function GraduationTab({ onRefresh }: { onRefresh: () => void }) {
 
     if (next.length === 0) { setTrainees([]); setMessage(''); return }
 
+    const statusFilter = smsType === 'graduated' ? 'Graduated' : 'Completed'
     const { data } = await supabase.from('niche_training')
       .select('id, name, phone, course, cohort_id')
-      .in('cohort_id', next).not('phone', 'is', null).neq('phone', '')
-    
+      .in('cohort_id', next)
+      .eq('status', statusFilter)
+      .not('phone', 'is', null).neq('phone', '')
+
     const formatted = (data || []).map(t => ({
       ...t,
       formattedPhone: formatPhone(t.phone),
@@ -415,15 +431,21 @@ function GraduationTab({ onRefresh }: { onRefresh: () => void }) {
 
     const nums = next.map(id => cohorts.find(c => c.id === id)?.cohort_number).filter(Boolean).sort((a,b) => a-b)
     const cohortText = nums.length === 1 ? `Cohort ${nums[0]}` : `Cohorts ${nums.join(', ')}`
-    setMessage(`Congratulations! You have successfully completed your NICHE training program (${cohortText}). We are proud of your achievement and wish you success in your career. - Nestara Team`)
+
+    if (smsType === 'graduated') {
+      setMessage(`Congratulations! You have successfully completed your NICHE 2-Week Training Program (${cohortText}). We are proud of your achievement and wish you success in your career. - Nestara Team`)
+    } else {
+      setMessage(`Thank you for completing your NICHE Short Course (${cohortText})! We hope it was valuable. We'd love your feedback — please reply to this message or call us. - Nestara Team`)
+    }
   }
 
   const handleSend = async () => {
     if (!trainees.length || !message.trim()) return
     setSending(true)
     const nums = selectedCohorts.map(id => cohorts.find(c => c.id === id)?.cohort_number).filter(Boolean).sort((a,b) => a-b)
+    const label = smsType === 'graduated' ? 'Graduation' : 'Short Course Completion'
     await sendCampaign({
-      name: `Graduation - Cohort${nums.length > 1 ? 's' : ''} ${nums.join(', ')}`,
+      name: `${label} - Cohort${nums.length > 1 ? 's' : ''} ${nums.join(', ')}`,
       type: 'graduation',
       message,
       recipients: trainees.map(t => ({ id: t.id, name: t.name, phone: t.formattedPhone!, type: 'candidate' })),
@@ -440,28 +462,54 @@ function GraduationTab({ onRefresh }: { onRefresh: () => void }) {
 
   return (
     <div className="space-y-6">
+      {/* Type selector */}
+      <div className="flex gap-3">
+        <button onClick={() => setSmsType('graduated')}
+          className={`flex-1 py-3 rounded-lg border text-sm font-medium transition-colors ${
+            smsType === 'graduated' ? 'border-nestalk-primary bg-nestalk-primary/5 text-nestalk-primary' : 'border-gray-200 text-gray-600 hover:border-gray-300'
+          }`}>
+          🎓 2-Week Flagship Graduation
+        </button>
+        <button onClick={() => setSmsType('completed')}
+          className={`flex-1 py-3 rounded-lg border text-sm font-medium transition-colors ${
+            smsType === 'completed' ? 'border-purple-500 bg-purple-50 text-purple-700' : 'border-gray-200 text-gray-600 hover:border-gray-300'
+          }`}>
+          ✅ Short Course Completion + Feedback
+        </button>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Left: compose */}
         <div className="space-y-5">
           <div>
-            <div className="text-sm font-semibold text-gray-700 mb-3">Select Completed Cohorts</div>
+            <div className="text-sm font-semibold text-gray-700 mb-3">
+              Select Cohorts — <span className="font-normal text-gray-500">{smsType === 'graduated' ? 'showing Graduated trainees' : 'showing Completed trainees'}</span>
+            </div>
             {loading ? (
               <div className="flex items-center gap-2 text-gray-400 text-sm py-6"><Loader2 className="w-4 h-4 animate-spin" /> Loading cohorts...</div>
             ) : cohorts.length === 0 ? (
-              <div className="text-sm text-gray-400 py-6 text-center">No completed cohorts with trainees</div>
+              <div className="text-sm text-gray-400 py-6 text-center">No cohorts found</div>
             ) : (
               <div className="grid grid-cols-2 gap-2">
-                {cohorts.map(c => (
-                  <button key={c.id} onClick={() => toggleCohort(c.id)}
-                    className={`text-left p-3 rounded-lg border transition-all ${selectedCohorts.includes(c.id) ? 'border-nestalk-primary bg-nestalk-primary/5' : 'border-gray-200 hover:border-gray-300'}`}>
-                    <div className="flex items-center justify-between">
-                      <div className="font-semibold text-sm text-gray-900">Cohort {c.cohort_number}</div>
-                      {sentCohortIds.has(c.id) && <span className="text-xs bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full">Sent</span>}
-                    </div>
-                    <div className="text-xs text-gray-500">{new Date(c.end_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</div>
-                    <div className="text-xs text-emerald-600 font-medium">{c.trainee_count} trainees</div>
-                  </button>
-                ))}
+                {cohorts.map(c => {
+                  const count = smsType === 'graduated' ? c.trainee_count : (c as any).completed_count
+                  if (count === 0) return null
+                  return (
+                    <button key={c.id} onClick={() => toggleCohort(c.id)}
+                      className={`text-left p-3 rounded-lg border transition-all ${
+                        selectedCohorts.includes(c.id)
+                          ? smsType === 'graduated' ? 'border-nestalk-primary bg-nestalk-primary/5' : 'border-purple-500 bg-purple-50'
+                          : 'border-gray-200 hover:border-gray-300'
+                      }`}>
+                      <div className="flex items-center justify-between">
+                        <div className="font-semibold text-sm text-gray-900">Cohort {c.cohort_number}</div>
+                        {sentCohortIds.has(c.id) && <span className="text-xs bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full">Sent</span>}
+                      </div>
+                      <div className="text-xs text-gray-500">{new Date(c.end_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</div>
+                      <div className={`text-xs font-medium ${smsType === 'graduated' ? 'text-emerald-600' : 'text-purple-600'}`}>{count} trainees</div>
+                    </button>
+                  )
+                })}
               </div>
             )}
           </div>
@@ -472,7 +520,9 @@ function GraduationTab({ onRefresh }: { onRefresh: () => void }) {
               <textarea value={message} onChange={e => setMessage(e.target.value)} rows={5}
                 className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-nestalk-primary focus:border-transparent" />
               <button onClick={handleSend} disabled={sending || !message.trim()}
-                className="mt-3 w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition-colors text-sm font-medium">
+                className={`mt-3 w-full flex items-center justify-center gap-2 px-4 py-2.5 text-white rounded-lg disabled:opacity-50 transition-colors text-sm font-medium ${
+                  smsType === 'graduated' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-purple-600 hover:bg-purple-700'
+                }`}>
                 {sending ? <><Loader2 className="w-4 h-4 animate-spin" /> Sending...</> : <><Send className="w-4 h-4" /> Send to {trainees.length} Trainees</>}
               </button>
             </div>
