@@ -106,6 +106,7 @@ export function NicheGrading() {
   const [showExportModal, setShowExportModal] = useState(false)
   const [selectedCohortForExport, setSelectedCohortForExport] = useState('all')
   const [showPreview, setShowPreview] = useState(false)
+  const [isDownloadingPDF, setIsDownloadingPDF] = useState(false)
   const [previewContent, setPreviewContent] = useState('')
   const [subPillarGrades, setSubPillarGrades] = useState<SubPillarGrades>({})
   const [hasChanges, setHasChanges] = useState(false)
@@ -776,17 +777,7 @@ export function NicheGrading() {
   }
 
   const downloadPDF = async () => {
-    // Check if running locally
-    const isLocal = window.location.hostname === 'localhost' || 
-                   window.location.hostname === '127.0.0.1' || 
-                   window.location.hostname.includes('192.168') ||
-                   window.location.port !== ''
-    
-    if (!isLocal) {
-      alert('PDF download is only available when running locally. Please use your browser\'s print function (Ctrl+P) and select "Save as PDF".')
-      return
-    }
-
+    setIsDownloadingPDF(true)
     try {
       // Filter records based on selected cohort
       let recordsToExport = gradedRecords
@@ -1019,8 +1010,16 @@ export function NicheGrading() {
         </html>
       `
 
-      // Send to Puppeteer service
-      const response = await fetch('http://localhost:3001/generate-pdf', {
+      // Check if running locally
+      const isLocal = window.location.hostname === 'localhost' || 
+                     window.location.hostname === '127.0.0.1' || 
+                     window.location.hostname.includes('192.168') ||
+                     window.location.port !== ''
+      
+      const apiEndpoint = isLocal ? 'http://localhost:3001/generate-pdf' : '/api/generate-pdf'
+
+      // Send to PDF service
+      const response = await fetch(apiEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1054,6 +1053,8 @@ export function NicheGrading() {
     } catch (error) {
       console.error('PDF generation failed:', error)
       showToast(`PDF generation failed: ${error.message}. Make sure the PDF service is running on localhost:3001`, 'error')
+    } finally {
+      setIsDownloadingPDF(false)
     }
   }
 
@@ -1669,10 +1670,23 @@ export function NicheGrading() {
               </button>
               <button
                 onClick={downloadPDF}
-                className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
+                disabled={isDownloadingPDF}
+                className={`flex-1 px-4 py-2 bg-green-600 text-white rounded-lg transition-colors flex items-center justify-center gap-2 ${isDownloadingPDF ? 'opacity-75 cursor-not-allowed' : 'hover:bg-green-700'}`}
               >
-                <FileText className="w-4 h-4" />
-                Download PDF
+                {isDownloadingPDF ? (
+                  <>
+                    <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Generating PDF...
+                  </>
+                ) : (
+                  <>
+                    <FileText className="w-4 h-4" />
+                    Download PDF
+                  </>
+                )}
               </button>
             </div>
           </div>

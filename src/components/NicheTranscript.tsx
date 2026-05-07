@@ -161,22 +161,15 @@ const NicheTranscript: React.FC<NicheTranscriptProps> = ({
   const pillarScores = [pillar1Score, pillar2Score, pillar3Score, pillar4Score]
   const weightedScores = [pillar1Weighted, pillar2Weighted, pillar3Weighted, pillar4Weighted]
 
-  const downloadTranscript = async () => {
-    // Check if running locally
-    const isLocal = window.location.hostname === 'localhost' || 
-                   window.location.hostname === '127.0.0.1' || 
-                   window.location.hostname.includes('192.168') ||
-                   window.location.port !== ''
-    
-    if (!isLocal) {
-      alert('Transcript download is only available when running locally. Please use your browser\'s print function (Ctrl+P) and select "Save as PDF".')
-      return
-    }
+  const [isDownloading, setIsDownloading] = useState(false)
 
+  const downloadTranscript = async () => {
+    setIsDownloading(true)
     try {
       const element = document.getElementById('transcript-content')
       if (!element) {
         alert('Transcript content not found')
+        setIsDownloading(false)
         return
       }
 
@@ -222,13 +215,21 @@ const NicheTranscript: React.FC<NicheTranscriptProps> = ({
           </style>
         </head>
         <body>
-          ${transcriptCard.outerHTML}
+          ${(transcriptCard as HTMLElement).outerHTML}
         </body>
         </html>
       `
 
-      // Send to Puppeteer service for PDF generation
-      const response = await fetch('http://localhost:3001/generate-pdf', {
+      // Check if running locally
+      const isLocal = window.location.hostname === 'localhost' || 
+                     window.location.hostname === '127.0.0.1' || 
+                     window.location.hostname.includes('192.168') ||
+                     window.location.port !== ''
+      
+      const apiEndpoint = isLocal ? 'http://localhost:3001/generate-pdf' : '/api/generate-pdf'
+
+      // Send to PDF service for PDF generation
+      const response = await fetch(apiEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -264,6 +265,8 @@ const NicheTranscript: React.FC<NicheTranscriptProps> = ({
     } catch (error) {
       console.error('Transcript generation failed:', error)
       alert(`Transcript generation failed: ${error.message}. Make sure the PDF service is running on localhost:3001`)
+    } finally {
+      setIsDownloading(false)
     }
   }
 
@@ -277,12 +280,25 @@ const NicheTranscript: React.FC<NicheTranscriptProps> = ({
           <div className="absolute top-4 left-4 right-4 flex justify-between z-20">
             <button
               onClick={downloadTranscript}
-              className="flex items-center gap-2 bg-[#c5a059] text-white px-4 py-2 rounded-lg hover:bg-[#b8944f] transition-colors shadow-lg"
+              disabled={isDownloading}
+              className={`flex items-center gap-2 bg-[#c5a059] text-white px-4 py-2 rounded-lg transition-colors shadow-lg ${isDownloading ? 'opacity-75 cursor-not-allowed' : 'hover:bg-[#b8944f]'}`}
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-              </svg>
-              Download Transcript
+              {isDownloading ? (
+                <>
+                  <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Generating PDF...
+                </>
+              ) : (
+                <>
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  Download Transcript
+                </>
+              )}
             </button>
             <button
               onClick={onClose}

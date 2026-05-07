@@ -85,6 +85,7 @@ export function Layout() {
       ]
     },
     { name: 'Blacklisted', href: '/blacklisted', icon: UserX },
+    { name: 'KPI Report', href: '/kpi-report', icon: FileText },
     { name: 'Calendar', href: '/calendar', icon: Calendar },
     { name: 'SMS Management', href: '/sms', icon: MessageCircle },
     { name: 'Nestara AI', href: '/nestara-ai', icon: Brain },

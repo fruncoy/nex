@@ -1,7 +1,12 @@
 import express from 'express'
-import puppeteer from 'puppeteer-core'
 import cors from 'cors'
 import fs from 'fs'
+import path from 'path'
+import { fileURLToPath } from 'url'
+import { spawn } from 'child_process'
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
 
 const app = express()
 app.use(cors())
@@ -33,69 +38,45 @@ const findChrome = () => {
   return null
 }
 
+const chromePath = findChrome()
+
 app.post('/generate-pdf', async (req, res) => {
   try {
-    const { html, filename, options = {} } = req.body
-    
+    const { url, html, content, filename, options = {} } = req.body
+    const htmlToUse = html || content
+
     console.log('Generating PDF for:', filename)
+
+    const worker = spawn('node', ['pdf-worker.js', chromePath])
     
-    const chromePath = findChrome()
+    let pdfData = []
+    let errorData = ''
     
-    if (!chromePath) {
-      throw new Error('Chrome browser not found. Please install Google Chrome.')
+    if (url) {
+      // If URL is provided, send it to worker as HTML with a redirect or something
+      // Actually, let's just make the worker handle URLs too
+      worker.stdin.write(`___URL___:${url}`)
+    } else {
+      worker.stdin.write(htmlToUse)
     }
+    worker.stdin.end()
     
-    const browser = await puppeteer.launch({
-      headless: true,
-      executablePath: chromePath,
-      args: [
-        '--no-sandbox', 
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu',
-        '--disable-extensions',
-        '--disable-default-apps'
-      ]
+    worker.stdout.on('data', (data) => pdfData.push(data))
+    worker.stderr.on('data', (data) => errorData += data.toString())
+    
+    worker.on('close', (code) => {
+      if (code === 0) {
+        res.setHeader('Content-Type', 'application/pdf')
+        res.send(Buffer.concat(pdfData))
+        console.log('PDF generated via worker.')
+      } else {
+        console.error('Worker failed:', errorData)
+        res.status(500).json({ error: 'Worker failed', details: errorData })
+      }
     })
-    
-    const page = await browser.newPage()
-    
-    // Set content and wait for it to load
-    await page.setContent(html, { 
-      waitUntil: 'networkidle0',
-      timeout: 30000 
-    })
-    
-    // Default PDF options
-    const defaultOptions = {
-      format: 'A4',
-      printBackground: true,
-      margin: { 
-        top: '20px', 
-        bottom: '20px', 
-        left: '20px', 
-        right: '20px' 
-      },
-      preferCSSPageSize: true
-    }
-    
-    // Merge with custom options
-    const pdfOptions = { ...defaultOptions, ...options }
-    
-    // Generate PDF
-    const pdf = await page.pdf(pdfOptions)
-    
-    await browser.close()
-    
-    res.setHeader('Content-Type', 'application/pdf')
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`)
-    res.send(pdf)
-    
-    console.log('PDF generated successfully:', filename)
-    
   } catch (error) {
-    console.error('PDF generation error:', error)
-    res.status(500).json({ error: 'PDF generation failed', details: error.message })
+    console.error('Service error:', error)
+    res.status(500).json({ error: 'Service error', details: error.message })
   }
 })
 

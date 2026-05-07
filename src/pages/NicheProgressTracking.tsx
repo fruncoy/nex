@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -390,23 +390,13 @@ const NicheProgressTracking: React.FC = () => {
   }
 
   const downloadDailyProgressPDF = async () => {
-    // Check if running locally
-    const isLocal = window.location.hostname === 'localhost' || 
-                   window.location.hostname === '127.0.0.1' || 
-                   window.location.hostname.includes('192.168') ||
-                   window.location.port !== ''
-    
-    if (!isLocal) {
-      alert('PDF download is only available when running locally. Please use your browser\'s print function (Ctrl+P) and select "Save as PDF".')
-      return
-    }
-
     setPdfLoading(true)
     try {
       // Get the progress content that's currently displayed
       const progressContent = document.querySelector('.progress-content')
       if (!progressContent) {
         alert('No progress content found for PDF generation')
+        setPdfLoading(false)
         return
       }
       
@@ -462,13 +452,21 @@ const NicheProgressTracking: React.FC = () => {
           </style>
         </head>
         <body>
-          ${progressContent.outerHTML}
+          ${(progressContent as HTMLElement).outerHTML}
         </body>
         </html>
       `
       
-      // Send to Puppeteer service
-      const response = await fetch('http://localhost:3001/generate-pdf', {
+      // Check if running locally
+      const isLocal = window.location.hostname === 'localhost' || 
+                     window.location.hostname === '127.0.0.1' || 
+                     window.location.hostname.includes('192.168') ||
+                     window.location.port !== ''
+      
+      const apiEndpoint = isLocal ? 'http://localhost:3001/generate-pdf' : '/api/generate-pdf'
+
+      // Send to PDF service
+      const response = await fetch(apiEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

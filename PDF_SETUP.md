@@ -2,38 +2,39 @@
 
 ## Local Development with PDF Generation
 
-This project uses Puppeteer for PDF generation, which **only works locally** during development.
+This project uses Puppeteer for PDF generation. It works both locally and online (via Vercel Serverless Functions).
 
-### Quick Start
+### Quick Start (Local)
 
 1. **Run both services together:**
    ```bash
-   npm run dev-with-pdf
+   npm run dev
    ```
-   This starts both the React app (port 3000) and PDF service (port 3001).
+   This starts both the Vite dev server and the local PDF service (port 3001).
 
-### Manual Setup
+### Manual Setup (Local)
 
-1. **Start the PDF service:**
+1. **Start the PDF service only:**
    ```bash
    npm run pdf-service
    ```
 
-2. **In another terminal, start the React app:**
+2. **Start the Vite app only:**
    ```bash
-   npm run dev
+   npm run vite
    ```
 
 ### How It Works
 
-- **Local Environment**: Uses Puppeteer to generate high-quality PDFs
-- **Online/Production**: Shows message directing users to use browser's print function
+- **Local Environment**: The app detects `localhost` and uses the local PDF service on port 3001.
+- **Online/Production**: The app automatically switches to the Vercel Serverless Function at `/api/generate-pdf`.
 
 ### PDF Service Details
 
-- **Port**: 3001
-- **Endpoint**: `POST /generate-pdf`
-- **Health Check**: `GET http://localhost:3001/health`
+- **Local Port**: 3001
+- **Local Endpoint**: `POST http://localhost:3001/generate-pdf`
+- **Online Endpoint**: `POST /api/generate-pdf`
+- **Health Check (Local)**: `GET http://localhost:3001/health`
 
 ### Troubleshooting
 
@@ -44,9 +45,4 @@ If PDF generation fails:
 
 ### Production Deployment
 
-For production, the PDF download button will show a message directing users to:
-1. Use Ctrl+P (or Cmd+P on Mac)
-2. Select "Save as PDF" 
-3. Choose destination and save
-
-This ensures the feature works locally for development while gracefully handling online users.
+The PDF generation is fully automated for production using Vercel Serverless Functions. No additional configuration is required.

@@ -24,6 +24,9 @@ import { Calendar } from './pages/Calendar'
 import { GetMatch } from './pages/GetMatch'
 import NicheProgressTracking from './pages/NicheProgressTracking'
 import { Digest } from './pages/Digest'
+import { KPIReportList } from './pages/KPIReportList'
+import { KPIReportFill } from './pages/KPIReportFill'
+import { KPIReportView } from './pages/KPIReportView'
 
 function ProtectedLayout() {
   const { user, loading } = useAuth()
@@ -84,6 +87,9 @@ function AppRoutes() {
         <Route path="reminders" element={<Reminders />} />
         <Route path="meeting-notes" element={<MeetingNotes />} />
         <Route path="blacklisted" element={<Blacklisted />} />
+        <Route path="kpi-report" element={<KPIReportList />} />
+        <Route path="kpi-report/:id" element={<KPIReportView />} />
+        <Route path="kpi-report/:id/fill" element={<KPIReportFill />} />
       </Route>
       <Route path="/digest" element={<ProtectedDigest />} />
       <Route path="*" element={<Navigate to="/" replace />} />

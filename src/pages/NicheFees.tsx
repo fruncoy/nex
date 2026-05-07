@@ -19,6 +19,7 @@ interface NicheFee {
   extra_charges: number
   extra_charges_note: string
   payment_status: 'Pending' | 'Partial' | 'Paid' | 'Overdue'
+  is_bad_debt?: boolean
   created_at: string
   updated_at: string
   // Joined data
@@ -213,8 +214,11 @@ export function NicheFees() {
           const actualPayments = paymentTotals[fee.id] || 0
           const sponsoredAmt = (fee as any).sponsored_amount || 0
           const extraCharges = (fee as any).extra_charges || 0
-          const balance = fee.course_fee + extraCharges - sponsoredAmt - actualPayments
-          const paymentStatus = fee.course_fee > 0 && (actualPayments + sponsoredAmt) >= (fee.course_fee + extraCharges) ? 'Paid' : 'Pending'
+          const isBadDebt = (fee as any).is_bad_debt || false
+          
+          // If bad debt, balance is effectively 0 for collection purposes
+          const balance = isBadDebt ? 0 : (fee.course_fee + extraCharges - sponsoredAmt - actualPayments)
+          const paymentStatus = isBadDebt ? 'Pending' : (fee.course_fee > 0 && (actualPayments + sponsoredAmt) >= (fee.course_fee + extraCharges) ? 'Paid' : 'Pending')
           
           return {
             ...fee,
@@ -229,6 +233,7 @@ export function NicheFees() {
             extra_charges_note: (fee as any).extra_charges_note || '',
             balance_due: Math.max(0, balance),
             payment_status: paymentStatus,
+            is_bad_debt: isBadDebt,
             training_status: fee.niche_training.status,
             actual_payments: actualPayments
           }
@@ -257,8 +262,11 @@ export function NicheFees() {
           const actualPayments = paymentTotals[fee.id] || 0
           const sponsoredAmt = (fee as any).sponsored_amount || 0
           const extraCharges = (fee as any).extra_charges || 0
-          const balance = fee.course_fee + extraCharges - sponsoredAmt - actualPayments
-          const paymentStatus = fee.course_fee > 0 && (actualPayments + sponsoredAmt) >= (fee.course_fee + extraCharges) ? 'Paid' : 'Pending'
+          const isBadDebt = (fee as any).is_bad_debt || false
+
+          // If bad debt, balance is effectively 0 for collection purposes
+          const balance = isBadDebt ? 0 : (fee.course_fee + extraCharges - sponsoredAmt - actualPayments)
+          const paymentStatus = isBadDebt ? 'Pending' : (fee.course_fee > 0 && (actualPayments + sponsoredAmt) >= (fee.course_fee + extraCharges) ? 'Paid' : 'Pending')
           
           return {
             ...fee,
@@ -273,6 +281,7 @@ export function NicheFees() {
             extra_charges_note: (fee as any).extra_charges_note || '',
             balance_due: Math.max(0, balance),
             payment_status: paymentStatus,
+            is_bad_debt: isBadDebt,
             training_status: fee.niche_training.status,
             actual_payments: actualPayments
           }
@@ -296,6 +305,29 @@ export function NicheFees() {
   }
 
 
+
+  const handleToggleBadDebt = async (fee: NicheFee) => {
+    const newStatus = !fee.is_bad_debt
+    const confirmMessage = newStatus 
+      ? `Are you sure you want to mark ${fee.student_name}'s balance as bad debt? This will effectively zero out their remaining balance in reports.`
+      : `Are you sure you want to remove the bad debt status for ${fee.student_name}?`
+
+    if (!confirm(confirmMessage)) return
+
+    try {
+      const { error } = await supabase
+        .from('niche_fees')
+        .update({ is_bad_debt: newStatus })
+        .eq('id', fee.id)
+
+      if (error) throw error
+      showToast(`Successfully ${newStatus ? 'marked as bad debt' : 'removed bad debt status'}`, 'success')
+      fetchFees() // Refresh data
+    } catch (error) {
+      console.error('Error updating bad debt status:', error)
+      showToast('Failed to update bad debt status', 'error')
+    }
+  }
 
   const filterFees = () => {
     let filtered = [...fees]
@@ -520,10 +552,20 @@ export function NicheFees() {
         const allFees = fees
         const flagship = fees.filter(f => f.course_name === 'Professional House Manager Training Program' || f.course_name === 'Professional Nanny Training Program')
         const shortCourse = fees.filter(f => f.course_name !== 'Professional House Manager Training Program' && f.course_name !== 'Professional Nanny Training Program')
-        const totalExpected = allFees.reduce((s, f) => s + f.course_fee + (f.extra_charges || 0), 0)
-        const totalCollected = allFees.reduce((s, f) => s + ((f as any).actual_payments || 0) + (f.sponsored_amount || 0), 0)
-        const totalBalance = allFees.reduce((s, f) => s + f.balance_due, 0)
-        const totalSponsored = allFees.reduce((s, f) => s + (f.sponsored_amount || 0), 0)
+        
+        // Stats excluding bad debt
+        const activeFees = fees.filter(f => !f.is_bad_debt)
+        const totalExpected = activeFees.reduce((s, f) => s + f.course_fee + (f.extra_charges || 0), 0)
+        const totalCollected = fees.reduce((s, f) => s + ((f as any).actual_payments || 0) + (f.sponsored_amount || 0), 0)
+        const totalBalance = activeFees.reduce((s, f) => s + f.balance_due, 0)
+        const totalSponsored = fees.reduce((s, f) => s + (f.sponsored_amount || 0), 0)
+        const totalBadDebt = fees.filter(f => f.is_bad_debt).reduce((s, f) => {
+          // Calculate what would have been the balance
+          const actualPayments = (f as any).actual_payments || 0
+          const sponsoredAmt = f.sponsored_amount || 0
+          const extraCharges = f.extra_charges || 0
+          return s + Math.max(0, f.course_fee + extraCharges - sponsoredAmt - actualPayments)
+        }, 0)
         const flagshipCollected = flagship.reduce((s, f) => s + ((f as any).actual_payments || 0) + (f.sponsored_amount || 0), 0)
         const flagshipBalance = flagship.reduce((s, f) => s + f.balance_due, 0)
         const shortCollected = shortCourse.reduce((s, f) => s + ((f as any).actual_payments || 0) + (f.sponsored_amount || 0), 0)
@@ -550,6 +592,11 @@ export function NicheFees() {
                 <div className="text-xs text-gray-500 mb-1">Total Sponsored</div>
                 <div className="text-2xl font-bold text-blue-600">KSh {totalSponsored.toLocaleString()}</div>
                 <div className="text-xs text-gray-400 mt-1">{allFees.filter(f => (f.sponsored_amount || 0) > 0).length} students sponsored</div>
+              </div>
+              <div className="bg-white rounded-lg shadow p-4 border-l-4 border-gray-400">
+                <div className="text-xs text-gray-500 mb-1">Total Bad Debt</div>
+                <div className="text-2xl font-bold text-gray-600">KSh {totalBadDebt.toLocaleString()}</div>
+                <div className="text-xs text-gray-400 mt-1">{fees.filter(f => f.is_bad_debt).length} records written off</div>
               </div>
             </div>
             <div className="grid grid-cols-4 gap-4">
@@ -686,14 +733,36 @@ export function NicheFees() {
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">KSh {fee.course_fee.toLocaleString()}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-blue-600">KSh {(fee.sponsored_amount || 0).toLocaleString()}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-green-600">KSh {((fee as any).actual_payments || 0).toLocaleString()}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-red-600">KSh {fee.balance_due.toLocaleString()}</td>
-                        <td className="px-6 py-4 whitespace-nowrap"><StatusBadge status={fee.payment_status} type="payment" /></td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-red-600">
+                          {fee.is_bad_debt ? (
+                            <span className="text-gray-400 line-through">KSh {fee.balance_due.toLocaleString()}</span>
+                          ) : (
+                            `KSh ${fee.balance_due.toLocaleString()}`
+                          )}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex flex-col gap-1">
+                            <StatusBadge status={fee.payment_status} type="payment" />
+                            {fee.is_bad_debt && (
+                              <span className="px-2 py-0.5 text-[10px] font-bold bg-gray-100 text-gray-600 rounded uppercase tracking-wider text-center">
+                                Bad Debt
+                              </span>
+                            )}
+                          </div>
+                        </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                           <div className="flex items-center gap-1">
                             <button onClick={() => { setSelectedFee(fee); loadPaymentHistory(fee.id); setShowPaymentHistory(true) }} className="text-blue-600 hover:text-blue-800 mr-2" title="View Payment History"><Eye className="w-4 h-4" /></button>
                             <button onClick={() => { setSelectedFee(fee); setShowPaymentModal(true) }} className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700">Pay</button>
                             <button onClick={() => { setSelectedFee(fee); setShowSponsorModal(true) }} className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 ml-1">Sponsor</button>
                             <button onClick={() => { setSelectedFee(fee); setExtraForm({ amount: String(fee.extra_charges || ''), note: fee.extra_charges_note || '' }); setShowExtraModal(true) }} className="px-2 py-1 text-xs bg-orange-500 text-white rounded hover:bg-orange-600 ml-1">+ Extra</button>
+                            <button 
+                              onClick={() => handleToggleBadDebt(fee)} 
+                              className={`px-2 py-1 text-xs rounded ml-1 transition-colors ${fee.is_bad_debt ? 'bg-gray-200 text-gray-700 hover:bg-gray-300' : 'bg-red-100 text-red-700 hover:bg-red-200'}`}
+                              title={fee.is_bad_debt ? 'Remove Bad Debt Status' : 'Mark as Bad Debt'}
+                            >
+                              {fee.is_bad_debt ? 'Undo Bad' : 'Bad Debt'}
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -760,14 +829,36 @@ export function NicheFees() {
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">KSh {fee.course_fee.toLocaleString()}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-blue-600">KSh {(fee.sponsored_amount || 0).toLocaleString()}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-green-600">KSh {((fee as any).actual_payments || 0).toLocaleString()}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-red-600">KSh {fee.balance_due.toLocaleString()}</td>
-                        <td className="px-6 py-4 whitespace-nowrap"><StatusBadge status={fee.payment_status} type="payment" /></td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-red-600">
+                          {fee.is_bad_debt ? (
+                            <span className="text-gray-400 line-through">KSh {fee.balance_due.toLocaleString()}</span>
+                          ) : (
+                            `KSh ${fee.balance_due.toLocaleString()}`
+                          )}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex flex-col gap-1">
+                            <StatusBadge status={fee.payment_status} type="payment" />
+                            {fee.is_bad_debt && (
+                              <span className="px-2 py-0.5 text-[10px] font-bold bg-gray-100 text-gray-600 rounded uppercase tracking-wider text-center">
+                                Bad Debt
+                              </span>
+                            )}
+                          </div>
+                        </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                           <div className="flex items-center gap-1">
                             <button onClick={() => { setSelectedFee(fee); loadPaymentHistory(fee.id); setShowPaymentHistory(true) }} className="text-blue-600 hover:text-blue-800 mr-2" title="View Payment History"><Eye className="w-4 h-4" /></button>
                             <button onClick={() => { setSelectedFee(fee); setShowPaymentModal(true) }} className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700">Pay</button>
                             <button onClick={() => { setSelectedFee(fee); setShowSponsorModal(true) }} className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 ml-1">Sponsor</button>
                             <button onClick={() => { setSelectedFee(fee); setExtraForm({ amount: String(fee.extra_charges || ''), note: fee.extra_charges_note || '' }); setShowExtraModal(true) }} className="px-2 py-1 text-xs bg-orange-500 text-white rounded hover:bg-orange-600 ml-1">+ Extra</button>
+                            <button 
+                              onClick={() => handleToggleBadDebt(fee)} 
+                              className={`px-2 py-1 text-xs rounded ml-1 transition-colors ${fee.is_bad_debt ? 'bg-gray-200 text-gray-700 hover:bg-gray-300' : 'bg-red-100 text-red-700 hover:bg-red-200'}`}
+                              title={fee.is_bad_debt ? 'Remove Bad Debt Status' : 'Mark as Bad Debt'}
+                            >
+                              {fee.is_bad_debt ? 'Undo Bad' : 'Bad Debt'}
+                            </button>
                           </div>
                         </td>
                       </tr>

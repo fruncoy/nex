@@ -1076,7 +1076,16 @@ ${reportHTML}
       const headerTemplate = '<span></span>'
 
       const filename = `NICHE-Report-${period.replace(/\s+/g, '-')}.pdf`
-      const res = await fetch('http://localhost:3001/generate-pdf', {
+      
+      // Check if running locally
+      const isLocal = window.location.hostname === 'localhost' || 
+                     window.location.hostname === '127.0.0.1' || 
+                     window.location.hostname.includes('192.168') ||
+                     window.location.port !== ''
+      
+      const apiEndpoint = isLocal ? 'http://localhost:3001/generate-pdf' : '/api/generate-pdf'
+
+      const res = await fetch(apiEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
