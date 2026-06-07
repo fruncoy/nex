@@ -21,7 +21,6 @@ interface VolumeMetrics {
 
 interface FunnelMetrics {
   totalInquiries: number
-  interviewed: number
   joinedTraining: number
   joinRate: number
   graduationRate: number
@@ -145,28 +144,22 @@ function useNicheReportsData(dateRange: DateRange) {
       const cohortMap: Record<string, any> = {}
       cohorts?.forEach(c => { cohortMap[c.id] = c })
 
-      // Filter cohorts by date range
-      const filteredCohortIds = cohorts
-        ?.filter(c => {
-          if (!dateRange.from && !dateRange.to) return true
-          const start = c.start_date
-          const end = c.end_date
-          if (dateRange.from && end < dateRange.from) return false
-          if (dateRange.to && start > dateRange.to) return false
-          return true
-        })
-        .map(c => c.id) || []
-
       // ── 2. Trainees ─────────────────────────────────────────────────────────
       let traineeQuery = supabase
         .from('niche_training')
         .select('*, niche_fees(course_fee, total_paid, sponsored_amount, payment_status)')
 
-      if (filteredCohortIds.length > 0) {
-        traineeQuery = traineeQuery.in('cohort_id', filteredCohortIds)
-      }
-
       const { data: trainees } = await traineeQuery
+
+      // Filter trainees by their enrollment date (date_started or created_at)
+      const filteredTrainees = trainees?.filter(trainee => {
+        if (!dateRange.from && !dateRange.to) return true
+        const traineeDate = trainee.date_started || trainee.created_at?.split('T')[0]
+        if (!traineeDate) return false
+        if (dateRange.from && traineeDate < dateRange.from) return false
+        if (dateRange.to && traineeDate > dateRange.to) return false
+        return true
+      }) || []
 
       // ── 3. Payments ─────────────────────────────────────────────────────────
       const { data: allPayments } = await supabase
@@ -181,7 +174,7 @@ function useNicheReportsData(dateRange: DateRange) {
       const feeToTraining: Record<string, string> = {}
       allFees?.forEach(f => { feeToTraining[f.id] = f.training_id })
 
-      const traineeIds = new Set(trainees?.map(t => t.id) || [])
+      const traineeIds = new Set(filteredTrainees?.map(t => t.id) || [])
       const filteredPayments = allPayments?.filter(p =>
         traineeIds.has(feeToTraining[p.fee_id])
       ) || []
@@ -210,21 +203,21 @@ function useNicheReportsData(dateRange: DateRange) {
       const { data: mainCandidates } = await mainQuery
 
       // ── COMPUTE VOLUME ──────────────────────────────────────────────────────
-      const graduated = trainees?.filter(t => t.status === 'Graduated').length || 0
-      const expelled = trainees?.filter(t => t.status === 'Expelled').length || 0
+      const graduated = filteredTrainees?.filter(t => t.status === 'Graduated').length || 0
+      const expelled = filteredTrainees?.filter(t => t.status === 'Expelled').length || 0
 
-      const twoWeekTrainees = trainees?.filter(t => {
+      const twoWeekTrainees = filteredTrainees?.filter(t => {
         const courses = t.enrolled_courses || [t.course].filter(Boolean)
         return courses.some((c: string) => !isShortCourse(c))
       }).length || 0
 
-      const shortCourseTrainees = trainees?.filter(t => {
+      const shortCourseTrainees = filteredTrainees?.filter(t => {
         const courses = t.enrolled_courses || [t.course].filter(Boolean)
         return courses.some((c: string) => isShortCourse(c))
       }).length || 0
 
       setVolume({
-        totalTrainees: trainees?.length || 0,
+        totalTrainees: filteredTrainees?.length || 0,
         graduated,
         twoWeekTrainees,
         shortCourseTrainees,
@@ -235,19 +228,41 @@ function useNicheReportsData(dateRange: DateRange) {
       // ── COMPUTE FUNNEL ──────────────────────────────────────────────────────
       const allNiche = nicheCandidates || []
       const allMain = mainCandidates || []
-
-      // Deduplicate by combining both (use Set on id)
+      
+      // Combine ALL: candidates + trainees, deduplicated
       const combinedIds = new Set<string>()
+      const combinedPhone = new Set<string>()
       const combined: any[] = []
+      
+      // Add all candidates first
       ;[...allNiche, ...allMain].forEach(c => {
-        if (!combinedIds.has(c.id)) { combinedIds.add(c.id); combined.push(c) }
+        if (c.id && !combinedIds.has(c.id)) { 
+          combinedIds.add(c.id)
+          combined.push(c) 
+          if (c.phone) combinedPhone.add(String(c.phone).trim().toLowerCase())
+        }
+      })
+      
+      // Add trainees that aren't already in candidates list
+      filteredTrainees?.forEach(t => {
+        // Check if trainee is already in candidates (by ID if linked)
+        if (t.candidate_id && combinedIds.has(t.candidate_id)) return
+        // Check by phone if available
+        if (t.phone) {
+          const normalizedPhone = String(t.phone).trim().toLowerCase()
+          if (combinedPhone.has(normalizedPhone)) return
+        }
+        // Add trainee as inquiry
+        combined.push({
+          id: t.id,
+          status: t.status,
+          phone: t.phone
+        })
+        combinedIds.add(t.id)
+        if (t.phone) combinedPhone.add(String(t.phone).trim().toLowerCase())
       })
 
       const totalInquiries = combined.length
-      const interviewed = combined.filter(c =>
-        c.status && (c.status.includes('Interview') || c.status === 'WON' ||
-        c.status === 'INTERVIEW_SCHEDULED' || c.status === 'Interview Scheduled')
-      ).length
 
       const lostAll = combined.filter(c => c.status && c.status.toLowerCase().includes('lost'))
       const totalLost = lostAll.length
@@ -262,13 +277,12 @@ function useNicheReportsData(dateRange: DateRange) {
         .sort((a, b) => b.count - a.count)
         .slice(0, 3)
 
-      const joinRate = pct(trainees?.length || 0, totalInquiries)
-      const graduationRate = pct(graduated, (trainees?.length || 0))
+      const joinRate = pct(filteredTrainees?.length || 0, totalInquiries)
+      const graduationRate = pct(graduated, (filteredTrainees?.length || 0))
 
       setFunnel({
         totalInquiries,
-        interviewed,
-        joinedTraining: trainees?.length || 0,
+        joinedTraining: filteredTrainees?.length || 0,
         joinRate,
         graduationRate,
         totalLost,
@@ -279,7 +293,7 @@ function useNicheReportsData(dateRange: DateRange) {
       let totalFees = 0, totalPaid = 0, totalSponsored = 0
       let cash = 0, mpesa = 0, bankTransfer = 0, card = 0
 
-      trainees?.forEach(t => {
+      filteredTrainees?.forEach(t => {
         const fee = t.niche_fees?.[0]
         if (fee) {
           totalFees += fee.course_fee || 0
@@ -312,7 +326,7 @@ function useNicheReportsData(dateRange: DateRange) {
 
       // ── COMPUTE COURSE ROWS ─────────────────────────────────────────────────
       const courseMap: Record<string, CourseRow> = {}
-      trainees?.forEach(t => {
+      filteredTrainees?.forEach(t => {
         const courses = t.enrolled_courses || [t.course].filter(Boolean)
         const fee = t.niche_fees?.[0]
         courses.forEach((c: string) => {
@@ -337,7 +351,7 @@ function useNicheReportsData(dateRange: DateRange) {
         cohortBarMap[c.id] = { cohort_number: c.cohort_number, twoWeek: 0, shortCourse: 0, revenue: 0, graduated: 0 }
       })
 
-      trainees?.forEach(t => {
+      filteredTrainees?.forEach(t => {
         if (!t.cohort_id || !cohortBarMap[t.cohort_id]) return
         const courses = t.enrolled_courses || [t.course].filter(Boolean)
         const hasShort = courses.some((c: string) => isShortCourse(c))
@@ -352,7 +366,7 @@ function useNicheReportsData(dateRange: DateRange) {
 
       // ── COMPUTE MONTH ROWS ──────────────────────────────────────────────────
       const monthMap: Record<string, MonthRow> = {}
-      trainees?.forEach(t => {
+      filteredTrainees?.forEach(t => {
         const d = t.date_started || t.created_at
         if (!d) return
         const key = d.substring(0, 7) // YYYY-MM
@@ -373,7 +387,7 @@ function useNicheReportsData(dateRange: DateRange) {
       // ── COMPUTE PER COHORT ──────────────────────────────────────────────────
       const perCohort: PerCohortData[] = []
       cohorts?.filter(c => c.status !== 'upcoming').forEach(cohort => {
-        const ct = trainees?.filter(t => t.cohort_id === cohort.id) || []
+        const ct = filteredTrainees?.filter(t => t.cohort_id === cohort.id) || []
         const cp = filteredPayments.filter(p => {
           const tid = feeToTraining[p.fee_id]
           return ct.some(t => t.id === tid)
@@ -543,10 +557,8 @@ export function OverallTab({ volume, funnel, finance, courseRows, cohortBars, mo
       {/* ── ROW 2: FUNNEL ── */}
       <section>
         <SectionHeader title="Funnel" />
-        <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           <Card label="Total Inquiries" value={funnel.totalInquiries} />
-          <Card label="Interviewed" value={funnel.interviewed}
-            sub={`${pct(funnel.interviewed, funnel.totalInquiries)}% of inquiries`} />
           <Card label="Joined Training" value={funnel.joinedTraining}
             sub={`${funnel.joinRate}% join rate`} valueClass="text-blue-700" />
           <Card label="Graduation Rate" value={`${funnel.graduationRate}%`}

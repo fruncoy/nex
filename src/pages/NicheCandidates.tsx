@@ -60,6 +60,7 @@ export function NicheCandidates() {
   })
   const [selectedCandidates, setSelectedCandidates] = useState<string[]>([])
   const [bulkStatus, setBulkStatus] = useState('')
+  const [bulkInquiryDate, setBulkInquiryDate] = useState('')
   const [showNotesModal, setShowNotesModal] = useState(false)
   const [selectedCandidateForNotes, setSelectedCandidateForNotes] = useState<NicheCandidate | null>(null)
   const [candidateNotes, setCandidateNotes] = useState<any[]>([])
@@ -86,6 +87,7 @@ export function NicheCandidates() {
   const [showSyncMenu, setShowSyncMenu] = useState(false)
   const [showCriticalActionModal, setShowCriticalActionModal] = useState(false)
   const [criticalActionData, setCriticalActionData] = useState<{ candidate: NicheCandidate; newStatus: string; onConfirm: () => void } | null>(null)
+  const [activeModalTab, setActiveModalTab] = useState<'2week' | 'shortcourse'>('2week')
 
   const { user, staff } = useAuth()
   const { showToast } = useToast()
@@ -443,6 +445,7 @@ export function NicheCandidates() {
     setDuplicateWarning({})
     setShowDuplicateModal(false)
     setDuplicateRecord(null)
+    setActiveModalTab('2week')
   }
 
   // Normalize phone number for consistent comparison
@@ -897,11 +900,148 @@ export function NicheCandidates() {
         </div>
       </div>
 
+      {/* Bulk Action Bar */}
+      {selectedCandidates.length > 0 && (
+        <div className="mb-3 p-4 bg-orange-50 border border-orange-200 rounded-lg shadow-sm animate-in fade-in slide-in-from-top-4 duration-200">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <span className="text-sm font-bold text-orange-800">
+                {selectedCandidates.length} candidate(s) selected
+              </span>
+              <div className="h-4 w-px bg-orange-300"></div>
+              <div className="flex items-center gap-2">
+                <label className="text-xs font-semibold text-orange-700 uppercase">Update Status to:</label>
+                <select
+                  value={bulkStatus}
+                  onChange={(e) => setBulkStatus(e.target.value)}
+                  className="px-3 py-1.5 border border-orange-300 rounded-lg text-sm focus:ring-2 focus:ring-nestalk-primary outline-none bg-white"
+                >
+                  <option value="">Select Status</option>
+                  {statusOptions.filter(s => s !== 'BLACKLISTED' && s !== 'Active in Training').map(status => (
+                    <option key={status} value={status}>{status}</option>
+                  ))}
+                </select>
+                <button
+                  onClick={async () => {
+                    if (!bulkStatus) {
+                      showToast('Please select a status first', 'error')
+                      return
+                    }
+
+                    try {
+                      // Filter out BLACKLISTED candidates
+                      const candidatesToUpdate = candidates.filter(c => 
+                        selectedCandidates.includes(c.id) && c.status !== 'BLACKLISTED'
+                      )
+                      
+                      if (candidatesToUpdate.length === 0) {
+                        showToast('No eligible candidates to update (all are blacklisted)', 'error')
+                        return
+                      }
+
+                      const { error } = await supabase
+                        .from('niche_candidates')
+                        .update({ status: bulkStatus })
+                        .in('id', candidatesToUpdate.map(c => c.id))
+
+                      if (error) throw error
+
+                      // Update local state
+                      setCandidates(prev => prev.map(c => 
+                        candidatesToUpdate.some(ctu => ctu.id === c.id)
+                          ? { ...c, status: bulkStatus }
+                          : c
+                      ))
+
+                      showToast(`Updated status for ${candidatesToUpdate.length} candidate(s)`, 'success')
+                      setSelectedCandidates([])
+                      setBulkStatus('')
+                    } catch (error: any) {
+                      console.error('Error updating statuses:', error)
+                      showToast(`Error: ${error?.message || 'Unknown error'}`, 'error')
+                    }
+                  }}
+                  disabled={!bulkStatus}
+                  className="px-4 py-1.5 bg-nestalk-primary text-white rounded-lg text-sm font-semibold hover:bg-nestalk-primary/90 disabled:bg-gray-300 disabled:cursor-not-allowed transition-all shadow-sm"
+                >
+                  Apply Status
+                </button>
+              </div>
+              <div className="h-4 w-px bg-orange-300"></div>
+              <div className="flex items-center gap-2">
+                <label className="text-xs font-semibold text-orange-700 uppercase">Update Inquiry Date to:</label>
+                <input
+                  type="date"
+                  value={bulkInquiryDate}
+                  onChange={(e) => setBulkInquiryDate(e.target.value)}
+                  className="px-3 py-1.5 border border-orange-300 rounded-lg text-sm focus:ring-2 focus:ring-nestalk-primary outline-none bg-white"
+                />
+                <button
+                  onClick={async () => {
+                    if (!bulkInquiryDate) {
+                      showToast('Please select an inquiry date first', 'error')
+                      return
+                    }
+
+                    try {
+                      const { error } = await supabase
+                        .from('niche_candidates')
+                        .update({ inquiry_date: bulkInquiryDate })
+                        .in('id', selectedCandidates)
+
+                      if (error) throw error
+
+                      // Update local state
+                      setCandidates(prev => prev.map(c => 
+                        selectedCandidates.includes(c.id) 
+                          ? { ...c, inquiry_date: bulkInquiryDate }
+                          : c
+                      ))
+
+                      showToast(`Updated inquiry date for ${selectedCandidates.length} candidate(s)`, 'success')
+                      setSelectedCandidates([])
+                      setBulkInquiryDate('')
+                    } catch (error: any) {
+                      console.error('Error updating inquiry dates:', error)
+                      showToast(`Error: ${error?.message || 'Unknown error'}`, 'error')
+                    }
+                  }}
+                  disabled={!bulkInquiryDate}
+                  className="px-4 py-1.5 bg-nestalk-primary text-white rounded-lg text-sm font-semibold hover:bg-nestalk-primary/90 disabled:bg-gray-300 disabled:cursor-not-allowed transition-all shadow-sm"
+                >
+                  Apply Date
+                </button>
+              </div>
+            </div>
+            <button
+              onClick={() => setSelectedCandidates([])}
+              className="px-4 py-1.5 bg-white text-gray-600 border border-gray-300 rounded-lg text-sm font-semibold hover:bg-gray-50 transition-all shadow-sm"
+            >
+              Clear Selection
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden mt-3">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
+                <th className="px-6 py-3 text-left">
+                  <input
+                    type="checkbox"
+                    checked={selectedCandidates.length === filteredCandidates.length && filteredCandidates.length > 0}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedCandidates(filteredCandidates.map(c => c.id))
+                      } else {
+                        setSelectedCandidates([])
+                      }
+                    }}
+                    className="rounded border-gray-300 text-nestalk-primary focus:ring-nestalk-primary"
+                  />
+                </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Notes</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
@@ -917,6 +1057,20 @@ export function NicheCandidates() {
             <tbody className="bg-white divide-y divide-gray-200">
               {filteredCandidates.map((candidate, index) => (
                 <tr key={candidate.id} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <input
+                      type="checkbox"
+                      checked={selectedCandidates.includes(candidate.id)}
+                      onChange={() => {
+                        if (selectedCandidates.includes(candidate.id)) {
+                          setSelectedCandidates(prev => prev.filter(id => id !== candidate.id))
+                        } else {
+                          setSelectedCandidates(prev => [...prev, candidate.id])
+                        }
+                      }}
+                      className="rounded border-gray-300 text-nestalk-primary focus:ring-nestalk-primary"
+                    />
+                  </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{index + 1}</td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="relative">
@@ -961,6 +1115,7 @@ export function NicheCandidates() {
                         onClick={() => {
                           setShowModal(true)
                           setSelectedCandidate(candidate)
+                          setActiveModalTab((candidate as any).category === 'Short Course' ? 'shortcourse' : '2week')
                           setFormData({
                             name: candidate.name,
                             phone: candidate.phone,
@@ -1085,6 +1240,34 @@ export function NicheCandidates() {
               <h2 className="text-lg font-semibold text-gray-900 mb-4">
                 {selectedCandidate ? 'Edit NICHE Candidate' : 'Add NICHE Candidate'}
               </h2>
+
+              {/* Category Tabs */}
+              <div className="flex bg-gray-100 p-1 rounded-lg mb-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveModalTab('2week')
+                    setFormData({ ...formData, category: '2-Week Flagship' })
+                  }}
+                  className={`flex-1 px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                    activeModalTab === '2week' ? 'bg-nestalk-primary text-white shadow-sm' : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  2-Week Flagship
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveModalTab('shortcourse')
+                    setFormData({ ...formData, category: 'Short Course' })
+                  }}
+                  className={`flex-1 px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                    activeModalTab === 'shortcourse' ? 'bg-nestalk-primary text-white shadow-sm' : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  Short Course
+                </button>
+              </div>
 
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div>

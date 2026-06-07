@@ -79,6 +79,7 @@ export function NicheTraining() {
   const [selectedCohortForImport, setSelectedCohortForImport] = useState('')
   const [selectedCoursesForImport, setSelectedCoursesForImport] = useState<string[]>(['Skills Training'])
   const [activeTab, setActiveTab] = useState<'2week' | 'shortcourse'>('2week')
+  const [importType, setImportType] = useState<'2week' | 'shortcourse'>('2week')
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
@@ -150,9 +151,10 @@ export function NicheTraining() {
     try {
       const { data, error } = await supabase
         .from('niche_candidates')
-        .select('id, name, phone, role, status, category')
+        .select('id, name, phone, role, status, category, created_at')
+        .neq('status', 'BLACKLISTED')
         .in('status', ['New Inquiry', 'Qualified', 'Pending Outcome', 'Interview Scheduled'])
-        .order('created_at', { ascending: false }) // Latest added first
+        .order('created_at', { ascending: false })
 
       if (error) throw error
       setCandidates(data || [])
@@ -394,9 +396,22 @@ export function NicheTraining() {
     setShowCandidateDropdown(false)
   }
 
-  const filteredCandidates = candidates.filter(candidate =>
-    candidate.name.toLowerCase().includes(candidateSearch.toLowerCase())
-  )
+  const filteredCandidates = candidates.filter(candidate => {
+    const searchLower = candidateSearch.toLowerCase()
+    const matchesSearch = 
+      candidate.name.toLowerCase().includes(searchLower) ||
+      (candidate.phone && candidate.phone.includes(candidateSearch)) ||
+      (candidate.role && candidate.role.toLowerCase().includes(searchLower))
+      
+    const matchesImportType = importType === '2week' 
+      ? (candidate.category === '2-Week Flagship' || !candidate.category)
+      : candidate.category === 'Short Course'
+      
+    // Always hide blacklisted (though loadCandidates should filter them already)
+    const isNotBlacklisted = candidate.status !== 'BLACKLISTED'
+    
+    return matchesSearch && matchesImportType && isNotBlacklisted
+  })
 
   const getRomanNumeral = (num: number) => {
     const romanNumerals = ['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X']
@@ -567,17 +582,27 @@ export function NicheTraining() {
     if (!bulkStatus || selectedRecords.length === 0) return
 
     try {
+      // Filter out any expelled trainees that might be in the selection (safety measure)
+      const validTraineeIds = trainingRecords
+        .filter(r => selectedRecords.includes(r.id) && r.status !== 'Expelled')
+        .map(r => r.id)
+
+      if (validTraineeIds.length === 0) {
+        showToast('No valid trainees to update (expelled trainees cannot be modified)', 'error')
+        return
+      }
+
       const { error } = await supabase
         .from('niche_training')
         .update({ 
           status: bulkStatus as 'Active' | 'Graduated' | 'Expelled' | 'Completed',
           updated_by: staff?.name || user?.email || 'Unknown'
         })
-        .in('id', selectedRecords)
+        .in('id', validTraineeIds)
 
       if (error) throw error
 
-      showToast(`Updated ${selectedRecords.length} trainee(s) to ${bulkStatus}`, 'success')
+      showToast(`Updated ${validTraineeIds.length} trainee(s) to ${bulkStatus}`, 'success')
       setSelectedRecords([])
       setBulkStatus('')
       loadTrainingRecords()
@@ -611,11 +636,14 @@ export function NicheTraining() {
         </div>
         <div className="flex gap-3">
           <button
-            onClick={() => setShowImportModal(true)}
-            className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            onClick={() => {
+              setImportType(activeTab)
+              setShowImportModal(true)
+            }}
+            className="flex items-center px-4 py-2 bg-nestalk-primary text-white rounded-lg hover:bg-nestalk-primary/90 transition-colors shadow-sm"
           >
             <UserPlus className="w-4 h-4 mr-2" />
-            Import Trainee
+            Import Trainees
           </button>
         </div>
       </div>
@@ -695,6 +723,52 @@ export function NicheTraining() {
           </button>
         </div>
 
+        {/* Bulk Update Section */}
+        {selectedRecords.length > 0 && (
+          <div className="mb-4 p-4 bg-orange-50 border border-orange-200 rounded-lg shadow-sm animate-in fade-in slide-in-from-top-4 duration-200">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <span className="text-sm font-bold text-orange-800">
+                  {selectedRecords.length} trainee(s) selected
+                </span>
+                <div className="h-4 w-px bg-orange-300"></div>
+                <div className="flex items-center gap-2">
+                  <label className="text-xs font-semibold text-orange-700 uppercase">Update Status to:</label>
+                  <select
+                    value={bulkStatus}
+                    onChange={(e) => setBulkStatus(e.target.value)}
+                    className="px-3 py-1.5 border border-orange-300 rounded-lg text-sm focus:ring-2 focus:ring-nestalk-primary outline-none bg-white"
+                  >
+                    <option value="">Select status</option>
+                    <option value="Active">Active</option>
+                    {activeTab === '2week' ? (
+                      <option value="Graduated">Graduated</option>
+                    ) : (
+                      <option value="Completed">Completed</option>
+                    )}
+                    <option value="Expelled">Expelled</option>
+                  </select>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleBulkStatusUpdate}
+                  disabled={!bulkStatus}
+                  className="px-4 py-1.5 bg-nestalk-primary text-white rounded-lg text-sm font-semibold hover:bg-nestalk-primary/90 disabled:bg-gray-300 disabled:cursor-not-allowed transition-all shadow-sm"
+                >
+                  Apply Changes
+                </button>
+                <button
+                  onClick={() => setSelectedRecords([])}
+                  className="px-4 py-1.5 bg-white text-gray-600 border border-gray-300 rounded-lg text-sm font-semibold hover:bg-gray-50 transition-all shadow-sm"
+                >
+                  Clear Selection
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Flagship Programs Section */}
       {activeTab === '2week' && flagshipRecords.length > 0 && (
         <div className="mb-10">
@@ -715,10 +789,10 @@ export function NicheTraining() {
                     <th className="px-4 py-3 text-left">
                       <input
                         type="checkbox"
-                        checked={selectedRecords.length === flagshipRecords.length && flagshipRecords.length > 0}
+                        checked={selectedRecords.length === flagshipRecords.filter(r => r.status !== 'Expelled').length && flagshipRecords.filter(r => r.status !== 'Expelled').length > 0}
                         onChange={(e) => {
                           if (e.target.checked) {
-                            setSelectedRecords(flagshipRecords.map(r => r.id))
+                            setSelectedRecords(flagshipRecords.filter(r => r.status !== 'Expelled').map(r => r.id))
                           } else {
                             setSelectedRecords([])
                           }
@@ -741,14 +815,16 @@ export function NicheTraining() {
                         <input
                           type="checkbox"
                           checked={selectedRecords.includes(record.id)}
+                          disabled={record.status === 'Expelled'}
                           onChange={() => {
+                            if (record.status === 'Expelled') return
                             if (selectedRecords.includes(record.id)) {
                               setSelectedRecords(prev => prev.filter(id => id !== record.id))
                             } else {
                               setSelectedRecords(prev => [...prev, record.id])
                             }
                           }}
-                          className="rounded border-gray-300 text-orange-600 focus:ring-orange-600"
+                          className={record.status === 'Expelled' ? "rounded border-gray-300 text-gray-400 opacity-50 cursor-not-allowed" : "rounded border-gray-300 text-orange-600 focus:ring-orange-600"}
                         />
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600 font-medium">{index + 1}</td>
@@ -805,42 +881,6 @@ export function NicheTraining() {
         </div>
       )}
 
-      {selectedRecords.length > 0 && (
-        <div className="mb-4 p-4 bg-orange-50 border border-orange-200 rounded-lg">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-orange-800">
-              {selectedRecords.length} trainee(s) selected
-            </span>
-            <div className="flex items-center gap-3">
-              <select
-                value={bulkStatus}
-                onChange={(e) => setBulkStatus(e.target.value)}
-                className="px-3 py-1 border border-orange-300 rounded text-sm"
-              >
-                <option value="">Select status</option>
-                <option value="Active">Active</option>
-                <option value="Graduated">Graduated</option>
-                <option value="Completed">Completed</option>
-                <option value="Expelled">Expelled</option>
-              </select>
-              <button
-                onClick={handleBulkStatusUpdate}
-                disabled={!bulkStatus}
-                className="px-3 py-1 bg-orange-600 text-white rounded text-sm hover:bg-orange-700 disabled:bg-gray-300"
-              >
-                Update Status
-              </button>
-              <button
-                onClick={() => setSelectedRecords([])}
-                className="px-3 py-1 bg-gray-500 text-white rounded text-sm hover:bg-gray-600"
-              >
-                Clear
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Specialized Courses Section */}
       {activeTab === 'shortcourse' && specializedRecords.length > 0 && (
         <div className="mb-8">
@@ -861,10 +901,10 @@ export function NicheTraining() {
                     <th className="px-4 py-3 text-left">
                       <input
                         type="checkbox"
-                        checked={selectedRecords.length === specializedRecords.length && specializedRecords.length > 0}
+                        checked={selectedRecords.length === specializedRecords.filter(r => r.status !== 'Expelled').length && specializedRecords.filter(r => r.status !== 'Expelled').length > 0}
                         onChange={(e) => {
                           if (e.target.checked) {
-                            setSelectedRecords(specializedRecords.map(r => r.id))
+                            setSelectedRecords(specializedRecords.filter(r => r.status !== 'Expelled').map(r => r.id))
                           } else {
                             setSelectedRecords([])
                           }
@@ -886,14 +926,16 @@ export function NicheTraining() {
                         <input
                           type="checkbox"
                           checked={selectedRecords.includes(record.id)}
+                          disabled={record.status === 'Expelled'}
                           onChange={() => {
+                            if (record.status === 'Expelled') return
                             if (selectedRecords.includes(record.id)) {
                               setSelectedRecords(prev => prev.filter(id => id !== record.id))
                             } else {
                               setSelectedRecords(prev => [...prev, record.id])
                             }
                           }}
-                          className="rounded border-gray-300 text-purple-600 focus:ring-purple-600"
+                          className={record.status === 'Expelled' ? "rounded border-gray-300 text-gray-400 opacity-50 cursor-not-allowed" : "rounded border-gray-300 text-purple-600 focus:ring-purple-600"}
                         />
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600 font-medium">{index + 1}</td>
@@ -953,18 +995,44 @@ export function NicheTraining() {
           <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">
-                Import Trainees from Candidates
-              </h2>
-              
-              <div className="mb-4">
-                <input
-                  type="text"
-                  placeholder="Search candidates..."
-                  value={candidateSearch}
-                  onChange={(e) => setCandidateSearch(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
-                />
-              </div>
+                  Import {importType === '2week' ? '2 Week' : 'Short Course'} Trainees from Candidates
+                </h2>
+                
+                <div className="mb-4 flex gap-3">
+                  <div className="flex-1">
+                    <input
+                      type="text"
+                      placeholder={`Search ${importType === '2week' ? '2 Week' : 'Short Course'} candidates...`}
+                      value={candidateSearch}
+                      onChange={(e) => setCandidateSearch(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
+                    />
+                  </div>
+                  <div className="flex bg-gray-100 p-1 rounded-lg">
+                    <button
+                      onClick={() => {
+                        setImportType('2week')
+                        setSelectedCandidates([])
+                      }}
+                      className={`px-4 py-1 text-sm font-medium rounded-md transition-colors ${
+                        importType === '2week' ? 'bg-nestalk-primary text-white shadow-sm' : 'text-gray-600 hover:text-gray-900'
+                      }`}
+                    >
+                      2 Week
+                    </button>
+                    <button
+                      onClick={() => {
+                        setImportType('shortcourse')
+                        setSelectedCandidates([])
+                      }}
+                      className={`px-4 py-1 text-sm font-medium rounded-md transition-colors ${
+                        importType === 'shortcourse' ? 'bg-nestalk-primary text-white shadow-sm' : 'text-gray-600 hover:text-gray-900'
+                      }`}
+                    >
+                      Short Course
+                    </button>
+                  </div>
+                </div>
 
               {/* Cohort Selection */}
               <div className="mb-4 p-4 bg-gray-50 rounded-lg">
@@ -984,28 +1052,30 @@ export function NicheTraining() {
               </div>
 
               {/* Short Course Selection */}
-              <div className="mb-4 p-4 bg-purple-50 rounded-lg">
-                <label className="block text-sm font-medium text-gray-700 mb-2">Default Courses for Short Course Candidates</label>
-                <div className="grid grid-cols-2 gap-2 max-h-32 overflow-y-auto">
-                  {courses.filter(course => !course.name.includes('Professional')).map(course => (
-                    <label key={course.id} className="flex items-center space-x-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={selectedCoursesForImport.includes(course.name)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setSelectedCoursesForImport(prev => [...prev, course.name])
-                          } else {
-                            setSelectedCoursesForImport(prev => prev.filter(c => c !== course.name))
-                          }
-                        }}
-                        className="rounded border-gray-300 text-purple-600 focus:ring-purple-600"
-                      />
-                      <span>{course.name}</span>
-                    </label>
-                  ))}
+              {importType === 'shortcourse' && (
+                <div className="mb-4 p-4 bg-purple-50 rounded-lg">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Default Courses for Short Course Candidates</label>
+                  <div className="grid grid-cols-2 gap-2 max-h-32 overflow-y-auto">
+                    {courses.filter(course => !course.name.includes('Professional')).map(course => (
+                      <label key={course.id} className="flex items-center space-x-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={selectedCoursesForImport.includes(course.name)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedCoursesForImport(prev => [...prev, course.name])
+                            } else {
+                              setSelectedCoursesForImport(prev => prev.filter(c => c !== course.name))
+                            }
+                          }}
+                          className="rounded border-gray-300 text-purple-600 focus:ring-purple-600"
+                        />
+                        <span>{course.name}</span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div className="max-h-96 overflow-y-auto border border-gray-200 rounded-lg">
                 <table className="min-w-full divide-y divide-gray-200">

@@ -15,7 +15,7 @@ export function NestaraAI() {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
-      content: 'Jambo. I\'m your Assistant, ready to help you focus on what matters most.',
+      content: 'Jambo. I\'m Nesta, your Intelligence System. How can I help you build Nestara today?',
       role: 'assistant',
       timestamp: new Date()
     }
@@ -109,20 +109,7 @@ export function NestaraAI() {
   }
 
   return (
-    <div className="h-[calc(100vh-80px)] flex flex-col bg-gradient-to-br from-blue-50 to-indigo-100">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200 p-4 shadow-sm">
-        <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full flex items-center justify-center">
-            <Bot className="w-6 h-6 text-white" />
-          </div>
-          <div>
-            <h1 className="text-xl font-semibold text-gray-900">Nestara AI Assistant</h1>
-            <p className="text-sm text-gray-500">Precision. Insight. Intelligence.</p>
-          </div>
-        </div>
-      </div>
-
+    <div className="h-[calc(100vh-80px)] flex flex-col bg-gradient-to-br from-orange-50 to-indigo-50">
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.map((message) => (
@@ -133,8 +120,8 @@ export function NestaraAI() {
             <div className={`flex max-w-3xl ${message.role === 'user' ? 'flex-row-reverse' : 'flex-row'} space-x-3`}>
               <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
                 message.role === 'user' 
-                  ? 'bg-blue-500 ml-3' 
-                  : 'bg-gradient-to-r from-indigo-500 to-purple-600 mr-3'
+                  ? 'bg-nestalk-primary ml-3' 
+                  : 'bg-gradient-to-r from-orange-500 to-indigo-600 mr-3 shadow-sm'
               }`}>
                 {message.role === 'user' ? (
                   <User className="w-5 h-5 text-white" />
@@ -144,12 +131,12 @@ export function NestaraAI() {
               </div>
               <div className={`rounded-2xl px-4 py-3 ${
                 message.role === 'user'
-                  ? 'bg-blue-500 text-white'
+                  ? 'bg-nestalk-primary text-white shadow-md'
                   : 'bg-white text-gray-900 shadow-sm border border-gray-100'
               }`}>
                 <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
                 <p className={`text-xs mt-2 ${
-                  message.role === 'user' ? 'text-blue-100' : 'text-gray-500'
+                  message.role === 'user' ? 'text-orange-100' : 'text-gray-500'
                 }`}>
                   {formatTime(message.timestamp)}
                 </p>
@@ -185,13 +172,13 @@ export function NestaraAI() {
               <textarea
                 value={input}
                 onChange={(e) => {
-                  if (e.target.value.length <= 200) {
+                  if (e.target.value.length <= 500) {
                     setInput(e.target.value)
                   }
                 }}
                 onKeyPress={handleKeyPress}
                 placeholder="Ask me anything..."
-                className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-2xl focus:outline-none focus:ring-2 focus:ring-nestalk-primary focus:border-transparent resize-none"
                 rows={1}
                 style={{ minHeight: '48px', maxHeight: '120px' }}
                 disabled={isLoading || isRateLimited}
@@ -199,7 +186,7 @@ export function NestaraAI() {
               <button
                 onClick={sendMessage}
                 disabled={!input.trim() || isLoading || isRateLimited}
-                className="absolute right-2 top-1/2 transform -translate-y-1/2 p-2 bg-blue-500 text-white rounded-full hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="absolute right-2 top-1/2 transform -translate-y-1/2 p-2 bg-nestalk-primary text-white rounded-full hover:bg-nestalk-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 <Send className="w-4 h-4" />
               </button>
@@ -213,7 +200,7 @@ export function NestaraAI() {
                 </span>
               )}
             </div>
-            <span className="text-xs text-gray-400">{input.length}/200</span>
+            <span className="text-xs text-gray-400">{input.length}/500</span>
           </div>
         </div>
       </div>
