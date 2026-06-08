@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { SearchFilter } from '../components/ui/SearchFilter'
 import { StatusBadge } from '../components/ui/StatusBadge'
-import { Plus, Edit, Users, UserPlus, Trash2 } from 'lucide-react'
+import { Plus, Edit, Users, UserPlus, Trash2, Download } from 'lucide-react'
+import * as XLSX from 'xlsx'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
 import { ActivityLogger } from '../lib/activityLogger'
@@ -612,6 +613,65 @@ export function NicheTraining() {
     }
   }
 
+  const handleExport = () => {
+    const wb = XLSX.utils.book_new()
+    
+    // Sort cohorts by number
+    const sortedCohorts = [...cohorts].sort((a, b) => a.cohort_number - b.cohort_number)
+    
+    sortedCohorts.forEach(cohort => {
+      const cohortTrainees = trainingRecords.filter(t => t.cohort_id === cohort.id)
+      
+      if (cohortTrainees.length > 0) {
+        // Sort trainees by status first, then name
+        const statusOrder = { 'Active': 0, 'Graduated': 1, 'Completed': 1, 'Expelled': 2 }
+        const sortedTrainees = [...cohortTrainees].sort((a, b) => {
+          const statusDiff = (statusOrder[a.status] || 99) - (statusOrder[b.status] || 99)
+          if (statusDiff !== 0) return statusDiff
+          return a.name.localeCompare(b.name)
+        })
+        
+        const data = sortedTrainees.map(trainee => ({
+          'Name': trainee.name,
+          'Phone': trainee.phone || '',
+          'Role': trainee.role || '',
+          'Course': trainee.course || '',
+          'Status': trainee.status,
+          'Enrolled Courses': trainee.enrolled_courses?.join(', ') || '',
+          'Date Started': trainee.date_started ? new Date(trainee.date_started).toLocaleDateString() : '',
+          'Date Completed': trainee.date_completed ? new Date(trainee.date_completed).toLocaleDateString() : ''
+        }))
+        
+        const ws = XLSX.utils.json_to_sheet(data)
+        XLSX.utils.book_append_sheet(wb, ws, `Cohort ${getRomanNumeral(cohort.cohort_number)}`)
+      }
+    })
+    
+    // Also add a sheet for trainees without cohort
+    const noCohortTrainees = trainingRecords.filter(t => !t.cohort_id)
+    if (noCohortTrainees.length > 0) {
+      const sortedTrainees = [...noCohortTrainees].sort((a, b) => a.name.localeCompare(b.name))
+      const data = sortedTrainees.map(trainee => ({
+        'Name': trainee.name,
+        'Phone': trainee.phone || '',
+        'Role': trainee.role || '',
+        'Course': trainee.course || '',
+        'Status': trainee.status,
+        'Enrolled Courses': trainee.enrolled_courses?.join(', ') || '',
+        'Date Started': trainee.date_started ? new Date(trainee.date_started).toLocaleDateString() : '',
+        'Date Completed': trainee.date_completed ? new Date(trainee.date_completed).toLocaleDateString() : ''
+      }))
+      const ws = XLSX.utils.json_to_sheet(data)
+      XLSX.utils.book_append_sheet(wb, ws, 'No Cohort')
+    }
+    
+    // Download the file
+    const fileName = `NICHE_Training_${new Date().toISOString().split('T')[0]}.xlsx`
+    XLSX.writeFile(wb, fileName)
+    
+    showToast('Export successful!', 'success')
+  }
+
   if (loading) {
     return (
       <div className="p-6">
@@ -635,6 +695,13 @@ export function NicheTraining() {
           <p className="text-gray-600">Manage short course and skills training programs</p>
         </div>
         <div className="flex gap-3">
+          <button
+            onClick={handleExport}
+            className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors shadow-sm"
+          >
+            <Download className="w-4 h-4 mr-2" />
+            Export Data
+          </button>
           <button
             onClick={() => {
               setImportType(activeTab)
