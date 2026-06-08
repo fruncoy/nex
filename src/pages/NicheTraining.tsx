@@ -47,6 +47,7 @@ interface NicheTraining {
   updated_by?: string
   cohorts?: NicheCohort
   has_grade?: boolean
+  niche_fees?: { course_fee?: number, total_paid?: number, sponsored_amount?: number }[]
 }
 
 interface Candidate {
@@ -116,7 +117,8 @@ export function NicheTraining() {
         .from('niche_training')
         .select(`
           *,
-          cohorts:niche_cohorts(id, cohort_number, start_date, end_date, status)
+          cohorts:niche_cohorts(id, cohort_number, start_date, end_date, status),
+          niche_fees(course_fee, total_paid, sponsored_amount)
         `)
         .in('status', ['Active', 'Graduated', 'Expelled', 'Completed'])
         .order('created_at', { ascending: false })
@@ -614,56 +616,82 @@ export function NicheTraining() {
   }
 
   const handleExport = () => {
-    const wb = XLSX.utils.book_new()
-    
+    // Helper for date formatting (5 July 2026)
+    const formatDate = (dateStr: string) => {
+      if (!dateStr) return ''
+      const date = new Date(dateStr)
+      return date.toLocaleDateString('en-GB', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric'
+      })
+    }
+
     // Sort cohorts by number
     const sortedCohorts = [...cohorts].sort((a, b) => a.cohort_number - b.cohort_number)
-    
-    sortedCohorts.forEach(cohort => {
-      const cohortTrainees = trainingRecords.filter(t => t.cohort_id === cohort.id)
+    const cohortOrder: Record<string, number> = {}
+    sortedCohorts.forEach((c, i) => { cohortOrder[c.id] = i })
+
+    // Sort all trainees first by cohort, then status, then name
+    const statusOrder = { 'Active': 0, 'Graduated': 1, 'Completed': 1, 'Expelled': 2 }
+    const sortedTrainees = [...trainingRecords].sort((a, b) => {
+      // Cohort order
+      const aCohortIdx = a.cohort_id ? cohortOrder[a.cohort_id] : 999
+      const bCohortIdx = b.cohort_id ? cohortOrder[b.cohort_id] : 999
+      if (aCohortIdx !== bCohortIdx) return aCohortIdx - bCohortIdx
       
-      if (cohortTrainees.length > 0) {
-        // Sort trainees by status first, then name
-        const statusOrder = { 'Active': 0, 'Graduated': 1, 'Completed': 1, 'Expelled': 2 }
-        const sortedTrainees = [...cohortTrainees].sort((a, b) => {
-          const statusDiff = (statusOrder[a.status] || 99) - (statusOrder[b.status] || 99)
-          if (statusDiff !== 0) return statusDiff
-          return a.name.localeCompare(b.name)
-        })
-        
-        const data = sortedTrainees.map(trainee => ({
-          'Name': trainee.name,
-          'Phone': trainee.phone || '',
-          'Role': trainee.role || '',
-          'Course': trainee.course || '',
-          'Status': trainee.status,
-          'Enrolled Courses': trainee.enrolled_courses?.join(', ') || '',
-          'Date Started': trainee.date_started ? new Date(trainee.date_started).toLocaleDateString() : '',
-          'Date Completed': trainee.date_completed ? new Date(trainee.date_completed).toLocaleDateString() : ''
-        }))
-        
-        const ws = XLSX.utils.json_to_sheet(data)
-        XLSX.utils.book_append_sheet(wb, ws, `Cohort ${getRomanNumeral(cohort.cohort_number)}`)
-      }
+      // Status order
+      const aStatusOrder = statusOrder[a.status] || 99
+      const bStatusOrder = statusOrder[b.status] || 99
+      if (aStatusOrder !== bStatusOrder) return aStatusOrder - bStatusOrder
+      
+      // Name
+      return a.name.localeCompare(b.name)
     })
-    
-    // Also add a sheet for trainees without cohort
-    const noCohortTrainees = trainingRecords.filter(t => !t.cohort_id)
-    if (noCohortTrainees.length > 0) {
-      const sortedTrainees = [...noCohortTrainees].sort((a, b) => a.name.localeCompare(b.name))
-      const data = sortedTrainees.map(trainee => ({
+
+    // Build data for single sheet
+    const data = sortedTrainees.map(trainee => {
+      // Determine training type
+      const trainingType = (trainee as any).training_type === 'weekend' ? 'Short Course' : '2-Week Flagship'
+      
+      // Get cohort name
+      let cohortName = 'No Cohort'
+      if (trainee.cohorts) {
+        cohortName = `Cohort ${getRomanNumeral(trainee.cohorts.cohort_number)}`
+      }
+      
+      // Calculate fee balance
+      let balance = 0
+      if (trainee.niche_fees && trainee.niche_fees.length > 0) {
+        const fee = trainee.niche_fees[0]
+        const courseFee = fee.course_fee || 0
+        const totalPaid = fee.total_paid || 0
+        const sponsored = fee.sponsored_amount || 0
+        balance = courseFee - (totalPaid + sponsored)
+      }
+
+      return {
+        'Cohort': cohortName,
+        'Training Type': trainingType,
         'Name': trainee.name,
         'Phone': trainee.phone || '',
         'Role': trainee.role || '',
         'Course': trainee.course || '',
         'Status': trainee.status,
         'Enrolled Courses': trainee.enrolled_courses?.join(', ') || '',
-        'Date Started': trainee.date_started ? new Date(trainee.date_started).toLocaleDateString() : '',
-        'Date Completed': trainee.date_completed ? new Date(trainee.date_completed).toLocaleDateString() : ''
-      }))
-      const ws = XLSX.utils.json_to_sheet(data)
-      XLSX.utils.book_append_sheet(wb, ws, 'No Cohort')
-    }
+        'Date Started': formatDate(trainee.date_started),
+        'Date Completed': formatDate(trainee.date_completed),
+        'Fee Balance (KES)': balance !== 0 ? balance : ''
+      }
+    })
+
+    const wb = XLSX.utils.book_new()
+    const ws = XLSX.utils.json_to_sheet(data)
+
+    // Add auto-filters
+    ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: data.length, c: Object.keys(data[0]).length - 1 } }) }
+
+    XLSX.utils.book_append_sheet(wb, ws, 'NICHE Trainees')
     
     // Download the file
     const fileName = `NICHE_Training_${new Date().toISOString().split('T')[0]}.xlsx`
