@@ -47,7 +47,15 @@ interface NicheTraining {
   updated_by?: string
   cohorts?: NicheCohort
   has_grade?: boolean
-  niche_fees?: { course_fee?: number, total_paid?: number, sponsored_amount?: number }[]
+  niche_fees?: any[]
+  fee_info?: {
+    course_fee?: number
+    total_paid?: number
+    sponsored_amount?: number
+    extra_charges?: number
+    balance_due?: number
+    is_bad_debt?: boolean
+  }
 }
 
 interface Candidate {
@@ -118,12 +126,23 @@ export function NicheTraining() {
         .select(`
           *,
           cohorts:niche_cohorts(id, cohort_number, start_date, end_date, status),
-          niche_fees(course_fee, total_paid, sponsored_amount)
+          niche_fees(*)
         `)
         .in('status', ['Active', 'Graduated', 'Expelled', 'Completed'])
         .order('created_at', { ascending: false })
 
       if (error) throw error
+
+      // Fetch all payments
+      const { data: paymentsData } = await supabase
+        .from('niche_payments')
+        .select('fee_id, amount')
+
+      // Calculate total payments per fee
+      const paymentTotals = paymentsData?.reduce((acc, payment) => {
+        acc[payment.fee_id] = (acc[payment.fee_id] || 0) + payment.amount
+        return acc
+      }, {} as Record<string, number>) || {}
       
       // Check which trainees have grades
       const { data: gradesData } = await supabase
@@ -132,10 +151,34 @@ export function NicheTraining() {
       
       const gradedTraineeIds = new Set(gradesData?.map(g => g.trainee_id) || [])
       
-      const recordsWithGradeStatus = (data || []).map(record => ({
-        ...record,
-        has_grade: gradedTraineeIds.has(record.id)
-      }))
+      const recordsWithGradeStatus = (data || []).map(record => {
+        // Calculate fee info for this trainee
+        let feeInfo: any = null
+        if (record.niche_fees && record.niche_fees.length > 0) {
+          const fee = record.niche_fees[0]
+          const actualPayments = paymentTotals[fee.id] || 0
+          const sponsoredAmt = fee.sponsored_amount || 0
+          const extraCharges = fee.extra_charges || 0
+          const isBadDebt = fee.is_bad_debt || false
+          
+          const balance = isBadDebt ? 0 : (fee.course_fee + extraCharges - sponsoredAmt - actualPayments)
+          
+          feeInfo = {
+            course_fee: fee.course_fee,
+            total_paid: actualPayments,
+            sponsored_amount: sponsoredAmt,
+            extra_charges: extraCharges,
+            balance_due: Math.max(0, balance),
+            is_bad_debt: isBadDebt
+          }
+        }
+        
+        return {
+          ...record,
+          has_grade: gradedTraineeIds.has(record.id),
+          fee_info: feeInfo
+        }
+      })
       
       setTrainingRecords(recordsWithGradeStatus)
       
@@ -660,14 +703,13 @@ export function NicheTraining() {
         cohortName = `Cohort ${getRomanNumeral(trainee.cohorts.cohort_number)}`
       }
       
-      // Calculate fee balance
-      let balance = 0
-      if (trainee.niche_fees && trainee.niche_fees.length > 0) {
-        const fee = trainee.niche_fees[0]
-        const courseFee = fee.course_fee || 0
-        const totalPaid = fee.total_paid || 0
-        const sponsored = fee.sponsored_amount || 0
-        balance = courseFee - (totalPaid + sponsored)
+      // Fee info
+      let schoolFeesPaid = ''
+      let schoolFeesBalance = ''
+      if ((trainee as any).fee_info) {
+        const fee = (trainee as any).fee_info
+        schoolFeesPaid = fee.total_paid !== 0 ? fee.total_paid : ''
+        schoolFeesBalance = fee.balance_due !== 0 ? fee.balance_due : ''
       }
 
       return {
@@ -681,7 +723,8 @@ export function NicheTraining() {
         'Enrolled Courses': trainee.enrolled_courses?.join(', ') || '',
         'Date Started': formatDate(trainee.date_started),
         'Date Completed': formatDate(trainee.date_completed),
-        'Fee Balance (KES)': balance !== 0 ? balance : ''
+        'School Fees Paid (KES)': schoolFeesPaid,
+        'School Fees Balance (KES)': schoolFeesBalance
       }
     })
 
