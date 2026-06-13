@@ -114,6 +114,10 @@ export function NicheGrading() {
   const [selectedRecord, setSelectedRecord] = useState<any>(null)
   const [showCertificate, setShowCertificate] = useState(false)
   const [showTranscript, setShowTranscript] = useState(false)
+  const [activeTab, setActiveTab] = useState<'flagship' | 'shortcourses'>('flagship')
+  const [shortCourseTrainees, setShortCourseTrainees] = useState<any[]>([])
+  const [filteredShortCourseTrainees, setFilteredShortCourseTrainees] = useState<any[]>([])
+  const [selectedShortCourseTrainee, setSelectedShortCourseTrainee] = useState<any>(null)
   
   // Define pillar structures
   const nannyPillars = [
@@ -228,7 +232,35 @@ export function NicheGrading() {
     loadCohorts()
     loadAllTrainees()
     loadGradedRecordsWithTraineeData()
+    loadShortCourseTrainees()
   }, [])
+
+  const loadShortCourseTrainees = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('niche_training')
+        .select('*')
+        .eq('status', 'Completed')
+        .order('created_at', { ascending: false })
+
+      if (error) throw error
+      setShortCourseTrainees(data || [])
+    } catch (error) {
+      console.error('Error loading short course trainees:', error)
+      showToast('Failed to load short courses', 'error')
+    }
+  }
+
+  useEffect(() => {
+    let filtered = [...shortCourseTrainees]
+    if (searchTerm) {
+      filtered = filtered.filter(trainee => 
+        trainee.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        trainee.course?.toLowerCase().includes(searchTerm.toLowerCase())
+      )
+    }
+    setFilteredShortCourseTrainees(filtered)
+  }, [shortCourseTrainees, searchTerm])
 
   useEffect(() => {
     filterTrainees()
@@ -248,9 +280,6 @@ export function NicheGrading() {
 
       if (error) throw error
       setCohorts(data || [])
-      // Default to active cohort
-      const activeCohort = (data || []).find(c => c.status === 'active')
-      if (activeCohort) setCohortFilter(activeCohort.id)
     } catch (error) {
       console.error('Error loading cohorts:', error)
       showToast('Failed to load cohorts', 'error')
@@ -1232,6 +1261,26 @@ export function NicheGrading() {
       {/* NICHE Professionals Tables */}
       {view === 'records' && (
         <div className="space-y-8 mt-8">
+          {/* Tabs */}
+          <div className="flex border-b border-gray-200">
+            <button
+              onClick={() => setActiveTab('flagship')}
+              className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'flagship' ? 'border-nestalk-primary text-nestalk-primary' : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Flagship Programs
+            </button>
+            <button
+              onClick={() => setActiveTab('shortcourses')}
+              className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'shortcourses' ? 'border-purple-600 text-purple-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Short Courses
+            </button>
+          </div>
+
           {/* Filters */}
           <div className="bg-white rounded-lg shadow p-6">
             <div className="flex gap-3">
@@ -1242,133 +1291,198 @@ export function NicheGrading() {
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="px-3 py-2 border border-gray-300 rounded-lg text-sm flex-1"
               />
-              <select
-                value={cohortFilter}
-                onChange={(e) => setCohortFilter(e.target.value)}
-                className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
-              >
-                <option value="all">All Cohorts</option>
-                {cohorts.map(cohort => (
-                  <option key={cohort.id} value={cohort.id}>
-                    Cohort {getRomanNumeral(cohort.cohort_number)}
-                  </option>
-                ))}
-              </select>
+              {activeTab === 'flagship' && (
+                <select
+                  value={cohortFilter}
+                  onChange={(e) => setCohortFilter(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
+                >
+                  <option value="all">All Cohorts</option>
+                  {cohorts.map(cohort => (
+                    <option key={cohort.id} value={cohort.id}>
+                      Cohort {getRomanNumeral(cohort.cohort_number)}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
           </div>
 
-          {/* Combined Professionals Table */}
-          <div className="bg-white rounded-lg shadow">
-            <div className="px-6 py-4 border-b border-gray-200">
-              <h2 className="text-lg font-semibold text-gray-900">NICHE Professionals</h2>
-            </div>
+          {/* Flagship Programs Section */}
+          {activeTab === 'flagship' && (
+            <>
+              {/* Combined Professionals Table */}
+              <div className="bg-white rounded-lg shadow">
+                <div className="px-6 py-4 border-b border-gray-200">
+                  <h2 className="text-lg font-semibold text-gray-900">NICHE Professionals</h2>
+                </div>
 
-            {filteredRecords.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200 text-sm">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-10">#</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
-                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Pillar 1</th>
-                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Pillar 2</th>
-                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Pillar 3</th>
-                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Pillar 4</th>
-                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Final Score</th>
-                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Tier</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {filteredRecords.map((record, index) => {
-                      const isNanny = record.training_type === 'nanny'
-                      const p1Max = isNanny ? 45 : 30
-                      const p2Max = isNanny ? 30 : 30
-                      const p3Max = isNanny ? 15 : 25
-                      const p4Max = isNanny ? 10 : 15
-                      return (
-                        <tr key={record.id} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 whitespace-nowrap text-gray-500 text-center">
-                            <div className="flex items-center gap-1">
-                              <span>{index + 1}</span>
-                              <button
-                                onClick={() => handleViewChoice(record)}
-                                className="text-blue-500 hover:text-blue-700 p-0.5 rounded hover:bg-blue-50"
-                                title="View Certificate or Transcript"
-                              >
-                                <Eye className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
+                {filteredRecords.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200 text-sm">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-10">#</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Pillar 1</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Pillar 2</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Pillar 3</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Pillar 4</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Final Score</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Tier</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {filteredRecords.map((record, index) => {
+                          const isNanny = record.training_type === 'nanny'
+                          const p1Max = isNanny ? 45 : 30
+                          const p2Max = isNanny ? 30 : 30
+                          const p3Max = isNanny ? 15 : 25
+                          const p4Max = isNanny ? 10 : 15
+                          return (
+                            <tr key={record.id} className="hover:bg-gray-50">
+                              <td className="px-4 py-3 whitespace-nowrap text-gray-500 text-center">
+                                <div className="flex items-center gap-1">
+                                  <span>{index + 1}</span>
+                                  <button
+                                    onClick={() => handleViewChoice(record)}
+                                    className="text-blue-500 hover:text-blue-700 p-0.5 rounded hover:bg-blue-50"
+                                    title="View Certificate or Transcript"
+                                  >
+                                    <Eye className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 whitespace-nowrap font-medium text-gray-900">{record.trainee_name}</td>
+                              <td className="px-4 py-3 whitespace-nowrap">
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                                  isNanny ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'
+                                }`}>
+                                  {isNanny ? 'Nanny' : 'House Manager'}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 whitespace-nowrap text-center text-gray-700">{record.pillar1_weighted?.toFixed(1)}/{p1Max}</td>
+                              <td className="px-4 py-3 whitespace-nowrap text-center text-gray-700">{record.pillar2_weighted?.toFixed(1)}/{p2Max}</td>
+                              <td className="px-4 py-3 whitespace-nowrap text-center text-gray-700">{record.pillar3_weighted?.toFixed(1)}/{p3Max}</td>
+                              <td className="px-4 py-3 whitespace-nowrap text-center text-gray-700">{record.pillar4_weighted?.toFixed(1)}/{p4Max}</td>
+                              <td className="px-4 py-3 whitespace-nowrap text-center font-bold text-nestalk-primary">{record.final_score?.toFixed(1)}%</td>
+                              <td className="px-4 py-3 whitespace-nowrap text-center">
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getTierColor(record.tier)}`}>
+                                  <Star className="w-3 h-3 mr-1" />
+                                  {record.tier}
+                                </span>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="text-center py-12">
+                    <h3 className="text-sm font-medium text-gray-900">No graded professionals found</h3>
+                    <p className="mt-1 text-sm text-gray-500">
+                      {searchTerm || cohortFilter !== 'all' ? 'Try adjusting your search or filter.' : 'No trainees have been graded yet.'}
+                    </p>
+                  </div>
+                )}
+              </div>
+              
+              {/* Tier Legend */}
+              <div className="bg-white rounded-lg shadow p-6">
+                <h4 className="text-sm font-medium text-gray-900 mb-3">Performance Tiers</h4>
+                <div className="flex flex-wrap gap-4 text-xs">
+                  <div className="flex items-center">
+                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium text-purple-600 bg-purple-100 mr-2">
+                      <Star className="w-3 h-3 mr-1" />
+                      MASTER
+                    </span>
+                    <span className="text-gray-600">95+ points</span>
+                  </div>
+                  <div className="flex items-center">
+                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium text-blue-600 bg-blue-100 mr-2">
+                      <Star className="w-3 h-3 mr-1" />
+                      DISTINGUISHED
+                    </span>
+                    <span className="text-gray-600">90-94 points</span>
+                  </div>
+                  <div className="flex items-center">
+                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium text-green-600 bg-green-100 mr-2">
+                      <Star className="w-3 h-3 mr-1" />
+                      EXCEPTIONAL
+                    </span>
+                    <span className="text-gray-600">80-89 points</span>
+                  </div>
+                  <div className="flex items-center">
+                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium text-yellow-600 bg-yellow-100 mr-2">
+                      <Star className="w-3 h-3 mr-1" />
+                      EXCELLENT
+                    </span>
+                    <span className="text-gray-600">70-79 points</span>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Short Courses Section */}
+          {activeTab === 'shortcourses' && (
+            <div className="bg-white rounded-lg shadow">
+              <div className="px-6 py-4 border-b border-gray-200">
+                <h2 className="text-lg font-semibold text-gray-900">Completed Short Courses</h2>
+              </div>
+
+              {filteredShortCourseTrainees.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200 text-sm">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-10">#</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Course</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date Completed</th>
+                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {filteredShortCourseTrainees.map((trainee, index) => (
+                        <tr key={trainee.id} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 whitespace-nowrap text-gray-500 text-center">{index + 1}</td>
+                          <td className="px-4 py-3 whitespace-nowrap font-medium text-gray-900">{trainee.name}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-gray-700">{trainee.course || 'Short Course'}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-gray-500">
+                            {trainee.date_completed ? new Date(trainee.date_completed).toLocaleDateString() : '-'}
                           </td>
-                          <td className="px-4 py-3 whitespace-nowrap font-medium text-gray-900">{record.trainee_name}</td>
-                          <td className="px-4 py-3 whitespace-nowrap">
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                              isNanny ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'
-                            }`}>
-                              {isNanny ? 'Nanny' : 'House Manager'}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 whitespace-nowrap text-center text-gray-700">{record.pillar1_weighted?.toFixed(1)}/{p1Max}</td>
-                          <td className="px-4 py-3 whitespace-nowrap text-center text-gray-700">{record.pillar2_weighted?.toFixed(1)}/{p2Max}</td>
-                          <td className="px-4 py-3 whitespace-nowrap text-center text-gray-700">{record.pillar3_weighted?.toFixed(1)}/{p3Max}</td>
-                          <td className="px-4 py-3 whitespace-nowrap text-center text-gray-700">{record.pillar4_weighted?.toFixed(1)}/{p4Max}</td>
-                          <td className="px-4 py-3 whitespace-nowrap text-center font-bold text-nestalk-primary">{record.final_score?.toFixed(1)}%</td>
                           <td className="px-4 py-3 whitespace-nowrap text-center">
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getTierColor(record.tier)}`}>
-                              <Star className="w-3 h-3 mr-1" />
-                              {record.tier}
-                            </span>
+                            <button
+                              onClick={() => {
+                                console.log('Opening short course certificate for:', trainee);
+                                setNicheCardData(null);
+                                setSelectedShortCourseTrainee(trainee)
+                                setShowCertificate(true)
+                              }}
+                              className="inline-flex items-center gap-1 px-3 py-1.5 bg-purple-600 text-white rounded-lg text-xs hover:bg-purple-700 transition-colors font-medium"
+                            >
+                              <Award className="w-3.5 h-3.5" />
+                              View Certificate
+                            </button>
                           </td>
                         </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="text-center py-12">
-                <h3 className="text-sm font-medium text-gray-900">No graded professionals found</h3>
-                <p className="mt-1 text-sm text-gray-500">
-                  {searchTerm || cohortFilter !== 'all' ? 'Try adjusting your search or filter.' : 'No trainees have been graded yet.'}
-                </p>
-              </div>
-            )}
-          </div>
-          
-          {/* Tier Legend */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <h4 className="text-sm font-medium text-gray-900 mb-3">Performance Tiers</h4>
-            <div className="flex flex-wrap gap-4 text-xs">
-              <div className="flex items-center">
-                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium text-purple-600 bg-purple-100 mr-2">
-                  <Star className="w-3 h-3 mr-1" />
-                  MASTER
-                </span>
-                <span className="text-gray-600">95+ points</span>
-              </div>
-              <div className="flex items-center">
-                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium text-blue-600 bg-blue-100 mr-2">
-                  <Star className="w-3 h-3 mr-1" />
-                  DISTINGUISHED
-                </span>
-                <span className="text-gray-600">90-94 points</span>
-              </div>
-              <div className="flex items-center">
-                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium text-green-600 bg-green-100 mr-2">
-                  <Star className="w-3 h-3 mr-1" />
-                  EXCEPTIONAL
-                </span>
-                <span className="text-gray-600">80-89 points</span>
-              </div>
-              <div className="flex items-center">
-                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium text-yellow-600 bg-yellow-100 mr-2">
-                  <Star className="w-3 h-3 mr-1" />
-                  EXCELLENT
-                </span>
-                <span className="text-gray-600">70-79 points</span>
-              </div>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <h3 className="text-sm font-medium text-gray-900">No completed short courses found</h3>
+                  <p className="mt-1 text-sm text-gray-500">
+                    {searchTerm ? 'Try adjusting your search.' : 'No trainees have completed short courses yet.'}
+                  </p>
+                </div>
+              )}
             </div>
-          </div>
+          )}
         </div>
       )}
 
@@ -1512,26 +1626,43 @@ export function NicheGrading() {
       )}
 
       {/* Certificate Modal */}
-      {showCertificate && nicheCardData && (
-        <NicheCertificate
-          recipientName={nicheCardData.trainee?.name || 'Unknown'}
-          role={nicheCardData.trainee?.role || 'Unknown'}
-          course={nicheCardData.trainee?.course || 'Unknown'}
-          tier={nicheCardData.tier || 'NONE'}
-          finalScore={nicheCardData.final_score || 0}
-          cohortNumber={getRomanNumeral(nicheCardData.cohort?.cohort_number || 0)}
-          graduationDate={new Date(nicheCardData.cohort?.end_date || Date.now()).toLocaleDateString()}
-          pillar1Score={nicheCardData.pillar1_score || 0}
-          pillar2Score={nicheCardData.pillar2_score || 0}
-          pillar3Score={nicheCardData.pillar3_score || 0}
-          pillar4Score={nicheCardData.pillar4_score || 0}
-          pillar1Weighted={nicheCardData.pillar1_weighted || 0}
-          pillar2Weighted={nicheCardData.pillar2_weighted || 0}
-          pillar3Weighted={nicheCardData.pillar3_weighted || 0}
-          pillar4Weighted={nicheCardData.pillar4_weighted || 0}
-          trainingType={nicheCardData.training_type || 'nanny'}
-          onClose={() => setShowCertificate(false)}
-        />
+      {showCertificate && (
+        selectedShortCourseTrainee ? (
+          <NicheCertificate
+            recipientName={selectedShortCourseTrainee.name || 'Unknown'}
+            course={selectedShortCourseTrainee.course || 'Short Course'}
+            description={selectedShortCourseTrainee.description}
+            dateStarted={selectedShortCourseTrainee.date_started}
+            dateCompleted={selectedShortCourseTrainee.date_completed}
+            graduationDate={selectedShortCourseTrainee.date_completed 
+              ? new Date(selectedShortCourseTrainee.date_completed).toLocaleDateString() 
+              : new Date().toLocaleDateString()}
+            onClose={() => {
+              setShowCertificate(false)
+              setSelectedShortCourseTrainee(null)
+            }}
+          />
+        ) : nicheCardData ? (
+          <NicheCertificate
+            recipientName={nicheCardData.trainee?.name || 'Unknown'}
+            role={nicheCardData.trainee?.role || 'Unknown'}
+            course={nicheCardData.trainee?.course || 'Unknown'}
+            tier={nicheCardData.tier || 'NONE'}
+            finalScore={nicheCardData.final_score || 0}
+            cohortNumber={getRomanNumeral(nicheCardData.cohort?.cohort_number || 0)}
+            graduationDate={new Date(nicheCardData.cohort?.end_date || Date.now()).toLocaleDateString()}
+            pillar1Score={nicheCardData.pillar1_score || 0}
+            pillar2Score={nicheCardData.pillar2_score || 0}
+            pillar3Score={nicheCardData.pillar3_score || 0}
+            pillar4Score={nicheCardData.pillar4_score || 0}
+            pillar1Weighted={nicheCardData.pillar1_weighted || 0}
+            pillar2Weighted={nicheCardData.pillar2_weighted || 0}
+            pillar3Weighted={nicheCardData.pillar3_weighted || 0}
+            pillar4Weighted={nicheCardData.pillar4_weighted || 0}
+            trainingType={nicheCardData.training_type || 'nanny'}
+            onClose={() => setShowCertificate(false)}
+          />
+        ) : null
       )}
 
       {/* Transcript Modal */}

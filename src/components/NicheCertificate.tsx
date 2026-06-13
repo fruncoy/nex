@@ -2,22 +2,25 @@ import { useState } from "react"
 
 interface NicheCertificateProps {
   recipientName: string
-  role: string
+  role?: string
   course: string
-  tier: string
-  finalScore: number
-  cohortNumber: string
-  graduationDate: string
-  pillar1Score: number
-  pillar2Score: number
-  pillar3Score: number
-  pillar4Score: number
-  pillar1Weighted: number
-  pillar2Weighted: number
-  pillar3Weighted: number
-  pillar4Weighted: number
-  trainingType: string
+  tier?: string
+  finalScore?: number
+  cohortNumber?: string
+  graduationDate?: string
+  pillar1Score?: number
+  pillar2Score?: number
+  pillar3Score?: number
+  pillar4Score?: number
+  pillar1Weighted?: number
+  pillar2Weighted?: number
+  pillar3Weighted?: number
+  pillar4Weighted?: number
+  trainingType?: string
   onClose: () => void
+  description?: string
+  dateStarted?: string
+  dateCompleted?: string
 }
 
 const styles = `
@@ -106,7 +109,10 @@ const NicheCertificate: React.FC<NicheCertificateProps> = ({
   pillar3Weighted,
   pillar4Weighted,
   trainingType,
-  onClose
+  onClose,
+  description,
+  dateStarted,
+  dateCompleted
 }) => {
   const nannyPillars = [
     { name: 'Childcare & Development', weight: 1.8, maxWeighted: 45 },
@@ -122,9 +128,9 @@ const NicheCertificate: React.FC<NicheCertificateProps> = ({
     { name: 'Childcare Literacy', weight: 0.6, maxWeighted: 15 }
   ]
 
-  const pillars = trainingType === 'nanny' ? nannyPillars : houseManagerPillars
-  const pillarScores = [pillar1Score, pillar2Score, pillar3Score, pillar4Score]
-  const weightedScores = [pillar1Weighted, pillar2Weighted, pillar3Weighted, pillar4Weighted]
+  const pillars = trainingType === 'nanny' ? nannyPillars : (trainingType === 'house_manager' ? houseManagerPillars : [])
+  const pillarScores = [pillar1Score || 0, pillar2Score || 0, pillar3Score || 0, pillar4Score || 0]
+  const weightedScores = [pillar1Weighted || 0, pillar2Weighted || 0, pillar3Weighted || 0, pillar4Weighted || 0]
 
   const [isDownloading, setIsDownloading] = useState(false)
 
@@ -365,32 +371,43 @@ const NicheCertificate: React.FC<NicheCertificateProps> = ({
                     {recipientName}
                   </h2>
                   <p className="font-poppins" style={{ fontSize:"clamp(10px,1.05vw,13px)", color:"#000", lineHeight:1.6, maxWidth:650, margin:"0 auto" }}>
-                    In recognition of her exceptional dedication and outstanding achievement within the{" "}
-                    <span className="font-cinzel" style={{ color:"#d95637", fontWeight:700, letterSpacing:"0.08em", fontSize:"clamp(10px,1.05vw,13px)" }}>{course}</span>
-                    . {recipientName.split(' ')[0]} has met the most stringent requirements of the curriculum, exhibiting a level of competency that transcends standard expectations and earns her the rank of{" "}
-                    <span className="font-cinzel" style={{ color:"#d95637", fontWeight:700, letterSpacing:"0.08em", fontSize:"clamp(10px,1.05vw,13px)" }}>{tier}</span>
+                    {tier ? (
+                      <>
+                        In recognition of her exceptional dedication and outstanding achievement within the{" "}
+                        <span className="font-cinzel" style={{ color:"#d95637", fontWeight:700, letterSpacing:"0.08em", fontSize:"clamp(10px,1.05vw,13px)" }}>{course}</span>
+                        . {recipientName.split(' ')[0]} has met the most stringent requirements of the curriculum, exhibiting a level of competency that transcends standard expectations and earns her the rank of{" "}
+                        <span className="font-cinzel" style={{ color:"#d95637", fontWeight:700, letterSpacing:"0.08em", fontSize:"clamp(10px,1.05vw,13px)" }}>{tier}</span>
+                      </>
+                    ) : (
+                      <>
+                        In recognition of her exceptional dedication and outstanding achievement in{" "}
+                        <span className="font-cinzel" style={{ color:"#d95637", fontWeight:700, letterSpacing:"0.08em", fontSize:"clamp(10px,1.05vw,13px)" }}>{course}</span>. {recipientName.split(' ')[0]} has successfully completed this rigorous curriculum with distinction. She has demonstrated exceptional mastery of core competencies, professional excellence, and an unwavering commitment to growth{description ? `, mastering: ${description}` : '.'}
+                      </>
+                    )}
                   </p>
                 </div>
 
                 {/* ── SCORES + SIGNATURES ── */}
                 <div style={{ width:"100%", maxWidth:780, zIndex:10 }}>
 
-                  {/* Scores box */}
-                  <div style={{ marginBottom:"24px" }}>
-                    <h3 className="font-cinzel" style={{ textAlign:"center", fontSize:"clamp(10px,1vw,13px)", fontWeight:700, color:"#000", letterSpacing:"0.15em", marginBottom:"0px" }}>
-                      Professional Competency Pillars
-                    </h3>
-                    <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:"0 8px", alignItems:"stretch" }}>
-                      {pillars.map((pillar, index) => (
-                        <ScoreBar 
-                          key={index}
-                          label={pillar.name} 
-                          score={parseFloat(weightedScores[index]?.toFixed(1))} 
-                          max={pillar.maxWeighted} 
-                        />
-                      ))}
+                  {/* Scores box - only show for flagship courses */}
+                  {tier && (
+                    <div style={{ marginBottom:"24px" }}>
+                      <h3 className="font-cinzel" style={{ textAlign:"center", fontSize:"clamp(10px,1vw,13px)", fontWeight:700, color:"#000", letterSpacing:"0.15em", marginBottom:"0px" }}>
+                        Professional Competency Pillars
+                      </h3>
+                      <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:"0 8px", alignItems:"stretch" }}>
+                        {pillars.map((pillar, index) => (
+                          <ScoreBar 
+                            key={index}
+                            label={pillar.name} 
+                            score={parseFloat(weightedScores[index]?.toFixed(1))} 
+                            max={pillar.maxWeighted} 
+                          />
+                        ))}
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   {/* Signatures */}
                   <div style={{ display:"flex", justifyContent:"space-between", alignItems:"end", padding:"0 40px" }}>

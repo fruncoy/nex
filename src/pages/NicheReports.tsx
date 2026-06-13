@@ -15,6 +15,10 @@ interface VolumeMetrics {
   graduated: number
   twoWeekTrainees: number
   shortCourseTrainees: number
+  completed: number
+  active: number
+  twoWeekActive: number
+  shortActive: number
   expelled: number
   blacklisted: number
 }
@@ -38,6 +42,8 @@ interface FinanceMetrics {
   outstanding: number
   totalFees: number
   collectionRate: number
+  extraCharges: number
+  badDebt: number
 }
 
 interface CourseRow {
@@ -71,6 +77,27 @@ interface MonthRow {
   twoWeekEnrolled: number
 }
 
+interface DailyAssessment {
+  trainee_id: string
+  assessment_day: number
+  question_1_score: number | null
+  question_2_score: number | null
+  question_3_score: number | null
+  question_4_score: number | null
+  question_5_score: number | null
+  total_score?: number
+}
+
+interface FinalGrade {
+  trainee_id: string
+  final_score?: number
+  tier?: string
+  pillar1_score?: number
+  pillar2_score?: number
+  pillar3_score?: number
+  pillar4_score?: number
+}
+
 interface PerCohortData {
   cohort_number: number
   cohort_id: string
@@ -91,9 +118,13 @@ interface PerCohortData {
   mpesa: number
   bankTransfer: number
   card: number
-  graduationRate: number
+  graduationRate: number // two-week only graduation rate
   collectionRate: number
+  extraCharges: number
+  badDebt: number
   courseBreakdown: Record<string, number>
+  dailyAverages: Record<number, number> // day -> avg score
+  finalGradeAverage?: number
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -106,13 +137,9 @@ export const getRomanNumeral = (num: number) => {
   return r
 }
 
-const SHORT_COURSE_KEYWORDS = [
-  'First Aid', 'First Foods', 'Laundry', 'Specialised Childcare',
-  'Helping Little Voices', 'Kitchen Confidence', 'Refresher'
-]
-
-const isShortCourse = (course: string) =>
-  SHORT_COURSE_KEYWORDS.some(k => course?.toLowerCase().includes(k.toLowerCase()))
+const isShortCourse = (course: string | undefined | null) =>
+  course !== 'Professional House Manager Training Program' && 
+  course !== 'Professional Nanny Training Program'
 
 const fmt = (n: number) => `KSh ${n.toLocaleString()}`
 
@@ -147,7 +174,7 @@ function useNicheReportsData(dateRange: DateRange) {
       // ── 2. Trainees ─────────────────────────────────────────────────────────
       let traineeQuery = supabase
         .from('niche_training')
-        .select('*, niche_fees(course_fee, total_paid, sponsored_amount, payment_status)')
+        .select('*, niche_fees(*)')
 
       const { data: trainees } = await traineeQuery
 
@@ -169,10 +196,16 @@ function useNicheReportsData(dateRange: DateRange) {
       // Map fee_id → training_id for cohort filtering
       const { data: allFees } = await supabase
         .from('niche_fees')
-        .select('id, training_id, course_fee, total_paid, sponsored_amount')
+        .select('id, training_id, course_fee, total_paid, sponsored_amount, extra_charges, is_bad_debt')
 
       const feeToTraining: Record<string, string> = {}
+      const paymentTotals: Record<string, number> = {}
       allFees?.forEach(f => { feeToTraining[f.id] = f.training_id })
+
+      // Calculate payment totals
+      allPayments?.forEach(p => {
+        paymentTotals[p.fee_id] = (paymentTotals[p.fee_id] || 0) + p.amount
+      })
 
       const traineeIds = new Set(filteredTrainees?.map(t => t.id) || [])
       const filteredPayments = allPayments?.filter(p =>
@@ -202,8 +235,36 @@ function useNicheReportsData(dateRange: DateRange) {
       if (dateRange.to) mainQuery = mainQuery.lte('inquiry_date', dateRange.to)
       const { data: mainCandidates } = await mainQuery
 
+      // ── 6. Daily Progress Assessments ────────────────────────────────────────
+      const { data: dailyAssessments } = await supabase
+        .from('niche_progress_assessments')
+        .select('trainee_id, assessment_day, question_1_score, question_2_score, question_3_score, question_4_score, question_5_score, total_score')
+        .in('trainee_id', Array.from(traineeIds))
+
+      // ── 7. Final Grades ──────────────────────────────────────────────────────
+      const { data: finalGrades } = await supabase
+        .from('trainee_grades')
+        .select('trainee_id, final_score, tier, pillar1_score, pillar2_score, pillar3_score, pillar4_score')
+        .in('trainee_id', Array.from(traineeIds))
+
       // ── COMPUTE VOLUME ──────────────────────────────────────────────────────
-      const graduated = filteredTrainees?.filter(t => t.status === 'Graduated').length || 0
+      const active = filteredTrainees?.filter(t => t.status === 'Active').length || 0
+      const twoWeekActive = filteredTrainees?.filter(t => {
+        const courses = t.enrolled_courses || [t.course].filter(Boolean)
+        return courses.some((c: string) => !isShortCourse(c)) && t.status === 'Active'
+      }).length || 0
+      const shortActive = filteredTrainees?.filter(t => {
+        const courses = t.enrolled_courses || [t.course].filter(Boolean)
+        return courses.some((c: string) => isShortCourse(c)) && t.status === 'Active'
+      }).length || 0
+      const graduated = filteredTrainees?.filter(t => {
+        const courses = t.enrolled_courses || [t.course].filter(Boolean)
+        return courses.some((c: string) => !isShortCourse(c)) && t.status === 'Graduated'
+      }).length || 0
+      const completed = filteredTrainees?.filter(t => {
+        const courses = t.enrolled_courses || [t.course].filter(Boolean)
+        return courses.some((c: string) => isShortCourse(c)) && t.status === 'Completed'
+      }).length || 0
       const expelled = filteredTrainees?.filter(t => t.status === 'Expelled').length || 0
 
       const twoWeekTrainees = filteredTrainees?.filter(t => {
@@ -221,6 +282,10 @@ function useNicheReportsData(dateRange: DateRange) {
         graduated,
         twoWeekTrainees,
         shortCourseTrainees,
+        completed,
+        active,
+        twoWeekActive,
+        shortActive,
         expelled,
         blacklisted: blacklistedCount || 0
       })
@@ -277,8 +342,16 @@ function useNicheReportsData(dateRange: DateRange) {
         .sort((a, b) => b.count - a.count)
         .slice(0, 3)
 
+      const funnelTwoWeekTrainees = filteredTrainees?.filter(t => {
+        const courses = t.enrolled_courses || [t.course].filter(Boolean)
+        return courses.some((c: string) => !isShortCourse(c))
+      }).length || 0
+      const funnelTwoWeekGraduated = filteredTrainees?.filter(t => {
+        const courses = t.enrolled_courses || [t.course].filter(Boolean)
+        return courses.some((c: string) => !isShortCourse(c)) && t.status === 'Graduated'
+      }).length || 0
       const joinRate = pct(filteredTrainees?.length || 0, totalInquiries)
-      const graduationRate = pct(graduated, (filteredTrainees?.length || 0))
+      const graduationRate = pct(funnelTwoWeekGraduated, funnelTwoWeekTrainees)
 
       setFunnel({
         totalInquiries,
@@ -290,16 +363,32 @@ function useNicheReportsData(dateRange: DateRange) {
       })
 
       // ── COMPUTE FINANCE ─────────────────────────────────────────────────────
-      let totalFees = 0, totalPaid = 0, totalSponsored = 0
+      let totalFees = 0, totalPaid = 0, totalSponsored = 0, totalExtraCharges = 0, totalBadDebt = 0
       let cash = 0, mpesa = 0, bankTransfer = 0, card = 0
 
       filteredTrainees?.forEach(t => {
-        const fee = t.niche_fees?.[0]
-        if (fee) {
-          totalFees += fee.course_fee || 0
-          totalPaid += fee.total_paid || 0
-          totalSponsored += fee.sponsored_amount || 0
-        }
+        const fees = Array.isArray(t.niche_fees) ? t.niche_fees : (t.niche_fees ? [t.niche_fees] : [])
+        // For 2-week trainees, take first fee; for short courses, take all (but avoid duplicates)
+        const uniqueFees = fees.filter((fee, index, self) => 
+          index === self.findIndex(f => f.id === fee.id)
+        )
+        
+        uniqueFees.forEach(fee => {
+          const actualPayments = paymentTotals[fee.id] || 0
+          const sponsoredAmt = fee.sponsored_amount || 0
+          const extraCharges = fee.extra_charges || 0
+          const isBadDebt = fee.is_bad_debt || false
+          
+          totalFees += (fee.course_fee || 0) + extraCharges
+          totalPaid += actualPayments
+          totalSponsored += sponsoredAmt
+          totalExtraCharges += extraCharges
+          
+          if (isBadDebt) {
+            const badDebtAmount = Math.max(0, (fee.course_fee || 0) + extraCharges - sponsoredAmt - actualPayments)
+            totalBadDebt += badDebtAmount
+          }
+        })
       })
 
       filteredPayments.forEach(p => {
@@ -312,6 +401,10 @@ function useNicheReportsData(dateRange: DateRange) {
         }
       })
 
+      const totalCollected = totalPaid + totalSponsored
+      const totalOutstanding = Math.max(0, totalFees - totalCollected - totalBadDebt)
+      const collectionRate = pct(totalPaid, totalFees - totalBadDebt)
+
       setFinance({
         totalRevenue: totalPaid,
         cash,
@@ -319,9 +412,11 @@ function useNicheReportsData(dateRange: DateRange) {
         bankTransfer,
         card,
         sponsored: totalSponsored,
-        outstanding: totalFees - totalPaid - totalSponsored,
+        outstanding: totalOutstanding,
         totalFees,
-        collectionRate: pct(totalPaid, totalFees)
+        collectionRate,
+        extraCharges: totalExtraCharges,
+        badDebt: totalBadDebt
       })
 
       // ── COMPUTE COURSE ROWS ─────────────────────────────────────────────────
@@ -333,6 +428,7 @@ function useNicheReportsData(dateRange: DateRange) {
           if (!courseMap[c]) courseMap[c] = { name: c, enrolled: 0, graduated: 0, expelled: 0, active: 0, pending: 0, outstandingFees: 0, totalFees: 0, collected: 0 }
           courseMap[c].enrolled++
           if (t.status === 'Graduated') courseMap[c].graduated++
+          else if (t.status === 'Completed') courseMap[c].graduated++
           else if (t.status === 'Expelled') courseMap[c].expelled++
           else if (t.status === 'Active') courseMap[c].active++
           else courseMap[c].pending++
@@ -393,12 +489,75 @@ function useNicheReportsData(dateRange: DateRange) {
           return ct.some(t => t.id === tid)
         })
 
-        let tf = 0, tp = 0, ts = 0, cc = 0, cm = 0, cb = 0, ccard = 0
+        let tf = 0, tp = 0, ts = 0, cc = 0, cm = 0, cb = 0, ccard = 0, cExtra = 0, cBadDebt = 0
         const cBreakdown: Record<string, number> = {}
+        const cohortTraineeIds = ct.map(t => t.id)
+        
+        // Calculate daily averages
+        const dailySums: Record<number, { sum: number; count: number }> = {}
+        const cohortAssessments = dailyAssessments?.filter(a => cohortTraineeIds.includes(a.trainee_id)) || []
+        cohortAssessments.forEach(assessment => {
+          const day = assessment.assessment_day
+          if (!dailySums[day]) {
+            dailySums[day] = { sum: 0, count: 0 }
+          }
+          // Calculate average for this assessment
+          const scores = [
+            assessment.question_1_score,
+            assessment.question_2_score,
+            assessment.question_3_score,
+            assessment.question_4_score,
+            assessment.question_5_score
+          ].filter(s => s !== null) as number[]
+          if (scores.length > 0) {
+            const avg = scores.reduce((sum, s) => sum + s, 0) / scores.length
+            dailySums[day].sum += avg
+            dailySums[day].count++
+          }
+        })
+        const dailyAverages: Record<number, number> = {}
+        Object.keys(dailySums).forEach(dayStr => {
+          const day = Number(dayStr)
+          if (dailySums[day].count > 0) {
+            dailyAverages[day] = dailySums[day].sum / dailySums[day].count
+          }
+        })
+        
+        // Calculate final grade average
+        const cohortFinalGrades = finalGrades?.filter(g => cohortTraineeIds.includes(g.trainee_id)) || []
+        let finalGradeSum = 0
+        let finalGradeCount = 0
+        cohortFinalGrades.forEach(g => {
+          if (g.final_score !== undefined && g.final_score !== null) {
+            finalGradeSum += g.final_score
+            finalGradeCount++
+          }
+        })
+        const finalGradeAverage = finalGradeCount > 0 ? finalGradeSum / finalGradeCount : undefined
 
         ct.forEach(t => {
-          const fee = t.niche_fees?.[0]
-          if (fee) { tf += fee.course_fee || 0; tp += fee.total_paid || 0; ts += fee.sponsored_amount || 0 }
+          const fees = Array.isArray(t.niche_fees) ? t.niche_fees : (t.niche_fees ? [t.niche_fees] : [])
+          const uniqueFees = fees.filter((fee, index, self) => 
+            index === self.findIndex(f => f.id === fee.id)
+          )
+          
+          uniqueFees.forEach(fee => {
+            const actualPayments = paymentTotals[fee.id] || 0
+            const sponsoredAmt = fee.sponsored_amount || 0
+            const extraCharges = fee.extra_charges || 0
+            const isBadDebt = fee.is_bad_debt || false
+            
+            tf += (fee.course_fee || 0) + extraCharges
+            tp += actualPayments
+            ts += sponsoredAmt
+            cExtra += extraCharges
+            
+            if (isBadDebt) {
+              const badDebtAmount = Math.max(0, (fee.course_fee || 0) + extraCharges - sponsoredAmt - actualPayments)
+              cBadDebt += badDebtAmount
+            }
+          })
+          
           const courses = t.enrolled_courses || [t.course].filter(Boolean)
           courses.forEach((c: string) => { cBreakdown[c] = (cBreakdown[c] || 0) + 1 })
         })
@@ -413,7 +572,16 @@ function useNicheReportsData(dateRange: DateRange) {
           }
         })
 
-        const grad = ct.filter(t => t.status === 'Graduated').length
+        const twoWeekTrainees = ct.filter(t => { 
+          const cs = t.enrolled_courses || [t.course].filter(Boolean); 
+          return cs.some((c: string) => !isShortCourse(c)) 
+        })
+        const twoWeekGraduated = twoWeekTrainees.filter(t => t.status === 'Graduated').length
+        
+        const totalCollected = tp + ts
+        const outstanding = Math.max(0, tf - totalCollected - cBadDebt)
+        const collectionRate = pct(tp, tf - cBadDebt)
+        
         perCohort.push({
           cohort_number: cohort.cohort_number,
           cohort_id: cohort.id,
@@ -421,22 +589,26 @@ function useNicheReportsData(dateRange: DateRange) {
           end_date: cohort.end_date,
           status: cohort.status,
           totalTrainees: ct.length,
-          graduated: grad,
+          graduated: twoWeekGraduated,
           expelled: ct.filter(t => t.status === 'Expelled').length,
           active: ct.filter(t => t.status === 'Active').length,
-          twoWeek: ct.filter(t => { const cs = t.enrolled_courses || [t.course].filter(Boolean); return cs.some((c: string) => !isShortCourse(c)) }).length,
+          twoWeek: twoWeekTrainees.length,
           shortCourse: ct.filter(t => { const cs = t.enrolled_courses || [t.course].filter(Boolean); return cs.some((c: string) => isShortCourse(c)) }).length,
           totalFees: tf,
           collected: tp,
           sponsored: ts,
-          outstanding: Math.max(0, tf - tp - ts),
+          outstanding: outstanding,
           cash: cc,
           mpesa: cm,
           bankTransfer: cb,
           card: ccard,
-          graduationRate: pct(grad, ct.length),
-          collectionRate: pct(tp, tf),
-          courseBreakdown: cBreakdown
+          graduationRate: pct(twoWeekGraduated, twoWeekTrainees.length),
+          collectionRate: collectionRate,
+          extraCharges: cExtra,
+          badDebt: cBadDebt,
+          courseBreakdown: cBreakdown,
+          dailyAverages,
+          finalGradeAverage
         })
       })
       setPerCohortData(perCohort.sort((a, b) => a.cohort_number - b.cohort_number))
@@ -505,7 +677,7 @@ function BarChart({ data, keys, colors, height = 120 }: {
 // ─── Card ─────────────────────────────────────────────────────────────────────
 
 function Card({ label, value, sub, valueClass = 'text-gray-900' }: {
-  label: string; value: string | number; sub?: string; valueClass?: string
+  label: string; value: string | number; sub?: React.ReactNode; valueClass?: string
 }) {
   return (
     <div className="bg-white border border-gray-200 rounded-lg p-4">
@@ -528,14 +700,95 @@ function SectionHeader({ title }: { title: string }) {
 
 // ─── Overall Tab ──────────────────────────────────────────────────────────────
 
-export function OverallTab({ volume, funnel, finance, courseRows, cohortBars, monthRows }: {
-  volume: VolumeMetrics
-  funnel: FunnelMetrics
-  finance: FinanceMetrics
-  courseRows: CourseRow[]
-  cohortBars: CohortBar[]
-  monthRows: MonthRow[]
+export function OverallTab({ volume, funnel, finance, courseRows, cohortBars, monthRows, perCohortData }: {
+  volume: VolumeMetrics;
+  funnel: FunnelMetrics;
+  finance: FinanceMetrics;
+  courseRows: CourseRow[];
+  cohortBars: CohortBar[];
+  monthRows: MonthRow[];
+  perCohortData: PerCohortData[];
 }) {
+  const allCohortIds = perCohortData.map(c => c.cohort_id);
+  const [selectedCohortIds, setSelectedCohortIds] = useState<string[]>(allCohortIds);
+  const [selectedCohortForDetail, setSelectedCohortForDetail] = useState<string | null>(null);
+  const [isMultiSelectOpen, setIsMultiSelectOpen] = useState(false);
+  const [isDetailDropdownOpen, setIsDetailDropdownOpen] = useState(false);
+  const multiSelectRef = useRef<HTMLDivElement>(null);
+  const detailSelectRef = useRef<HTMLDivElement>(null);
+  
+  const toggleCohort = (cohortId: string) => {
+    setSelectedCohortIds(prev => 
+      prev.includes(cohortId) 
+        ? prev.filter(id => id !== cohortId) 
+        : [...prev, cohortId]
+    );
+  };
+
+  // Update selected cohorts when perCohortData changes
+  useEffect(() => {
+    const newAllCohortIds = perCohortData.map(c => c.cohort_id);
+    setSelectedCohortIds(newAllCohortIds);
+  }, [perCohortData]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (multiSelectRef.current && !multiSelectRef.current.contains(e.target as Node)) {
+        setIsMultiSelectOpen(false);
+      }
+      if (detailSelectRef.current && !detailSelectRef.current.contains(e.target as Node)) {
+        setIsDetailDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Calculate overall daily averages across all selected cohorts or all cohorts
+  const calculateOverallDailyAverages = () => {
+    const cohortsToUse = selectedCohortIds.length > 0 
+      ? perCohortData.filter(c => selectedCohortIds.includes(c.cohort_id))
+      : perCohortData;
+      
+    const dailySums: Record<number, { sum: number; count: number }> = {};
+    cohortsToUse.forEach(cohort => {
+      Object.entries(cohort.dailyAverages).forEach(([day, avg]) => {
+        const d = Number(day);
+        if (!dailySums[d]) dailySums[d] = { sum: 0, count: 0 };
+        dailySums[d].sum += avg;
+        dailySums[d].count += 1;
+      });
+    });
+    
+    const overallAverages: Record<number, number> = {};
+    Object.entries(dailySums).forEach(([day, data]) => {
+      overallAverages[Number(day)] = data.sum / data.count;
+    });
+    return overallAverages;
+  };
+
+  const overallDailyAverages = calculateOverallDailyAverages();
+
+  // Calculate overall final grade average
+  const calculateOverallFinalGradeAverage = () => {
+    const cohortsToUse = selectedCohortIds.length > 0 
+      ? perCohortData.filter(c => selectedCohortIds.includes(c.cohort_id))
+      : perCohortData;
+      
+    let sum = 0;
+    let count = 0;
+    cohortsToUse.forEach(cohort => {
+      if (cohort.finalGradeAverage !== undefined) {
+        sum += cohort.finalGradeAverage;
+        count += 1;
+      }
+    });
+    
+    return count > 0 ? sum / count : undefined;
+  };
+  const overallFinalGradeAverage = calculateOverallFinalGradeAverage();
+
   return (
     <div id="niche-report-overall" className="space-y-8">
 
@@ -543,9 +796,28 @@ export function OverallTab({ volume, funnel, finance, courseRows, cohortBars, mo
       <section>
         <SectionHeader title="Volume" />
         <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
-          <Card label="Total Trainees" value={volume.totalTrainees} />
+          <Card 
+            label="Total Trainees" 
+            value={volume.totalTrainees} 
+            sub={
+              <div className="space-y-0.5">
+                <div>{volume.twoWeekTrainees} 2-week</div>
+                <div>{volume.shortCourseTrainees} short</div>
+              </div>
+            }
+          />
+          <Card label="Active" value={volume.active} valueClass="text-blue-700"
+            sub={
+              <div className="space-y-0.5">
+                <div>{pct(volume.active, volume.totalTrainees)}% of total</div>
+                <div>{volume.twoWeekActive} 2-week</div>
+                <div>{volume.shortActive} short</div>
+              </div>
+            } />
           <Card label="Graduated" value={volume.graduated} valueClass="text-emerald-700"
-            sub={`${pct(volume.graduated, volume.totalTrainees)}% of total`} />
+            sub={`${pct(volume.graduated, volume.twoWeekTrainees)}% of 2-week`} />
+          <Card label="Completed" value={volume.completed} valueClass="text-purple-700"
+            sub={`${pct(volume.completed, volume.shortCourseTrainees)}% of short courses`} />
           <Card label="2-Week Trainees" value={volume.twoWeekTrainees} />
           <Card label="Short Courses" value={volume.shortCourseTrainees} />
           <Card label="Expelled" value={volume.expelled} valueClass="text-red-600"
@@ -587,19 +859,289 @@ export function OverallTab({ volume, funnel, finance, courseRows, cohortBars, mo
         <div className="grid grid-cols-3 md:grid-cols-5 gap-3 mb-3">
           <Card label="Total Revenue" value={fmt(finance.totalRevenue)} valueClass="text-green-700"
             sub={`${finance.collectionRate}% collection rate`} />
-          <Card label="Cash" value={fmt(finance.cash)} />
-          <Card label="M-Pesa" value={fmt(finance.mpesa)} />
           <Card label="Sponsored" value={fmt(finance.sponsored)} valueClass="text-purple-700" />
           <Card label="Outstanding" value={fmt(finance.outstanding)} valueClass="text-orange-600"
             sub={`of KSh ${finance.totalFees.toLocaleString()} total fees`} />
+          <Card label="Extra Charges" value={fmt(finance.extraCharges)} valueClass="text-amber-600" />
+          <Card label="Bad Debt" value={fmt(finance.badDebt)} valueClass="text-gray-600" />
         </div>
-        {/* Bank + Card if any */}
-        {(finance.bankTransfer > 0 || finance.card > 0) && (
-          <div className="grid grid-cols-2 gap-3">
-            {finance.bankTransfer > 0 && <Card label="Bank Transfer" value={fmt(finance.bankTransfer)} />}
-            {finance.card > 0 && <Card label="Card" value={fmt(finance.card)} />}
+      </section>
+
+      {/* ── TRAINING PROGRESS ── */}
+      <section>
+        <SectionHeader title="Training Progress" />
+        
+        {/* Cohort Selection */}
+        <div className="bg-white border border-gray-200 rounded-lg p-4 mb-6">
+          <div className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-3">
+            Select Cohorts
           </div>
+          <div className="flex flex-wrap items-end gap-4">
+            <div className="relative" ref={multiSelectRef}>
+              <button
+                onClick={() => setIsMultiSelectOpen(!isMultiSelectOpen)}
+                className="w-full md:w-64 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent bg-white text-left flex items-center justify-between"
+              >
+                <span className="text-sm text-gray-700">
+                  {selectedCohortIds.length === 0 
+                    ? "Select cohorts..." 
+                    : selectedCohortIds.length === perCohortData.length 
+                      ? "All cohorts" 
+                      : `${selectedCohortIds.length} cohort${selectedCohortIds.length === 1 ? '' : 's'} selected`}
+                </span>
+                <span className="text-gray-400">▼</span>
+              </button>
+              
+              {isMultiSelectOpen && (
+                <div className="absolute z-20 w-full md:w-64 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-40 overflow-y-auto">
+                  <div 
+                    className="px-3 py-2 hover:bg-gray-100 cursor-pointer"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedCohortIds(
+                        selectedCohortIds.length === perCohortData.length ? [] : allCohortIds
+                      );
+                    }}
+                  >
+                    <label className="flex items-center cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        className="mr-2"
+                        checked={selectedCohortIds.length === perCohortData.length}
+                        readOnly
+                      />
+                      <span className="text-sm">Select All</span>
+                    </label>
+                  </div>
+                  {perCohortData.map(cohort => (
+                    <div 
+                      key={cohort.cohort_id} 
+                      className="px-3 py-2 hover:bg-gray-100 cursor-pointer"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleCohort(cohort.cohort_id);
+                      }}
+                    >
+                      <label className="flex items-center cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          className="mr-2"
+                          checked={selectedCohortIds.includes(cohort.cohort_id)}
+                          readOnly
+                        />
+                        <span className="text-sm">Cohort {getRomanNumeral(cohort.cohort_number)}</span>
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+        
+        {/* Overall Training Progress */}
+        <div className="bg-white border border-gray-200 rounded-lg p-5 mb-6">
+          <div className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-4">
+            Overall Progress
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+            {[1, 3, 5, 10].map(day => {
+              const avg = overallDailyAverages[day];
+              return (
+                <div key={day} className="bg-gray-50 p-3 rounded-lg">
+                  <div className="text-xs text-gray-500">Day {day}</div>
+                  <div className="text-lg font-bold text-gray-900">
+                    {avg ? avg.toFixed(1) : '—'}
+                  </div>
+                </div>
+              );
+            })}
+            {overallFinalGradeAverage !== undefined && (
+              <div className="bg-gray-50 p-3 rounded-lg">
+                <div className="text-xs text-gray-500">Final Grade</div>
+                <div className="text-lg font-bold text-gray-900">
+                  {overallFinalGradeAverage.toFixed(1)}%
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Cohort Selection for Detail View */}
+        <div className="bg-white border border-gray-200 rounded-lg p-4 mb-6">
+          <div className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-3">
+            View Cohort Detail
+          </div>
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="relative" ref={detailSelectRef}>
+              <button
+                onClick={() => setIsDetailDropdownOpen(!isDetailDropdownOpen)}
+                className="w-full md:w-64 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent bg-white text-left flex items-center justify-between"
+              >
+                <span className="text-sm text-gray-700">
+                  {selectedCohortForDetail 
+                    ? `Cohort ${getRomanNumeral(perCohortData.find(c => c.cohort_id === selectedCohortForDetail)?.cohort_number || 0)}`
+                    : "None"
+                  }
+                </span>
+                <span className="text-gray-400">▼</span>
+              </button>
+              
+              {isDetailDropdownOpen && (
+                <div className="absolute z-20 w-full md:w-64 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-40 overflow-y-auto">
+                  <div 
+                    className="px-3 py-2 hover:bg-gray-100 cursor-pointer"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedCohortForDetail(null);
+                      setIsDetailDropdownOpen(false);
+                    }}
+                  >
+                    <span className="text-sm">None</span>
+                  </div>
+                  {perCohortData.map(cohort => (
+                    <div 
+                      key={cohort.cohort_id} 
+                      className="px-3 py-2 hover:bg-gray-100 cursor-pointer"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedCohortForDetail(cohort.cohort_id);
+                        setIsDetailDropdownOpen(false);
+                      }}
+                    >
+                      <span className="text-sm">Cohort {getRomanNumeral(cohort.cohort_number)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Selected Cohort Detail View */}
+        {selectedCohortForDetail && (
+          (() => {
+            const cohort = perCohortData.find(c => c.cohort_id === selectedCohortForDetail);
+            if (!cohort) return null;
+            const hasData = Object.keys(cohort.dailyAverages).length > 0 || cohort.finalGradeAverage !== undefined;
+            if (!hasData) return null;
+            
+            return (
+              <div className="bg-white border border-gray-200 rounded-lg p-5 mb-6">
+                <div className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-4">
+                  Cohort {getRomanNumeral(cohort.cohort_number)} Detail
+                </div>
+                
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+                  {[1, 3, 5, 10].map(day => {
+                    const avg = cohort.dailyAverages[day];
+                    return (
+                      <div key={day} className="bg-gray-50 p-3 rounded-lg">
+                        <div className="text-xs text-gray-500">Day {day}</div>
+                        <div className="text-lg font-bold text-gray-900">
+                          {avg ? avg.toFixed(1) : '—'}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {cohort.finalGradeAverage !== undefined && (
+                    <div className="bg-gray-50 p-3 rounded-lg">
+                      <div className="text-xs text-gray-500">Final Grade</div>
+                      <div className="text-lg font-bold text-gray-900">
+                        {cohort.finalGradeAverage.toFixed(1)}%
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {cohort.finalGradeAverage !== undefined && (
+                  <div>
+                    <div className={`inline-block text-xs px-3 py-1 rounded-full font-semibold ${
+                      cohort.finalGradeAverage >= 90 ? 'bg-purple-100 text-purple-700' :
+                      cohort.finalGradeAverage >= 80 ? 'bg-blue-100 text-blue-700' :
+                      cohort.finalGradeAverage >= 70 ? 'bg-green-100 text-green-700' :
+                      'bg-yellow-100 text-yellow-700'
+                    }`}>
+                      {cohort.finalGradeAverage >= 90 ? 'Master' :
+                       cohort.finalGradeAverage >= 80 ? 'Distinguished' :
+                       cohort.finalGradeAverage >= 70 ? 'Excellent' : 'Needs Improvement'}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()
         )}
+      </section>
+
+      {/* ── COHORT COMPARISON ── */}
+      <section>
+        <SectionHeader title="Cohort Comparison" />
+        <div className="bg-white border border-gray-200 rounded-lg p-5">
+          <div className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-4">
+            Compare Cohorts
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="text-left px-3 py-2 text-xs font-semibold text-gray-600">Cohort</th>
+                  <th className="text-center px-3 py-2 text-xs font-semibold text-gray-600">Total Trainees</th>
+                  <th className="text-center px-3 py-2 text-xs font-semibold text-gray-600">2-Week Trainees</th>
+                  <th className="text-center px-3 py-2 text-xs font-semibold text-gray-600">Graduated (2-Week)</th>
+                  <th className="text-center px-3 py-2 text-xs font-semibold text-gray-600">Graduation Rate</th>
+                  <th className="text-center px-3 py-2 text-xs font-semibold text-gray-600">Expelled</th>
+                  <th className="text-center px-3 py-2 text-xs font-semibold text-gray-600">Final Grade</th>
+                  <th className="text-center px-3 py-2 text-xs font-semibold text-gray-600">Change (Day 1 → Day 10)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {perCohortData.map(cohort => {
+                  const day1 = cohort.dailyAverages[1];
+                  const day10 = cohort.dailyAverages[10];
+                  const change = day1 !== undefined && day10 !== undefined ? (day10 - day1).toFixed(1) : '—';
+                  
+                  return (
+                    <tr key={cohort.cohort_id} className="hover:bg-gray-50">
+                      <td className="px-3 py-2 text-gray-900 font-medium">
+                        Cohort {getRomanNumeral(cohort.cohort_number)}
+                      </td>
+                      <td className="px-3 py-2 text-center text-gray-900 font-bold">
+                        {cohort.totalTrainees}
+                      </td>
+                      <td className="px-3 py-2 text-center text-gray-900 font-medium">
+                        {cohort.twoWeek}
+                      </td>
+                      <td className="px-3 py-2 text-center text-emerald-700 font-semibold">
+                        {cohort.twoWeekGraduated}
+                      </td>
+                      <td className="px-3 py-2 text-center font-semibold">
+                        <span className={cohort.graduationRate >= 70 ? 'text-emerald-700' : cohort.graduationRate >= 40 ? 'text-yellow-600' : 'text-gray-500'}>
+                          {cohort.graduationRate}%
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-center text-red-600 font-semibold">
+                        {cohort.expelled}
+                      </td>
+                      <td className="px-3 py-2 text-center text-gray-900 font-bold">
+                        {cohort.finalGradeAverage !== undefined ? `${cohort.finalGradeAverage.toFixed(1)}%` : '—'}
+                      </td>
+                      <td className="px-3 py-2 text-center font-bold">
+                        <span className={
+                          Number(change) > 0 ? 'text-green-700' : 
+                          Number(change) < 0 ? 'text-red-600' : 
+                          'text-gray-500'
+                        }>
+                          {change !== '—' ? (Number(change) > 0 ? `+${change}` : change) : '—'}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </section>
 
       {/* ── COURSE ENROLLMENT TABLE ── */}
@@ -664,39 +1206,7 @@ export function OverallTab({ volume, funnel, finance, courseRows, cohortBars, mo
       {/* ── FINANCIAL DETAIL ── */}
       <section>
         <SectionHeader title="Financial Detail" />
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Payment method breakdown */}
-          <div className="bg-white border border-gray-200 rounded-lg p-5">
-            <div className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-4">Payment Method Breakdown</div>
-            <table className="w-full text-sm">
-              <thead><tr className="border-b border-gray-100">
-                <th className="text-left py-2 text-xs text-gray-500">Method</th>
-                <th className="text-right py-2 text-xs text-gray-500">Amount</th>
-                <th className="text-right py-2 text-xs text-gray-500">% of Total</th>
-              </tr></thead>
-              <tbody className="divide-y divide-gray-50">
-                {[
-                  { label: 'Cash', val: finance.cash },
-                  { label: 'M-Pesa', val: finance.mpesa },
-                  { label: 'Bank Transfer', val: finance.bankTransfer },
-                  { label: 'Card', val: finance.card },
-                  { label: 'Sponsored', val: finance.sponsored },
-                ].filter(r => r.val > 0).map((r, i) => (
-                  <tr key={i}>
-                    <td className="py-2 text-gray-700">{r.label}</td>
-                    <td className="py-2 text-right font-semibold text-gray-900">KSh {r.val.toLocaleString()}</td>
-                    <td className="py-2 text-right text-gray-500">{pct(r.val, finance.totalFees)}%</td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot><tr className="border-t border-gray-200">
-                <td className="py-2 font-bold text-gray-900">Total Collected</td>
-                <td className="py-2 text-right font-bold text-green-700">KSh {finance.totalRevenue.toLocaleString()}</td>
-                <td className="py-2 text-right font-bold">{finance.collectionRate}%</td>
-              </tr></tfoot>
-            </table>
-          </div>
-
+        <div className="grid grid-cols-1 md:grid-cols-1 gap-6">
           {/* Per-cohort revenue table */}
           <div className="bg-white border border-gray-200 rounded-lg p-5">
             <div className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-4">Revenue per Cohort</div>
@@ -1237,6 +1747,7 @@ ${reportHTML}
           courseRows={courseRows}
           cohortBars={cohortBars}
           monthRows={monthRows}
+          perCohortData={perCohortData}
         />
       )}
 
