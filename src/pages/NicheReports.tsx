@@ -30,6 +30,7 @@ interface FunnelMetrics {
   graduationRate: number
   totalLost: number
   lostReasons: { reason: string; count: number }[]
+  sourceBreakdown: { source: string; count: number }[]
 }
 
 interface FinanceMetrics {
@@ -221,7 +222,7 @@ function useNicheReportsData(dateRange: DateRange) {
       // ── 5. Niche Candidates (funnel) ────────────────────────────────────────
       let nicheQuery = supabase
         .from('niche_candidates')
-        .select('id, status, inquiry_date')
+        .select('id, status, inquiry_date, source')
       if (dateRange.from) nicheQuery = nicheQuery.gte('inquiry_date', dateRange.from)
       if (dateRange.to) nicheQuery = nicheQuery.lte('inquiry_date', dateRange.to)
       const { data: nicheCandidates } = await nicheQuery
@@ -229,7 +230,7 @@ function useNicheReportsData(dateRange: DateRange) {
       // Also pull from main candidates table (synced)
       let mainQuery = supabase
         .from('candidates')
-        .select('id, status, inquiry_date')
+        .select('id, status, inquiry_date, source')
         .not('status', 'is', null)
       if (dateRange.from) mainQuery = mainQuery.gte('inquiry_date', dateRange.from)
       if (dateRange.to) mainQuery = mainQuery.lte('inquiry_date', dateRange.to)
@@ -342,6 +343,17 @@ function useNicheReportsData(dateRange: DateRange) {
         .sort((a, b) => b.count - a.count)
         .slice(0, 3)
 
+      // Compute source breakdown
+      const sourceMap: Record<string, number> = {}
+      ;[...allNiche, ...allMain].forEach(c => {
+        const source = c.source || 'Unknown'
+        sourceMap[source] = (sourceMap[source] || 0) + 1
+      })
+      const sourceBreakdown = Object.entries(sourceMap)
+        .map(([source, count]) => ({ source, count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 5) // top 5 sources
+
       const funnelTwoWeekTrainees = filteredTrainees?.filter(t => {
         const courses = t.enrolled_courses || [t.course].filter(Boolean)
         return courses.some((c: string) => !isShortCourse(c))
@@ -359,7 +371,8 @@ function useNicheReportsData(dateRange: DateRange) {
         joinRate,
         graduationRate,
         totalLost,
-        lostReasons
+        lostReasons,
+        sourceBreakdown
       })
 
       // ── COMPUTE FINANCE ─────────────────────────────────────────────────────
@@ -829,7 +842,7 @@ export function OverallTab({ volume, funnel, finance, courseRows, cohortBars, mo
       {/* ── ROW 2: FUNNEL ── */}
       <section>
         <SectionHeader title="Funnel" />
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
           <Card label="Total Inquiries" value={funnel.totalInquiries} />
           <Card label="Joined Training" value={funnel.joinedTraining}
             sub={`${funnel.joinRate}% join rate`} valueClass="text-blue-700" />
@@ -846,6 +859,19 @@ export function OverallTab({ volume, funnel, finance, courseRows, cohortBars, mo
                 <div key={i} className="flex justify-between items-center">
                   <span className="text-xs text-gray-700 truncate flex-1 mr-1">{r.reason}</span>
                   <span className="text-xs font-bold text-gray-900">{r.count}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          {/* Sources */}
+          <div className="bg-white border border-gray-200 rounded-lg p-4">
+            <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Top Sources</div>
+            <div className="space-y-1.5">
+              {funnel.sourceBreakdown.length === 0 && <div className="text-xs text-gray-400">No data</div>}
+              {funnel.sourceBreakdown.map((s, i) => (
+                <div key={i} className="flex justify-between items-center">
+                  <span className="text-xs text-gray-700 truncate flex-1 mr-1">{s.source}</span>
+                  <span className="text-xs font-bold text-gray-900">{s.count}</span>
                 </div>
               ))}
             </div>
