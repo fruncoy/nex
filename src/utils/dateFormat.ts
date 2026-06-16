@@ -7,6 +7,26 @@ export const formatDate = (dateString: string): string => {
   })
 }
 
+export const formatDateWithOrdinal = (dateString: string | Date): string => {
+  const date = typeof dateString === 'string' ? new Date(dateString) : dateString
+  
+  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 
+                     'July', 'August', 'September', 'October', 'November', 'December']
+  
+  const monthName = monthNames[date.getMonth()]
+  const day = date.getDate()
+  const year = date.getFullYear()
+  
+  // Add ordinal suffix
+  const getOrdinal = (n: number) => {
+    const s = ['th', 'st', 'nd', 'rd']
+    const v = n % 100
+    return n + (s[(v - 20) % 10] || s[v] || s[0])
+  }
+  
+  return `${getOrdinal(day)} ${monthName} ${year}`
+}
+
 export const formatDateTime = (dateString: string): string => {
   const date = new Date(dateString)
   

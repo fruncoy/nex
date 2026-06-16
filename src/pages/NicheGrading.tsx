@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
 import NicheCertificate from '../components/NicheCertificate'
 import NicheTranscript from '../components/NicheTranscript'
+import { formatDateWithOrdinal } from '../utils/dateFormat'
 
 interface NicheCohort {
   id: string
@@ -1163,7 +1164,7 @@ export function NicheGrading() {
                     <option value="all">All Cohorts</option>
                     {cohorts.map(cohort => (
                       <option key={cohort.id} value={cohort.id}>
-                        Cohort {getRomanNumeral(cohort.cohort_number)} - {cohort.status} — {new Date(cohort.start_date).toLocaleDateString()} to {new Date(cohort.end_date).toLocaleDateString()}
+                        Cohort {getRomanNumeral(cohort.cohort_number)} - {cohort.status} — {formatDateWithOrdinal(cohort.start_date)} to {formatDateWithOrdinal(cohort.end_date)}
                       </option>
                     ))}
                   </select>
@@ -1300,7 +1301,7 @@ export function NicheGrading() {
                   <option value="all">All Cohorts</option>
                   {cohorts.map(cohort => (
                     <option key={cohort.id} value={cohort.id}>
-                      Cohort {getRomanNumeral(cohort.cohort_number)} — {new Date(cohort.start_date).toLocaleDateString()} to {new Date(cohort.end_date).toLocaleDateString()}
+                      Cohort {getRomanNumeral(cohort.cohort_number)} — {formatDateWithOrdinal(cohort.start_date)} to {formatDateWithOrdinal(cohort.end_date)}
                     </option>
                   ))}
                 </select>
@@ -1741,7 +1742,7 @@ export function NicheGrading() {
                     <option value="all">All Cohorts</option>
                     {cohorts.map(cohort => (
                       <option key={cohort.id} value={cohort.id}>
-                        Cohort {getRomanNumeral(cohort.cohort_number)} - {cohort.status} — {new Date(cohort.start_date).toLocaleDateString()} to {new Date(cohort.end_date).toLocaleDateString()}
+                        Cohort {getRomanNumeral(cohort.cohort_number)} - {cohort.status} — {formatDateWithOrdinal(cohort.start_date)} to {formatDateWithOrdinal(cohort.end_date)}
                       </option>
                     ))}
                   </select>

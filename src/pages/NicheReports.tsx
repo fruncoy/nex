@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useToast } from '../contexts/ToastContext'
 import { ChevronDown, Download } from 'lucide-react'
+import { formatDateWithOrdinal } from '../utils/dateFormat'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -955,7 +956,7 @@ export function OverallTab({ volume, funnel, finance, courseRows, cohortBars, mo
                           checked={selectedCohortIds.includes(cohort.cohort_id)}
                           readOnly
                         />
-                        <span className="text-sm">Cohort {getRomanNumeral(cohort.cohort_number)} — {new Date(cohort.start_date).toLocaleDateString()} to {new Date(cohort.end_date).toLocaleDateString()}</span>
+                        <span className="text-sm">Cohort {getRomanNumeral(cohort.cohort_number)} — {formatDateWithOrdinal(cohort.start_date)} to {formatDateWithOrdinal(cohort.end_date)}</span>
                       </label>
                     </div>
                   ))}
@@ -1035,7 +1036,7 @@ export function OverallTab({ volume, funnel, finance, courseRows, cohortBars, mo
                         setIsDetailDropdownOpen(false);
                       }}
                     >
-                      <span className="text-sm">Cohort {getRomanNumeral(cohort.cohort_number)} — {new Date(cohort.start_date).toLocaleDateString()} to {new Date(cohort.end_date).toLocaleDateString()}</span>
+                      <span className="text-sm">Cohort {getRomanNumeral(cohort.cohort_number)} — {formatDateWithOrdinal(cohort.start_date)} to {formatDateWithOrdinal(cohort.end_date)}</span>
                     </div>
                   ))}
                 </div>

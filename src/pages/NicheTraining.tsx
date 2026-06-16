@@ -7,7 +7,7 @@ import * as XLSX from 'xlsx'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
 import { ActivityLogger } from '../lib/activityLogger'
-import { formatDateTime } from '../utils/dateFormat'
+import { formatDateTime, formatDateWithOrdinal } from '../utils/dateFormat'
 
 interface NicheCourse {
   id: string
@@ -803,10 +803,10 @@ export function NicheTraining() {
           >
             <option value="all">All Cohorts</option>
             {getVisibleCohorts().map(cohort => (
-              <option key={cohort.id} value={cohort.id}>
-                Cohort {getRomanNumeral(cohort.cohort_number)}{cohort.status === 'active' ? ' (active)' : ''} — {new Date(cohort.start_date).toLocaleDateString()} to {new Date(cohort.end_date).toLocaleDateString()}
-              </option>
-            ))}
+                    <option key={cohort.id} value={cohort.id}>
+                      Cohort {getRomanNumeral(cohort.cohort_number)}{cohort.status === 'active' ? ' (active)' : ''} — {formatDateWithOrdinal(cohort.start_date)} to {formatDateWithOrdinal(cohort.end_date)}
+                    </option>
+                  ))}
           </select>
         </div>
       </div>
@@ -1183,7 +1183,7 @@ export function NicheTraining() {
                   <option value="">Select cohort</option>
                   {getCohortsForNewTrainee().map(cohort => (
                     <option key={cohort.id} value={cohort.id}>
-                      Cohort {getRomanNumeral(cohort.cohort_number)} ({new Date(cohort.start_date).toLocaleDateString()} - {new Date(cohort.end_date).toLocaleDateString()}) - {cohort.status}
+                      Cohort {getRomanNumeral(cohort.cohort_number)} ({formatDateWithOrdinal(cohort.start_date)} - {formatDateWithOrdinal(cohort.end_date)}) - {cohort.status}
                     </option>
                   ))}
                 </select>
@@ -1404,7 +1404,7 @@ export function NicheTraining() {
                     <option value="">Select cohort</option>
                     {cohorts.map(cohort => (
                       <option key={cohort.id} value={cohort.id}>
-                        Cohort {getRomanNumeral(cohort.cohort_number)} ({new Date(cohort.start_date).toLocaleDateString()} - {new Date(cohort.end_date).toLocaleDateString()}) - {cohort.status}
+                        Cohort {getRomanNumeral(cohort.cohort_number)} ({formatDateWithOrdinal(cohort.start_date)} - {formatDateWithOrdinal(cohort.end_date)}) - {cohort.status}
                       </option>
                     ))}
                   </select>
