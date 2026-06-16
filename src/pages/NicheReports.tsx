@@ -1233,24 +1233,40 @@ export function OverallTab({ volume, funnel, finance, courseRows, cohortBars, mo
       <section>
         <SectionHeader title="Financial Detail" />
         <div className="grid grid-cols-1 md:grid-cols-1 gap-6">
-          {/* Per-cohort revenue table */}
+          {/* Per-cohort financials table */}
           <div className="bg-white border border-gray-200 rounded-lg p-5">
-            <div className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-4">Revenue per Cohort</div>
-            <div className="overflow-y-auto max-h-64">
+            <div className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-4">Financials per Cohort</div>
+            <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="sticky top-0 bg-white"><tr className="border-b border-gray-100">
-                  <th className="text-left py-2 text-xs text-gray-500">Cohort</th>
-                  <th className="text-right py-2 text-xs text-gray-500">Trainees</th>
-                  <th className="text-right py-2 text-xs text-gray-500">Collected</th>
-                  <th className="text-right py-2 text-xs text-gray-500">Outstanding</th>
-                </tr></thead>
-                <tbody className="divide-y divide-gray-50">
-                  {cohortBars.map((c, i) => (
-                    <tr key={i}>
-                      <td className="py-1.5 text-gray-700">Cohort {getRomanNumeral(c.cohort_number)}</td>
-                      <td className="py-1.5 text-right text-gray-900">{c.twoWeek + c.shortCourse}</td>
-                      <td className="py-1.5 text-right font-semibold text-green-700">KSh {c.revenue.toLocaleString()}</td>
-                      <td className="py-1.5 text-right text-orange-600">—</td>
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="text-left px-3 py-2 text-xs text-gray-600 font-semibold">Cohort</th>
+                    <th className="text-center px-3 py-2 text-xs text-gray-600 font-semibold">Trainees</th>
+                    <th className="text-right px-3 py-2 text-xs text-gray-600 font-semibold">Total Fees</th>
+                    <th className="text-right px-3 py-2 text-xs text-gray-600 font-semibold">Collected</th>
+                    <th className="text-right px-3 py-2 text-xs text-gray-600 font-semibold">Sponsored</th>
+                    <th className="text-right px-3 py-2 text-xs text-gray-600 font-semibold">Outstanding</th>
+                    <th className="text-right px-3 py-2 text-xs text-gray-600 font-semibold">Extra Charges</th>
+                    <th className="text-right px-3 py-2 text-xs text-gray-600 font-semibold">Bad Debt</th>
+                    <th className="text-center px-3 py-2 text-xs text-gray-600 font-semibold">Collection Rate</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {perCohortData.map((c, i) => (
+                    <tr key={i} className="hover:bg-gray-50">
+                      <td className="px-3 py-2 text-gray-900 font-medium">Cohort {getRomanNumeral(c.cohort_number)}</td>
+                      <td className="px-3 py-2 text-center text-gray-900 font-bold">{c.totalTrainees}</td>
+                      <td className="px-3 py-2 text-right text-gray-900">KSh {c.totalFees.toLocaleString()}</td>
+                      <td className="px-3 py-2 text-right font-semibold text-green-700">KSh {c.collected.toLocaleString()}</td>
+                      <td className="px-3 py-2 text-right text-purple-700">KSh {c.sponsored.toLocaleString()}</td>
+                      <td className="px-3 py-2 text-right text-orange-600">KSh {c.outstanding.toLocaleString()}</td>
+                      <td className="px-3 py-2 text-right text-amber-600">KSh {c.extraCharges.toLocaleString()}</td>
+                      <td className="px-3 py-2 text-right text-gray-600">KSh {c.badDebt.toLocaleString()}</td>
+                      <td className="px-3 py-2 text-center">
+                        <span className={c.collectionRate >= 80 ? 'text-green-700' : c.collectionRate >= 50 ? 'text-yellow-600' : 'text-red-600'}>
+                          {c.collectionRate}%
+                        </span>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -1263,21 +1279,13 @@ export function OverallTab({ volume, funnel, finance, courseRows, cohortBars, mo
       {/* ── BAR CHARTS ── */}
       <section>
         <SectionHeader title="Trainees per Cohort" />
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-1 gap-6">
           <div className="bg-white border border-gray-200 rounded-lg p-5">
-            <div className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-4">2-Week Trainees per Cohort</div>
+            <div className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-4">Trainees per Cohort (2-Week vs Short Course)</div>
             <BarChart
-              data={cohortBars.map(c => ({ label: `C${c.cohort_number}`, values: [c.twoWeek] }))}
-              keys={['2-Week']}
-              colors={['#4f46e5']}
-            />
-          </div>
-          <div className="bg-white border border-gray-200 rounded-lg p-5">
-            <div className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-4">Short Course Trainees per Cohort</div>
-            <BarChart
-              data={cohortBars.map(c => ({ label: `C${c.cohort_number}`, values: [c.shortCourse] }))}
-              keys={['Short Course']}
-              colors={['#0891b2']}
+              data={cohortBars.map(c => ({ label: `C${c.cohort_number}`, values: [c.twoWeek, c.shortCourse] }))}
+              keys={['2-Week', 'Short Course']}
+              colors={['#4f46e5', '#0891b2']}
             />
           </div>
         </div>
