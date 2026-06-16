@@ -955,7 +955,7 @@ export function OverallTab({ volume, funnel, finance, courseRows, cohortBars, mo
                           checked={selectedCohortIds.includes(cohort.cohort_id)}
                           readOnly
                         />
-                        <span className="text-sm">Cohort {getRomanNumeral(cohort.cohort_number)}</span>
+                        <span className="text-sm">Cohort {getRomanNumeral(cohort.cohort_number)} — {new Date(cohort.start_date).toLocaleDateString()} to {new Date(cohort.end_date).toLocaleDateString()}</span>
                       </label>
                     </div>
                   ))}
@@ -1035,7 +1035,7 @@ export function OverallTab({ volume, funnel, finance, courseRows, cohortBars, mo
                         setIsDetailDropdownOpen(false);
                       }}
                     >
-                      <span className="text-sm">Cohort {getRomanNumeral(cohort.cohort_number)}</span>
+                      <span className="text-sm">Cohort {getRomanNumeral(cohort.cohort_number)} — {new Date(cohort.start_date).toLocaleDateString()} to {new Date(cohort.end_date).toLocaleDateString()}</span>
                     </div>
                   ))}
                 </div>

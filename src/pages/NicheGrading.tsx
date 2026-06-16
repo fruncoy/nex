@@ -1163,7 +1163,7 @@ export function NicheGrading() {
                     <option value="all">All Cohorts</option>
                     {cohorts.map(cohort => (
                       <option key={cohort.id} value={cohort.id}>
-                        Cohort {getRomanNumeral(cohort.cohort_number)} - {cohort.status}
+                        Cohort {getRomanNumeral(cohort.cohort_number)} - {cohort.status} — {new Date(cohort.start_date).toLocaleDateString()} to {new Date(cohort.end_date).toLocaleDateString()}
                       </option>
                     ))}
                   </select>
@@ -1300,7 +1300,7 @@ export function NicheGrading() {
                   <option value="all">All Cohorts</option>
                   {cohorts.map(cohort => (
                     <option key={cohort.id} value={cohort.id}>
-                      Cohort {getRomanNumeral(cohort.cohort_number)}
+                      Cohort {getRomanNumeral(cohort.cohort_number)} — {new Date(cohort.start_date).toLocaleDateString()} to {new Date(cohort.end_date).toLocaleDateString()}
                     </option>
                   ))}
                 </select>
@@ -1741,7 +1741,7 @@ export function NicheGrading() {
                     <option value="all">All Cohorts</option>
                     {cohorts.map(cohort => (
                       <option key={cohort.id} value={cohort.id}>
-                        Cohort {getRomanNumeral(cohort.cohort_number)} - {cohort.status}
+                        Cohort {getRomanNumeral(cohort.cohort_number)} - {cohort.status} — {new Date(cohort.start_date).toLocaleDateString()} to {new Date(cohort.end_date).toLocaleDateString()}
                       </option>
                     ))}
                   </select>
