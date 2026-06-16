@@ -7,6 +7,9 @@ export default defineConfig({
   optimizeDeps: {
     exclude: ['lucide-react'],
   },
+  server: {
+    historyApiFallback: true,
+  },
   build: {
     outDir: 'dist',
     sourcemap: false,
