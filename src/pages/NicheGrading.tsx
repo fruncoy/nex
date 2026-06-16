@@ -1636,8 +1636,8 @@ export function NicheGrading() {
             dateStarted={selectedShortCourseTrainee.date_started}
             dateCompleted={selectedShortCourseTrainee.date_completed}
             graduationDate={selectedShortCourseTrainee.date_completed 
-              ? new Date(selectedShortCourseTrainee.date_completed).toLocaleDateString() 
-              : new Date().toLocaleDateString()}
+              ? formatDateWithOrdinal(selectedShortCourseTrainee.date_completed) 
+              : formatDateWithOrdinal(new Date())}
             onClose={() => {
               setShowCertificate(false)
               setSelectedShortCourseTrainee(null)
@@ -1651,7 +1651,7 @@ export function NicheGrading() {
             tier={nicheCardData.tier || 'NONE'}
             finalScore={nicheCardData.final_score || 0}
             cohortNumber={getRomanNumeral(nicheCardData.cohort?.cohort_number || 0)}
-            graduationDate={new Date(nicheCardData.cohort?.end_date || Date.now()).toLocaleDateString()}
+            graduationDate={formatDateWithOrdinal(new Date(nicheCardData.cohort?.end_date || Date.now()))}
             pillar1Score={nicheCardData.pillar1_score || 0}
             pillar2Score={nicheCardData.pillar2_score || 0}
             pillar3Score={nicheCardData.pillar3_score || 0}
