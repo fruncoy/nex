@@ -804,7 +804,7 @@ export function NicheTraining() {
             <option value="all">All Cohorts</option>
             {getVisibleCohorts().map(cohort => (
               <option key={cohort.id} value={cohort.id}>
-                Cohort {getRomanNumeral(cohort.cohort_number)}{cohort.status === 'active' ? ' (active)' : ''}
+                Cohort {getRomanNumeral(cohort.cohort_number)}{cohort.status === 'active' ? ' (active)' : ''} — {new Date(cohort.start_date).toLocaleDateString()} to {new Date(cohort.end_date).toLocaleDateString()}
               </option>
             ))}
           </select>
