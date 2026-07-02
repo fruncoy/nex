@@ -48,7 +48,7 @@ export function PhoneInput({ value, onChange, placeholder = "700123456", require
 
   return (
     <div className="relative">
-      <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 text-sm font-medium">
+      <div className="absolute left-1.5 top-1/2 transform -translate-y-1/2 text-gray-500 text-sm font-medium">
         +254
       </div>
       <input
@@ -56,10 +56,9 @@ export function PhoneInput({ value, onChange, placeholder = "700123456", require
         value={displayValue}
         onChange={handleChange}
         onPaste={handlePaste}
-        placeholder={placeholder}
         required={required}
         disabled={disabled}
-        className={`pl-16 ${className || 'w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent'}`}
+        className={`pl-12 ${className || 'w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent'}`}
         maxLength={9}
       />
     </div>

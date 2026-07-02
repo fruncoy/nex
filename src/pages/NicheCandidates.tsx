@@ -1,9 +1,9 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { SearchFilter } from '../components/ui/SearchFilter'
 import { StatusBadge } from '../components/ui/StatusBadge'
 import { PhoneInput } from '../components/ui/PhoneInput'
-import { Plus, Users, Phone, Calendar, Edit, CheckCircle, Clock, Upload, Eye, Download } from 'lucide-react'
+import { Plus, Users, Phone, Calendar, Edit, CheckCircle, Clock, Upload, Eye, Download, Table, Trash2, Save } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
 import { ActivityLogger } from '../lib/activityLogger'
@@ -31,6 +31,18 @@ interface NicheCandidate {
   email?: string
   qualification_score?: number
   qualification_notes?: string
+}
+
+interface TableRowData {
+  id: string
+  name: string
+  phone: string
+  source: string
+  role: string
+  category: '2-Week Flagship' | 'Short Course'
+  inquiry_date: string
+  status: string
+  qualification_notes: string
 }
 
 export function NicheCandidates() {
@@ -88,12 +100,17 @@ export function NicheCandidates() {
   const [showCriticalActionModal, setShowCriticalActionModal] = useState(false)
   const [criticalActionData, setCriticalActionData] = useState<{ candidate: NicheCandidate; newStatus: string; onConfirm: () => void } | null>(null)
   const [activeModalTab, setActiveModalTab] = useState<'2week' | 'shortcourse'>('2week')
+  
+  // Table view state
+  const [showTableModal, setShowTableModal] = useState(false)
+  const [tableData, setTableData] = useState<TableRowData[]>([])
+  const [isSaving, setIsSaving] = useState(false)
 
   const { user, staff } = useAuth()
   const { showToast } = useToast()
 
   // Status options for manual selection (excluding 'Active in Training' - this is auto-managed)
-  const statusOptions = ['New Inquiry', 'Interview Scheduled', 'Lost - No Show Interview', 'Lost - Failed Interview', 'Lost - Age', 'Lost - No References', 'Lost - No Response', 'Lost - Good Conduct', 'Lost - Experience', 'Lost - Finance', 'Pending Outcome', 'Qualified', 'Graduated', 'BLACKLISTED']
+  const statusOptions = ['New Inquiry', 'Interview Scheduled', 'Lost - No Show Interview', 'Lost - Failed Interview', 'Lost - Age', 'Lost - No References', 'Lost - No Response', 'Lost - Good Conduct', 'Lost - Experience', 'Lost - Finance', 'Lost - Personality', 'Pending Outcome', 'Qualified', 'Graduated', 'BLACKLISTED']
   // Filter options include 'Active in Training' for viewing
   const filterStatusOptions = ['all', 'New Inquiry', 'Interview Scheduled', 'All Lost', 'Pending Outcome', 'Qualified', 'Active in Training', 'Graduated', 'BLACKLISTED']
   const roleOptions = ['Nanny', 'House Manager', 'Chef', 'Driver', 'Night Nurse', 'Caregiver', 'Housekeeper']
@@ -102,7 +119,180 @@ export function NicheCandidates() {
   useEffect(() => {
     loadCandidates()
     loadNoteCounts()
+    // Load saved table data from localStorage
+    const savedData = localStorage.getItem('nicheCandidatesTableData')
+    if (savedData) {
+      const parsed = JSON.parse(savedData)
+      setTableData(parsed)
+    } else {
+      // Initialize with 5 empty rows
+      initEmptyRows()
+    }
   }, [])
+
+  // Save to localStorage whenever tableData changes
+  useEffect(() => {
+    saveToLocalStorage(tableData)
+  }, [tableData])
+  
+  // Initialize table with 5 empty rows
+  const initEmptyRows = () => {
+    const emptyRows: TableRowData[] = []
+    for (let i = 0; i < 5; i++) {
+      emptyRows.push(createEmptyRow())
+    }
+    setTableData(emptyRows)
+  }
+  
+  // Create an empty table row
+  const createEmptyRow = (): TableRowData => ({
+    id: `row-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    name: '',
+    phone: '',
+    source: '',
+    role: '',
+    category: '2-Week Flagship',
+    inquiry_date: new Date().toISOString().split('T')[0],
+    status: 'New Inquiry',
+    qualification_notes: ''
+  })
+  
+  // Save to localStorage without blocking UI
+  const saveToLocalStorage = (data: TableRowData[]) => {
+    setTimeout(() => {
+      localStorage.setItem('nicheCandidatesTableData', JSON.stringify(data))
+    }, 0)
+  }
+  
+  // Update a specific cell in the table
+  const updateTableRow = (rowId: string, field: keyof TableRowData, value: string) => {
+    setTableData(prev => prev.map(row => 
+      row.id === rowId ? { ...row, [field]: value } : row
+    ))
+  }
+  
+  // Add a new row
+  const addTableRow = () => {
+    setTableData(prev => [...prev, createEmptyRow()])
+  }
+  
+  // Remove a row
+  const removeTableRow = (rowId: string) => {
+    if (tableData.length > 1) {
+      setTableData(prev => prev.filter(row => row.id !== rowId))
+    }
+  }
+  
+  // Clear all table data
+  const clearTableData = () => {
+    if (confirm('Are you sure you want to clear all entered data?')) {
+      initEmptyRows()
+      localStorage.removeItem('nicheCandidatesTableData')
+    }
+  }
+  
+  // Save all valid candidates to database
+  const saveTableData = async () => {
+    setIsSaving(true)
+    try {
+      // Filter rows with at least name and phone
+      const validRows = tableData.filter(row => 
+        row.name.trim() && row.phone.trim() && row.role && row.source
+      )
+      
+      if (validRows.length === 0) {
+        showToast('Please enter at least one candidate with name, phone, role, and source', 'error')
+        setIsSaving(false)
+        return
+      }
+      
+      let savedCount = 0
+      let skippedCount = 0
+      
+      for (const row of validRows) {
+        // Check for duplicates first
+        const normalizedPhone = normalizePhone(row.phone.trim())
+        
+        // Check blacklist
+        const { data: blacklist } = await supabase
+          .from('blacklist')
+          .select('id, name, phone')
+        const blacklistMatch = blacklist?.find(entry => 
+          normalizePhone(entry.phone) === normalizedPhone
+        )
+        if (blacklistMatch) {
+          skippedCount++
+          continue
+        }
+        
+        // Check niche candidates
+        const { data: nicheCandidates } = await supabase
+          .from('niche_candidates')
+          .select('id, phone')
+        const nicheMatch = nicheCandidates?.find(c => 
+          normalizePhone(c.phone) === normalizedPhone
+        )
+        if (nicheMatch) {
+          skippedCount++
+          continue
+        }
+        
+        // Check main candidates
+        const { data: mainCandidates } = await supabase
+          .from('candidates')
+          .select('id, phone')
+        const mainMatch = mainCandidates?.find(c => 
+          normalizePhone(c.phone) === normalizedPhone
+        )
+        if (mainMatch) {
+          skippedCount++
+          continue
+        }
+        
+        // Save to database
+        const insertPayload = {
+          name: row.name.trim(),
+          phone: row.phone.trim(),
+          source: row.source,
+          role: row.role,
+          category: row.category,
+          qualification_notes: row.qualification_notes || null,
+          status: row.status,
+          inquiry_date: row.inquiry_date,
+          assigned_to: user?.id,
+          added_by: staff?.name || 'System'
+        }
+        
+        const { error } = await supabase
+          .from('niche_candidates')
+          .insert(insertPayload)
+        
+        if (!error) {
+          savedCount++
+        }
+      }
+      
+      // Refresh candidates list
+      await loadCandidates()
+      
+      // Clear saved data from localStorage after successful save
+      localStorage.removeItem('nicheCandidatesTableData')
+      initEmptyRows()
+      setLastAutoSave(null)
+      
+      showToast(
+        `Successfully saved ${savedCount} candidate${savedCount !== 1 ? 's' : ''}! ${skippedCount > 0 ? `Skipped ${skippedCount} duplicate${skippedCount !== 1 ? 's' : ''}.` : ''}`,
+        'success'
+      )
+      
+      setShowTableModal(false)
+    } catch (error) {
+      console.error('Error saving table data:', error)
+      showToast('Error saving candidates. Please try again.', 'error')
+    } finally {
+      setIsSaving(false)
+    }
+  }
 
                   // Debounced duplicate checking - removed live search, only checks on form submission
 
@@ -808,12 +998,12 @@ export function NicheCandidates() {
             <Upload className="w-4 h-4" />
           </button>
           <button
-            onClick={() => setShowModal(true)}
-            className="flex items-center px-4 py-2 bg-nestalk-primary text-white rounded-lg hover:bg-nestalk-primary/90 transition-colors"
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            Add NICHE Candidate
-          </button>
+                onClick={() => setShowModal(true)}
+                className="flex items-center px-4 py-2 bg-nestalk-primary text-white rounded-lg hover:bg-nestalk-primary/90 transition-colors"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Add Single Candidate
+              </button>
           <div className="relative">
             <button
               onClick={() => setShowSyncMenu(!showSyncMenu)}
@@ -849,6 +1039,145 @@ export function NicheCandidates() {
               </div>
             )}
           </div>
+        </div>
+      </div>
+
+      {/* Excel-style Table Input */}
+      <div className="mb-8">
+        <div className="overflow-x-auto border border-gray-200">
+          <table className="min-w-full border-collapse">
+            <thead>
+              <tr className="bg-white">
+                <th className="border border-gray-300 px-3 py-2 text-left text-xs font-semibold text-gray-700 bg-gray-100 w-12 sticky top-0 z-10">#</th>
+                <th className="border border-gray-300 px-3 py-2 text-left text-xs font-semibold text-gray-700 bg-gray-100 min-w-[220px] sticky top-0 z-10">Name</th>
+                <th className="border border-gray-300 px-3 py-2 text-left text-xs font-semibold text-gray-700 bg-gray-100 min-w-[160px] sticky top-0 z-10">Phone</th>
+                <th className="border border-gray-300 px-3 py-2 text-left text-xs font-semibold text-gray-700 bg-gray-100 min-w-[160px] sticky top-0 z-10">Source</th>
+                <th className="border border-gray-300 px-3 py-2 text-left text-xs font-semibold text-gray-700 bg-gray-100 min-w-[160px] sticky top-0 z-10">Role</th>
+                <th className="border border-gray-300 px-3 py-2 text-left text-xs font-semibold text-gray-700 bg-gray-100 min-w-[160px] sticky top-0 z-10">Category</th>
+                <th className="border border-gray-300 px-3 py-2 text-left text-xs font-semibold text-gray-700 bg-gray-100 min-w-[160px] sticky top-0 z-10">Status</th>
+                <th className="border border-gray-300 px-3 py-2 text-left text-xs font-semibold text-gray-700 bg-gray-100 min-w-[400px] sticky top-0 z-10">Notes</th>
+                <th className="border border-gray-300 px-3 py-2 text-left text-xs font-semibold text-gray-700 bg-gray-100 min-w-[140px] sticky top-0 z-10">Inquiry Date</th>
+                <th className="border border-gray-300 px-3 py-2 bg-gray-100 w-12 sticky top-0 z-10"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {tableData.map((row, index) => (
+                <tr key={row.id}>
+                  <td className="border border-gray-300 px-3 py-2 text-center text-xs text-gray-600">{index + 1}</td>
+                  <td className="border border-gray-300 px-2 py-1">
+                    <input
+                      type="text"
+                      value={row.name}
+                      onChange={(e) => updateTableRow(row.id, 'name', e.target.value)}
+                      className="w-full h-10 px-2 text-sm border-0 focus:ring-0"
+                    />
+                  </td>
+                  <td className="border border-gray-300 px-2 py-1">
+                    <PhoneInput
+                      value={row.phone}
+                      onChange={(value) => updateTableRow(row.id, 'phone', value)}
+                      className="w-full h-10 text-sm border-0 focus:ring-0"
+                    />
+                  </td>
+                  <td className="border border-gray-300 px-2 py-1">
+                    <select
+                      value={row.source}
+                      onChange={(e) => updateTableRow(row.id, 'source', e.target.value)}
+                      className="w-full h-10 px-2 text-sm border-0 focus:ring-0 bg-white"
+                    >
+                      <option value=""></option>
+                      {sourceOptions.map(source => (
+                        <option key={source} value={source}>{source}</option>
+                      ))}
+                    </select>
+                  </td>
+                  <td className="border border-gray-300 px-2 py-1">
+                    <select
+                      value={row.role}
+                      onChange={(e) => updateTableRow(row.id, 'role', e.target.value)}
+                      className="w-full h-10 px-2 text-sm border-0 focus:ring-0 bg-white"
+                    >
+                      <option value=""></option>
+                      {roleOptions.map(role => (
+                        <option key={role} value={role}>{role}</option>
+                      ))}
+                    </select>
+                  </td>
+                  <td className="border border-gray-300 px-2 py-1">
+                    <select
+                      value={row.category}
+                      onChange={(e) => updateTableRow(row.id, 'category', e.target.value as any)}
+                      className="w-full h-10 px-2 text-sm border-0 focus:ring-0 bg-white"
+                    >
+                      <option value="2-Week Flagship">2-Week Flagship</option>
+                      <option value="Short Course">Short Course</option>
+                    </select>
+                  </td>
+                  <td className="border border-gray-300 px-2 py-1">
+                    <select
+                      value={row.status}
+                      onChange={(e) => updateTableRow(row.id, 'status', e.target.value)}
+                      className="w-full h-10 px-2 text-sm border-0 focus:ring-0 bg-white"
+                    >
+                      {statusOptions.map(status => (
+                        <option key={status} value={status}>{status}</option>
+                      ))}
+                    </select>
+                  </td>
+                  <td className="border border-gray-300 px-2 py-1">
+                    <input
+                      type="text"
+                      value={row.qualification_notes}
+                      onChange={(e) => updateTableRow(row.id, 'qualification_notes', e.target.value)}
+                      className="w-full h-10 px-2 text-sm border-0 focus:ring-0"
+                    />
+                  </td>
+                  <td className="border border-gray-300 px-2 py-1">
+                    <input
+                      type="date"
+                      value={row.inquiry_date}
+                      onChange={(e) => updateTableRow(row.id, 'inquiry_date', e.target.value)}
+                      className="w-full h-10 px-2 text-sm border-0 focus:ring-0 bg-white"
+                    />
+                  </td>
+                  <td className="border border-gray-300 px-2 py-2 text-center">
+                    <button
+                      onClick={() => removeTableRow(row.id)}
+                      className="text-gray-400 hover:text-red-500"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        
+        <div className="flex items-center justify-between mt-4">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={addTableRow}
+              className="flex items-center gap-2 px-4 py-2 border border-gray-300 text-sm hover:bg-gray-50"
+            >
+              <Plus className="w-4 h-4" />
+              Add Row
+            </button>
+            <button
+              onClick={clearTableData}
+              className="flex items-center gap-2 px-4 py-2 border border-gray-300 text-sm hover:bg-gray-50"
+            >
+              Clear All
+            </button>
+          </div>
+          <button
+            onClick={saveTableData}
+            disabled={isSaving}
+            className="flex items-center gap-2 px-6 py-2 bg-purple-600 text-white text-sm hover:bg-purple-700 disabled:opacity-50"
+          >
+            <Save className="w-4 h-4" />
+            {isSaving ? 'Saving...' : 'Save Candidates'}
+          </button>
         </div>
       </div>
 
