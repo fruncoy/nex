@@ -830,7 +830,7 @@ export function OverallTab({ volume, funnel, finance, courseRows, cohortBars, mo
       {/* ── ROW 1: VOLUME ── */}
       <section>
         <SectionHeader title="Volume" />
-        <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
           <Card 
             label="Total Trainees" 
             value={volume.totalTrainees} 
@@ -850,10 +850,17 @@ export function OverallTab({ volume, funnel, finance, courseRows, cohortBars, mo
             } />
           <Card label="Graduated" value={volume.graduated} valueClass="text-emerald-700" />
           <Card label="Completed" value={volume.completed} valueClass="text-purple-700" />
-          <Card label="2-Week Trainees" value={volume.twoWeekTrainees} />
-          <Card label="Short Courses" value={volume.shortCourseTrainees} />
-          <Card label="Expelled" value={volume.expelled} valueClass="text-red-600" />
-          <Card label="Blacklisted" value={volume.blacklisted} valueClass="text-gray-700" />
+          <Card 
+            label="Expelled + Blacklisted" 
+            value={volume.expelled + volume.blacklisted} 
+            sub={
+              <div className="space-y-0.5">
+                <div>{volume.expelled} expelled</div>
+                <div>{volume.blacklisted} blacklisted</div>
+              </div>
+            } valueClass="text-red-600" />
+          <Card label="Total Lost" value={funnel.totalLost} valueClass="text-red-600"
+            sub={`${pct(funnel.totalLost, funnel.totalInquiries)}% of inquiries`} />
         </div>
       </section>
 
