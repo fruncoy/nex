@@ -860,12 +860,12 @@ export function OverallTab({ volume, funnel, finance, courseRows, cohortBars, mo
       {/* ── ROW 2: FUNNEL ── */}
       <section>
         <SectionHeader title="Funnel" />
-        <div className="grid grid-cols-2 md:grid-cols-7 gap-3">
+        {/* Row 1: Key metrics */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
           <Card label="Total Inquiries" value={funnel.totalInquiries} />
           <Card label="Joined Training" value={funnel.joinedTraining}
             sub={
               <div className="space-y-0.5">
-                <div>{funnel.joinRate}% join rate</div>
                 <div>{funnel.twoWeekTrainees} 2-week</div>
                 <div>{funnel.shortCourseTrainees} short</div>
               </div>
@@ -874,6 +874,9 @@ export function OverallTab({ volume, funnel, finance, courseRows, cohortBars, mo
             sub={`${funnel.joinedTraining} enrolled`} valueClass="text-emerald-700" />
           <Card label="Total Lost" value={funnel.totalLost}
             sub={`${pct(funnel.totalLost, funnel.totalInquiries)}% of inquiries`} valueClass="text-red-600" />
+        </div>
+        {/* Row 2: Breakdowns */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           {/* Lost top 3 reasons */}
           <div className="bg-white border border-gray-200 rounded-lg p-4">
             <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Top Lost Reasons</div>
