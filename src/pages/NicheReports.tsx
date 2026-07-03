@@ -253,14 +253,14 @@ function useNicheReportsData(dateRange: DateRange) {
         .in('trainee_id', Array.from(traineeIds))
 
       // ── COMPUTE VOLUME ──────────────────────────────────────────────────────
-      const active = filteredTrainees?.filter(t => t.status === 'Active' || t.status === 'Active in Training').length || 0
+      const active = filteredTrainees?.filter(t => t.status === 'Active').length || 0
       const twoWeekActive = filteredTrainees?.filter(t => {
         const courses = t.enrolled_courses || [t.course].filter(Boolean)
-        return courses.some((c: string) => !isShortCourse(c)) && (t.status === 'Active' || t.status === 'Active in Training')
+        return courses.some((c: string) => !isShortCourse(c)) && t.status === 'Active'
       }).length || 0
       const shortActive = filteredTrainees?.filter(t => {
         const courses = t.enrolled_courses || [t.course].filter(Boolean)
-        return courses.some((c: string) => isShortCourse(c)) && (t.status === 'Active' || t.status === 'Active in Training')
+        return courses.some((c: string) => isShortCourse(c)) && t.status === 'Active'
       }).length || 0
       const graduated = filteredTrainees?.filter(t => {
         const courses = t.enrolled_courses || [t.course].filter(Boolean)
@@ -465,7 +465,7 @@ function useNicheReportsData(dateRange: DateRange) {
           if (t.status === 'Graduated') courseMap[c].graduated++
           else if (t.status === 'Completed') courseMap[c].graduated++
           else if (t.status === 'Expelled') courseMap[c].expelled++
-          else if (t.status === 'Active' || t.status === 'Active in Training') courseMap[c].active++
+          else if (t.status === 'Active') courseMap[c].active++
           else courseMap[c].pending++
           if (fee) {
             courseMap[c].totalFees += fee.course_fee || 0
@@ -626,7 +626,7 @@ function useNicheReportsData(dateRange: DateRange) {
           totalTrainees: ct.length,
           graduated: twoWeekGraduated,
           expelled: ct.filter(t => t.status === 'Expelled').length,
-          active: ct.filter(t => t.status === 'Active' || t.status === 'Active in Training').length,
+          active: ct.filter(t => t.status === 'Active').length,
           twoWeek: twoWeekTrainees.length,
           shortCourse: ct.filter(t => { const cs = t.enrolled_courses || [t.course].filter(Boolean); return cs.some((c: string) => isShortCourse(c)) }).length,
           totalFees: tf,
