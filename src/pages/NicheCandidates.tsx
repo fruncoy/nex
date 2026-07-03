@@ -54,6 +54,35 @@ export function NicheCandidates() {
     start: '2025-02-01', 
     end: new Date().toISOString().split('T')[0]
   })
+  const [selectedYear, setSelectedYear] = useState<string>(new Date().getFullYear().toString())
+  const [selectedMonth, setSelectedMonth] = useState<string>((new Date().getMonth() + 1).toString().padStart(2, '0'))
+
+  // Update date range when year or month changes
+  useEffect(() => {
+    if (selectedYear && selectedMonth) {
+      const firstDay = `${selectedYear}-${selectedMonth}-01`
+      const lastDay = new Date(parseInt(selectedYear), parseInt(selectedMonth), 0).toISOString().split('T')[0]
+      setDateRange({ start: firstDay, end: lastDay })
+    }
+  }, [selectedYear, selectedMonth])
+
+  // Generate year options (from 2024 to current year)
+  const yearOptions = Array.from({ length: new Date().getFullYear() - 2023 }, (_, i) => (2024 + i).toString())
+  // Generate month options
+  const monthOptions = [
+    { value: '01', label: 'January' },
+    { value: '02', label: 'February' },
+    { value: '03', label: 'March' },
+    { value: '04', label: 'April' },
+    { value: '05', label: 'May' },
+    { value: '06', label: 'June' },
+    { value: '07', label: 'July' },
+    { value: '08', label: 'August' },
+    { value: '09', label: 'September' },
+    { value: '10', label: 'October' },
+    { value: '11', label: 'November' },
+    { value: '12', label: 'December' }
+  ]
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [selectedCandidate, setSelectedCandidate] = useState<NicheCandidate | null>(null)
@@ -1191,7 +1220,7 @@ export function NicheCandidates() {
           placeholder="Search by name, phone, or role..."
         />
         
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3">
           <select
             value={sourceFilter}
             onChange={(e) => setSourceFilter(e.target.value)}
@@ -1211,6 +1240,26 @@ export function NicheCandidates() {
             <option value="all">All Categories</option>
             <option value="2-Week Flagship">2-Week Flagship</option>
             <option value="Short Course">Short Course</option>
+          </select>
+          
+          <select
+            value={selectedYear}
+            onChange={(e) => setSelectedYear(e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
+          >
+            {yearOptions.map(year => (
+              <option key={year} value={year}>{year}</option>
+            ))}
+          </select>
+          
+          <select
+            value={selectedMonth}
+            onChange={(e) => setSelectedMonth(e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
+          >
+            {monthOptions.map(month => (
+              <option key={month.value} value={month.value}>{month.label}</option>
+            ))}
           </select>
           
           <input
