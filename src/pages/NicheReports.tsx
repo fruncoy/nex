@@ -844,19 +844,15 @@ export function OverallTab({ volume, funnel, finance, courseRows, cohortBars, mo
           <Card label="Active" value={volume.active} valueClass="text-blue-700"
             sub={
               <div className="space-y-0.5">
-                <div>{pct(volume.active, volume.totalTrainees)}% of total</div>
                 <div>{volume.twoWeekActive} 2-week</div>
                 <div>{volume.shortActive} short</div>
               </div>
             } />
-          <Card label="Graduated" value={volume.graduated} valueClass="text-emerald-700"
-            sub={`${pct(volume.graduated, volume.twoWeekTrainees)}% of 2-week`} />
-          <Card label="Completed" value={volume.completed} valueClass="text-purple-700"
-            sub={`${pct(volume.completed, volume.shortCourseTrainees)}% of short courses`} />
+          <Card label="Graduated" value={volume.graduated} valueClass="text-emerald-700" />
+          <Card label="Completed" value={volume.completed} valueClass="text-purple-700" />
           <Card label="2-Week Trainees" value={volume.twoWeekTrainees} />
           <Card label="Short Courses" value={volume.shortCourseTrainees} />
-          <Card label="Expelled" value={volume.expelled} valueClass="text-red-600"
-            sub={`${pct(volume.expelled, volume.totalTrainees)}% of total`} />
+          <Card label="Expelled" value={volume.expelled} valueClass="text-red-600" />
           <Card label="Blacklisted" value={volume.blacklisted} valueClass="text-gray-700" />
         </div>
       </section>
