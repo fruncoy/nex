@@ -222,19 +222,7 @@ export function NicheCandidates() {
         // Check for duplicates first
         const normalizedPhone = normalizePhone(row.phone.trim())
         
-        // Check blacklist
-        const { data: blacklist } = await supabase
-          .from('blacklist')
-          .select('id, name, phone')
-        const blacklistMatch = blacklist?.find(entry => 
-          normalizePhone(entry.phone) === normalizedPhone
-        )
-        if (blacklistMatch) {
-          skippedCount++
-          continue
-        }
-        
-        // Check niche candidates
+        // Check niche candidates for duplicates
         const { data: nicheCandidates } = await supabase
           .from('niche_candidates')
           .select('id, phone')
@@ -242,18 +230,6 @@ export function NicheCandidates() {
           normalizePhone(c.phone) === normalizedPhone
         )
         if (nicheMatch) {
-          skippedCount++
-          continue
-        }
-        
-        // Check main candidates
-        const { data: mainCandidates } = await supabase
-          .from('candidates')
-          .select('id, phone')
-        const mainMatch = mainCandidates?.find(c => 
-          normalizePhone(c.phone) === normalizedPhone
-        )
-        if (mainMatch) {
           skippedCount++
           continue
         }
@@ -437,24 +413,7 @@ export function NicheCandidates() {
       if (!selectedCandidate) {
         const normalizedInputPhone = normalizePhone(formData.phone)
         
-        // FIRST: Check blacklist (highest priority)
-        const { data: allBlacklistEntries } = await supabase
-          .from('blacklist')
-          .select('id, name, phone, reason')
-        
-        const blacklistPhoneMatch = allBlacklistEntries?.find(entry => 
-          normalizePhone(entry.phone) === normalizedInputPhone
-        )
-        
-        if (blacklistPhoneMatch) {
-          setDuplicateWarning({
-            phone: `BLACKLISTED: ${blacklistPhoneMatch.name} (${blacklistPhoneMatch.reason})`,
-            phoneRecord: { ...blacklistPhoneMatch, status: 'BLACKLISTED', table_source: 'blacklist' }
-          })
-          return
-        }
-        
-        // SECOND: Check for phone number duplicates in niche_candidates
+        // Check for duplicates in niche_candidates
         const { data: allNicheCandidates } = await supabase
           .from('niche_candidates')
           .select('id, name, phone, status, role, email, age, source, inquiry_date, created_at, qualification_notes')
@@ -466,25 +425,8 @@ export function NicheCandidates() {
         if (nichePhoneMatch) {
           // Set warning instead of toast
           setDuplicateWarning({
-            phone: `Phone exists in NICHE: ${nichePhoneMatch.name}`,
+            phone: `Phone exists: ${nichePhoneMatch.name} (${nichePhoneMatch.status})`,
             phoneRecord: { ...nichePhoneMatch, table_source: 'niche_candidates' }
-          })
-          return
-        }
-        
-        // THIRD: Check for phone number in main candidates table
-        const { data: allMainCandidates } = await supabase
-          .from('candidates')
-          .select('id, name, phone, status, role, email, age, source, inquiry_date, created_at')
-        
-        const mainPhoneMatch = allMainCandidates?.find(candidate => 
-          normalizePhone(candidate.phone) === normalizedInputPhone
-        )
-        
-        if (mainPhoneMatch) {
-          setDuplicateWarning({
-            phone: `Phone exists in MAIN: ${mainPhoneMatch.name}`,
-            phoneRecord: { ...mainPhoneMatch, table_source: 'candidates' }
           })
           return
         }
@@ -502,39 +444,6 @@ export function NicheCandidates() {
             `A NICHE candidate named "${existing.name}" with role "${existing.role}" already exists (Phone: ${existing.phone}). \n\nAre you sure you want to add another candidate with the same name and role?`
           )
           if (!confirmDuplicate) {
-            return
-          }
-        }
-        
-        // Check for name + role combination in main candidates
-        const { data: mainNameRoleCheck } = await supabase
-          .from('candidates')
-          .select('id, name, role, phone, status')
-          .eq('name', formData.name.trim())
-          .eq('role', formData.role)
-        
-        if (mainNameRoleCheck && mainNameRoleCheck.length > 0) {
-          const existing = mainNameRoleCheck[0]
-          const confirmMainDuplicate = confirm(
-            `A MAIN candidate named "${existing.name}" with role "${existing.role}" already exists (Phone: ${existing.phone}). \n\nAre you sure you want to add this as a NICHE candidate?`
-          )
-          if (!confirmMainDuplicate) {
-            return
-          }
-        }
-        
-        // Check for name in blacklist
-        const { data: blacklistNameCheck } = await supabase
-          .from('blacklist')
-          .select('id, name, phone, reason')
-          .eq('name', formData.name.trim())
-        
-        if (blacklistNameCheck && blacklistNameCheck.length > 0) {
-          const existing = blacklistNameCheck[0]
-          const confirmBlacklist = confirm(
-            `Name "${existing.name}" is BLACKLISTED (${existing.reason}). Phone: ${existing.phone}\n\nAre you sure you want to add this candidate?`
-          )
-          if (!confirmBlacklist) {
             return
           }
         }
@@ -712,15 +621,11 @@ export function NicheCandidates() {
   const checkImportDuplicates = async (data: any[]) => {
     try {
       // Get all existing records for duplicate checking
-      const [nicheData, mainData, blacklistData] = await Promise.all([
-        supabase.from('niche_candidates').select('name, phone, status'),
-        supabase.from('candidates').select('name, phone, status'),
-        supabase.from('blacklist').select('name, phone, reason')
+      const [nicheData] = await Promise.all([
+        supabase.from('niche_candidates').select('name, phone, status')
       ])
       
       const existingNiche = nicheData.data || []
-      const existingMain = mainData.data || []
-      const existingBlacklist = blacklistData.data || []
       
       const toAdd: any[] = []
       const toSkip: any[] = []
@@ -733,30 +638,12 @@ export function NicheCandidates() {
         
         const normalizedPhone = normalizePhone(row.phone)
         
-        // Check blacklist first
-        const blacklistMatch = existingBlacklist.find(entry => 
-          normalizePhone(entry.phone) === normalizedPhone
-        )
-        if (blacklistMatch) {
-          toSkip.push({ ...row, skipReason: `BLACKLISTED: ${blacklistMatch.reason}` })
-          return
-        }
-        
-        // Check niche candidates
+        // Check niche candidates for duplicates
         const nicheMatch = existingNiche.find(candidate => 
           normalizePhone(candidate.phone) === normalizedPhone
         )
         if (nicheMatch) {
-          toSkip.push({ ...row, skipReason: `Already exists in NICHE (${nicheMatch.status})` })
-          return
-        }
-        
-        // Check main candidates
-        const mainMatch = existingMain.find(candidate => 
-          normalizePhone(candidate.phone) === normalizedPhone
-        )
-        if (mainMatch) {
-          toSkip.push({ ...row, skipReason: `Already exists in MAIN (${mainMatch.status})` })
+          toSkip.push({ ...row, skipReason: `Already exists (${nicheMatch.status})` })
           return
         }
         
@@ -835,8 +722,7 @@ export function NicheCandidates() {
       '• NICHE Candidates ↔ NICHE Training\n' +
       '• Update statuses in both directions\n' +
       '• Remove inactive trainees from training\n' +
-      '• Add missing candidates\n' +
-      '• Update blacklist entries\n\n' +
+      '• Add missing candidates\n\n' +
       'This action affects multiple tables and pages.\n' +
       'Continue with comprehensive sync?'
     )

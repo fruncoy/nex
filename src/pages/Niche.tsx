@@ -298,16 +298,16 @@ export function Niche() {
   }
 
   return (
-    <div className="p-6">
+    <div className="p-4 sm:p-6">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">NICHE Training Dashboard</h1>
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-900">NICHE Training Dashboard</h1>
         <p className="text-gray-600">Overview of specialized training programs</p>
       </div>
 
       {/* Stats Cards - 4 Key Metrics in 1 Row */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-8">
         {cards.map((card, index) => (
-          <div key={index} className="bg-white rounded-lg shadow-lg p-6 hover:shadow-xl transition-shadow">
+          <div key={index} className="bg-white rounded-lg shadow-lg p-4 sm:p-6 hover:shadow-xl transition-shadow">
             <div className="flex items-start justify-between">
               <div className="flex-1">
                 <div className="flex items-center mb-2">
@@ -316,7 +316,7 @@ export function Niche() {
                   </div>
                   <p className="text-sm font-semibold text-gray-700">{card.title}</p>
                 </div>
-                <p className={`text-3xl font-bold ${card.textColor} mb-1`}>{card.value}</p>
+                <p className={`text-2xl sm:text-3xl font-bold ${card.textColor} mb-1`}>{card.value}</p>
                 <p className="text-xs text-gray-500">{card.subtitle}</p>
               </div>
             </div>
@@ -326,7 +326,7 @@ export function Niche() {
 
       {/* Recent Activities */}
       <div className="bg-white rounded-lg shadow">
-        <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+        <div className="px-4 sm:px-6 py-4 border-b border-gray-200 flex justify-between items-center">
           <h2 className="text-lg font-semibold text-gray-900">Recent NICHE Activities</h2>
           <button
             onClick={loadNicheStats}
@@ -335,7 +335,7 @@ export function Niche() {
             Refresh
           </button>
         </div>
-        <div className="p-6">
+        <div className="p-4 sm:p-6">
           {stats.recentActivities.length > 0 ? (
             <div className="space-y-4">
               {stats.recentActivities.map((activity, index) => {
@@ -375,8 +375,8 @@ export function Niche() {
                       {getActivityIcon(activity.type)}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm text-gray-900 font-medium">{activity.text}</p>
-                      <div className="flex items-center space-x-2 mt-1">
+                      <p className="text-sm text-gray-900 font-medium break-words">{activity.text}</p>
+                      <div className="flex flex-wrap items-center gap-2 mt-1">
                         <p className="text-xs text-gray-500">
                           {new Date(activity.created_at).toLocaleDateString('en-US', {
                             month: 'short',

@@ -7,8 +7,6 @@ import { LoginForm } from './components/auth/LoginForm'
 import { NicheCandidates } from './pages/NicheCandidates'
 import { NicheInterviews } from './pages/NicheInterviews'
 import { Updates } from './pages/Updates'
-import { Reminders } from './pages/Reminders'
-import { MeetingNotes } from './pages/MeetingNotes'
 import { Niche } from './pages/Niche'
 import { NicheCourses } from './pages/NicheCourses'
 import { NicheTraining } from './pages/NicheTraining'
@@ -20,13 +18,12 @@ import { Blacklisted } from './pages/Blacklisted'
 import { SMSManagement } from './pages/SMSManagement'
 import { NestaraAI } from './pages/NestaraAI'
 import { CreateProfile } from './pages/CreateProfile'
-import { Calendar } from './pages/Calendar'
+
 import { GetMatch } from './pages/GetMatch'
 import NicheProgressTracking from './pages/NicheProgressTracking'
 import { Digest } from './pages/Digest'
-import { KPIReportList } from './pages/KPIReportList'
-import { KPIReportFill } from './pages/KPIReportFill'
-import { KPIReportView } from './pages/KPIReportView'
+
+import { StaffManagement } from './pages/StaffManagement'
 
 function ProtectedLayout() {
   const { user, loading } = useAuth()
@@ -80,16 +77,11 @@ function AppRoutes() {
         <Route path="niche-grading" element={<NicheGrading />} />
         <Route path="niche-progress" element={<NicheProgressTracking />} />
         <Route path="get-match" element={<GetMatch />} />
-        <Route path="calendar" element={<Calendar />} />
+
         <Route path="sms" element={<SMSManagement />} />
         <Route path="nestara-ai" element={<NestaraAI />} />
+        <Route path="staff-management" element={<StaffManagement />} />
         <Route path="updates" element={<Updates />} />
-        <Route path="reminders" element={<Reminders />} />
-        <Route path="meeting-notes" element={<MeetingNotes />} />
-        <Route path="blacklisted" element={<Blacklisted />} />
-        <Route path="kpi-report" element={<KPIReportList />} />
-        <Route path="kpi-report/:id" element={<KPIReportView />} />
-        <Route path="kpi-report/:id/fill" element={<KPIReportFill />} />
       </Route>
       <Route path="/digest" element={<ProtectedDigest />} />
       <Route path="*" element={<Navigate to="/" replace />} />

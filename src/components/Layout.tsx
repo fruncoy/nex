@@ -24,7 +24,8 @@ import {
   Clock,
   UserX,
   Award,
-  Heart
+  Heart,
+  UserCog
 } from 'lucide-react'
 
 export function Layout() {
@@ -75,18 +76,9 @@ export function Layout() {
         { name: 'GetMatch', href: '/get-match', icon: Heart }
       ]
     },
-    { 
-      name: 'Updates', 
-      href: '/updates', 
-      icon: MessageCircle,
-      subItems: [
-        { name: 'Reminders', href: '/reminders', icon: Clock },
-        { name: 'Meeting Notes', href: '/meeting-notes', icon: MessageCircle }
-      ]
-    },
-    { name: 'Blacklisted', href: '/blacklisted', icon: UserX },
-    { name: 'KPI Report', href: '/kpi-report', icon: FileText },
-    { name: 'Calendar', href: '/calendar', icon: Calendar },
+    { name: 'Staff Management', href: '/staff-management', icon: UserCog },
+    { name: 'Updates', href: '/updates', icon: MessageCircle },
+
     { name: 'SMS Management', href: '/sms', icon: MessageCircle },
     { name: 'Nestara AI', href: '/nestara-ai', icon: Brain },
   ]
