@@ -3,13 +3,14 @@ import React from 'react'
 interface PhoneInputProps {
   value: string
   onChange: (value: string) => void
+  onBlur?: () => void
   placeholder?: string
   required?: boolean
   className?: string
   disabled?: boolean
 }
 
-export function PhoneInput({ value, onChange, placeholder = "700123456", required, className, disabled }: PhoneInputProps) {
+export function PhoneInput({ value, onChange, onBlur, placeholder = "700123456", required, className, disabled }: PhoneInputProps) {
   const formatPhoneNumber = (input: string) => {
     // Remove all non-digits
     let cleaned = input.replace(/[^0-9]/g, '')
@@ -56,6 +57,7 @@ export function PhoneInput({ value, onChange, placeholder = "700123456", require
         value={displayValue}
         onChange={handleChange}
         onPaste={handlePaste}
+        onBlur={onBlur}
         required={required}
         disabled={disabled}
         className={`pl-12 ${className || 'w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent'}`}

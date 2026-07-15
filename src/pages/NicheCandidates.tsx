@@ -51,11 +51,10 @@ export function NicheCandidates() {
   const [searchTerm, setSearchTerm] = useState('')
   const [filterStatus, setFilterStatus] = useState('all')
   const [dateRange, setDateRange] = useState<{ start: string; end: string }>({ 
-    start: '2025-02-01', 
+    start: new Date().toISOString().split('T')[0], 
     end: new Date().toISOString().split('T')[0]
   })
   const [selectedYear, setSelectedYear] = useState<string>(new Date().getFullYear().toString())
-  const [selectedMonth, setSelectedMonth] = useState<string>((new Date().getMonth() + 1).toString().padStart(2, '0'))
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [selectedCandidate, setSelectedCandidate] = useState<NicheCandidate | null>(null)
@@ -132,12 +131,13 @@ export function NicheCandidates() {
     }
   }, [])
 
-  // Update date range when year or month changes
+  // Update date range when year changes
   useEffect(() => {
-    const startDate = `${selectedYear}-${selectedMonth}-01`
-    const endDate = `${selectedYear}-${selectedMonth}-${new Date(parseInt(selectedYear), parseInt(selectedMonth), 0).getDate().toString().padStart(2, '0')}`
-    setDateRange({ start: startDate, end: endDate })
-  }, [selectedYear, selectedMonth])
+    setDateRange({
+      start: `${selectedYear}-01-01`,
+      end: `${selectedYear}-12-31`
+    })
+  }, [selectedYear])
 
   // Save to localStorage whenever tableData changes
   useEffect(() => {
@@ -1084,29 +1084,10 @@ export function NicheCandidates() {
           onFilterChange={setFilterStatus}
           statusOptions={filterStatusOptions}
           placeholder="Search by name, phone, or role..."
+          statusLabel="Status"
         />
         
-        <div className="flex gap-3 flex-wrap">
-          <select
-            value={sourceFilter}
-            onChange={(e) => setSourceFilter(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
-          >
-            <option value="all">All Sources</option>
-            {sourceOptions.map(source => (
-              <option key={source} value={source}>{source}</option>
-            ))}
-          </select>
-          
-          <select
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
-          >
-            <option value="all">All Categories</option>
-            <option value="2-Week Flagship">2-Week Flagship</option>
-            <option value="Short Course">Short Course</option>
-          </select>
+        <div className="hidden">
           
           <select
             value={selectedYear}
@@ -1116,18 +1097,6 @@ export function NicheCandidates() {
             {[...Array(6)].map((_, i) => {
               const year = new Date().getFullYear() - 3 + i
               return <option key={year} value={year}>{year}</option>
-            })}
-          </select>
-          
-          <select
-            value={selectedMonth}
-            onChange={(e) => setSelectedMonth(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
-          >
-            {[...Array(12)].map((_, i) => {
-              const month = (i + 1).toString().padStart(2, '0')
-              const monthName = new Date(0, i).toLocaleString('default', { month: 'long' })
-              return <option key={month} value={month}>{monthName}</option>
             })}
           </select>
           
@@ -1292,13 +1261,13 @@ export function NicheCandidates() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Notes</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Phone</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Source</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Inquiry Date</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
@@ -1339,6 +1308,9 @@ export function NicheCandidates() {
                     <div className="text-sm font-medium text-gray-900">{candidate.name}</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
+                    <StatusBadge status={candidate.status} type="niche_candidate" />
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm text-gray-900">
                       <Phone className="w-3 h-3 mr-1 inline" />
                       {candidate.phone}
@@ -1356,7 +1328,7 @@ export function NicheCandidates() {
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{formatDisplayDate(candidate.inquiry_date)}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium" style={{}}>
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => {
@@ -1456,9 +1428,6 @@ export function NicheCandidates() {
                         ))}
                       </select>
                     </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <StatusBadge status={candidate.status} type="niche_candidate" />
                   </td>
                 </tr>
               ))}
@@ -1570,84 +1539,38 @@ export function NicheCandidates() {
                   <PhoneInput
                     value={formData.phone}
                     onChange={(value) => {
-                      console.log('Phone changed to:', value) // Debug log
                       setFormData({ ...formData, phone: value })
-                      // Clear previous warnings immediately when typing
-                      if (value !== formData.phone) {
-                        setDuplicateWarning({})
-                      }
+                      setDuplicateWarning({})
                     }}
                     required
                   />
-                  
-                  {checkingDuplicates && (
-                    <div className="flex items-center text-blue-600 text-sm mt-2">
-                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      Checking for duplicates...
-                    </div>
-                  )}
                   {duplicateWarning.phone && (
-                    <div className="bg-red-50 border border-red-200 rounded-lg p-3 mt-2">
-                      <div className="flex items-start justify-between">
-                        <div className="flex items-start">
-                          <svg className="w-5 h-5 text-red-500 mr-2 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                          </svg>
-                          <div>
-                            <p className="text-red-800 font-medium text-sm">
-                              ⚠️ DUPLICATE PHONE NUMBER DETECTED
-                            </p>
-                            <p className="text-red-700 text-sm mt-1">
-                              {duplicateWarning.phone}
-                            </p>
-                          </div>
-                        </div>
-                        {duplicateWarning.phoneRecord && (
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              console.log('View Record clicked:', duplicateWarning.phoneRecord) // Debug log
-                              setDuplicateRecord(duplicateWarning.phoneRecord)
-                              
-                              // Load notes based on table source
-                              if (duplicateWarning.phoneRecord.table_source === 'niche_candidates') {
-                                try {
-                                  const { data: notes } = await supabase
-                                    .from('niche_candidate_notes')
-                                    .select('*')
-                                    .eq('niche_candidate_id', duplicateWarning.phoneRecord.id)
-                                    .order('created_at', { ascending: false })
-                                  setDuplicateRecordNotes(notes || [])
-                                } catch (error) {
-                                  console.error('Error loading niche notes:', error)
-                                  setDuplicateRecordNotes([])
-                                }
-                              } else if (duplicateWarning.phoneRecord.table_source === 'candidates') {
-                                try {
-                                  const { data: notes } = await supabase
-                                    .from('candidate_notes')
-                                    .select('*')
-                                    .eq('candidate_id', duplicateWarning.phoneRecord.id)
-                                    .order('created_at', { ascending: false })
-                                  setDuplicateRecordNotes(notes || [])
-                                } catch (error) {
-                                  console.error('Error loading candidate notes:', error)
-                                  setDuplicateRecordNotes([])
-                                }
-                              } else {
-                                setDuplicateRecordNotes([])
-                              }
-                              
-                              setShowDuplicateModal(true)
-                            }}
-                            className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1 rounded font-medium ml-3 flex-shrink-0"
-                          >
-                            View Record
-                          </button>
-                        )}
+                    <div className="mt-2 border border-red-300 rounded-lg overflow-hidden">
+                      <div className="bg-red-600 px-3 py-2 flex items-center justify-between">
+                        <span className="text-white text-sm font-semibold">⚠️ Duplicate Number — Already Exists</span>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            setDuplicateRecord(duplicateWarning.phoneRecord)
+                            const { data: notes } = await supabase
+                              .from('niche_candidate_notes')
+                              .select('*')
+                              .eq('niche_candidate_id', duplicateWarning.phoneRecord.id)
+                              .order('created_at', { ascending: false })
+                            setDuplicateRecordNotes(notes || [])
+                            setShowDuplicateModal(true)
+                          }}
+                          className="text-xs bg-white text-red-600 font-semibold px-2 py-1 rounded hover:bg-red-50"
+                        >
+                          View Existing Record
+                        </button>
+                      </div>
+                      <div className="bg-red-50 px-3 py-2 text-sm text-red-800">
+                        <span className="font-medium">{duplicateWarning.phoneRecord?.name}</span>
+                        <span className="mx-2">·</span>
+                        <span>{duplicateWarning.phoneRecord?.role}</span>
+                        <span className="mx-2">·</span>
+                        <span className="font-medium">{duplicateWarning.phoneRecord?.status}</span>
                       </div>
                     </div>
                   )}

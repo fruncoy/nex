@@ -114,15 +114,11 @@ export function StaffManagement() {
   }, [])
 
   useEffect(() => {
-    // Filter staff by cohort
     if (cohortFilter === 'all') {
-      setFilteredStaffMembers(staffMembers)
+      setFilteredStaffMembers(staffMembers.filter(m => m.employment_status !== 'Blacklisted'))
     } else {
       setFilteredStaffMembers(
-        staffMembers.filter(member => {
-          const memberCohortId = member.niche_training?.niche_cohorts?.id
-          return memberCohortId === cohortFilter
-        })
+        staffMembers.filter(member => member.niche_training?.niche_cohorts?.id === cohortFilter)
       )
     }
   }, [cohortFilter, staffMembers])
@@ -712,6 +708,7 @@ export function StaffManagement() {
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-12">#</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                       <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Referrals</th>
                       <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Meetings Attended</th>
 
@@ -743,6 +740,15 @@ export function StaffManagement() {
                               member.name
                             )}
                           </div>
+                        </td>
+                        <td className="px-3 py-4 whitespace-nowrap">
+                          <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
+                            member.employment_status === 'Employed' ? 'bg-green-100 text-green-800' :
+                            member.employment_status === 'Blacklisted' ? 'bg-red-100 text-red-800' :
+                            'bg-yellow-100 text-yellow-800'
+                          }`}>
+                            {member.employment_status || 'Yet to be Employed'}
+                          </span>
                         </td>
                         <td className="px-3 py-4 whitespace-nowrap text-center text-sm text-gray-600">
                           {member.referrals || 0}
@@ -810,6 +816,9 @@ export function StaffManagement() {
                     <p className="font-semibold text-gray-900">{formatMeetingDate(meeting.date_time)}</p>
                     {meeting.meeting_type && <p className="text-xs text-gray-400 mt-0.5">{meeting.meeting_type}</p>}
                     {meeting.notes && <p className="text-sm text-gray-500 mt-1">{meeting.notes}</p>}
+                    <p className="text-xs text-green-700 font-medium mt-1">
+                      {attendance.filter(a => a.meeting_id === meeting.id && a.present).length} attended
+                    </p>
                   </div>
                   <div className="relative ml-2">
                     <button
