@@ -25,6 +25,7 @@ interface StaffMember {
   updated_at: string
   created_by?: string
   updated_by?: string
+  cohort_label?: string
   niche_training?: {
     cohort_id?: string
     niche_cohorts?: {
@@ -116,6 +117,9 @@ export function StaffManagement() {
   useEffect(() => {
     if (cohortFilter === 'all') {
       setFilteredStaffMembers(staffMembers.filter(m => m.employment_status !== 'Blacklisted'))
+    } else if (cohortFilter.startsWith('label:')) {
+      const label = cohortFilter.slice(6)
+      setFilteredStaffMembers(staffMembers.filter(m => m.cohort_label === label))
     } else {
       setFilteredStaffMembers(
         staffMembers.filter(member => member.niche_training?.niche_cohorts?.id === cohortFilter)
@@ -633,6 +637,9 @@ export function StaffManagement() {
                       Cohort {cohort.cohort_number} {cohort.status === 'active' ? '(Active)' : cohort.status === 'completed' ? '(Completed)' : ''}
                     </option>
                   ))}
+                  {[...new Set(staffMembers.map(m => m.cohort_label).filter(Boolean))].map(label => (
+                    <option key={`label:${label}`} value={`label:${label}`}>{label}</option>
+                  ))}
                 </select>
                 <span className="text-sm text-gray-500">{filteredStaffMembers.length}/{staffMembers.length} members</span>
               </div>
@@ -735,6 +742,10 @@ export function StaffManagement() {
                             {member.niche_training?.niche_cohorts ? (
                               <>
                                 {member.name} <span className="text-xs text-orange-600 italic">Cohort {member.niche_training.niche_cohorts.cohort_number}</span>
+                              </>
+                            ) : member.cohort_label ? (
+                              <>
+                                {member.name} <span className="text-xs text-orange-600 italic">{member.cohort_label}</span>
                               </>
                             ) : (
                               member.name
@@ -857,12 +868,18 @@ export function StaffManagement() {
                         {cohorts.filter(c => c.status !== 'upcoming').map(c => (
                           <option key={c.id} value={c.id}>Cohort {c.cohort_number}</option>
                         ))}
+                        {[...new Set(staffMembers.map(m => m.cohort_label).filter(Boolean))].map(label => (
+                          <option key={`label:${label}`} value={`label:${label}`}>{label}</option>
+                        ))}
                       </select>
                     </div>
                     <div className="space-y-2 max-h-64 overflow-y-auto">
                       {staffMembers
                         .filter(m => m.employment_status !== 'Blacklisted')
-                        .filter(m => meetingCohortFilter === 'all' || m.niche_training?.niche_cohorts?.id === meetingCohortFilter)
+                        .filter(m => meetingCohortFilter === 'all' || 
+                          (meetingCohortFilter.startsWith('label:') 
+                            ? m.cohort_label === meetingCohortFilter.slice(6)
+                            : m.niche_training?.niche_cohorts?.id === meetingCohortFilter))
                         .filter(m => m.name.toLowerCase().includes(meetingSearch.toLowerCase()))
                         .map(member => {
                           const att = attendance.find(a => a.meeting_id === meeting.id && a.staff_id === member.id)
@@ -933,6 +950,9 @@ export function StaffManagement() {
                   {cohorts.filter(c => c.status !== 'upcoming').map(c => (
                     <option key={c.id} value={c.id}>Cohort {c.cohort_number}</option>
                   ))}
+                  {[...new Set(staffMembers.map(m => m.cohort_label).filter(Boolean))].map(label => (
+                    <option key={`label:${label}`} value={`label:${label}`}>{label}</option>
+                  ))}
                 </select>
               </div>
             </div>
@@ -949,7 +969,10 @@ export function StaffManagement() {
                   <tbody className="bg-white divide-y divide-gray-200">
                     {staffMembers
                       .filter(m => m.employment_status !== 'Blacklisted')
-                      .filter(m => referralCohortFilter === 'all' || m.niche_training?.niche_cohorts?.id === referralCohortFilter)
+                      .filter(m => referralCohortFilter === 'all' || 
+                          (referralCohortFilter.startsWith('label:')
+                            ? m.cohort_label === referralCohortFilter.slice(6)
+                            : m.niche_training?.niche_cohorts?.id === referralCohortFilter))
                       .filter(m => m.name.toLowerCase().includes(referralSearch.toLowerCase()))
                       .map((member, index) => (
                         <tr key={member.id} className="hover:bg-gray-50">
@@ -958,6 +981,9 @@ export function StaffManagement() {
                             {member.name}
                             {member.niche_training?.niche_cohorts && (
                               <span className="ml-2 text-xs text-orange-600 italic">Cohort {member.niche_training.niche_cohorts.cohort_number}</span>
+                            )}
+                            {!member.niche_training?.niche_cohorts && member.cohort_label && (
+                              <span className="ml-2 text-xs text-orange-600 italic">{member.cohort_label}</span>
                             )}
                           </td>
                           <td className="px-6 py-3">
