@@ -84,6 +84,7 @@ export function StaffManagement() {
   const [meetings, setMeetings] = useState<StaffMeeting[]>([])
   const [contributions, setContributions] = useState<Contribution[]>([])
   const [attendance, setAttendance] = useState<MeetingAttendance[]>([])
+  const [allAttendance, setAllAttendance] = useState<MeetingAttendance[]>([])
   const [loading, setLoading] = useState(true)
   const [meetingSearch, setMeetingSearch] = useState('')
   const [meetingCohortFilter, setMeetingCohortFilter] = useState('all')
@@ -249,7 +250,10 @@ export function StaffManagement() {
       }
       if (meetingsRes.data) setMeetings(meetingsRes.data)
       if (contributionsRes.data) setContributions(contributionsRes.data)
-      if (attendanceRes.data) setAttendance(attendanceRes.data)
+      if (attendanceRes.data) {
+        setAttendance(attendanceRes.data)
+        setAllAttendance(attendanceRes.data)
+      }
     } catch (error) {
       console.error('Error loading data:', error)
       showToast('Failed to load data', 'error')
@@ -264,7 +268,14 @@ export function StaffManagement() {
         .from('newstaff_meeting_attendance')
         .select('*, staff:newstaff_members(*)')
         .eq('meeting_id', meetingId)
-      if (data) setAttendance(data)
+      if (data) {
+        // Merge into allAttendance, replace records for this meeting only
+        setAllAttendance(prev => [
+          ...prev.filter(a => a.meeting_id !== meetingId),
+          ...data
+        ])
+        setAttendance(data)
+      }
     } catch (error) {
       console.error('Error loading attendance:', error)
     }
@@ -365,7 +376,7 @@ export function StaffManagement() {
             present: true
           })
       }
-      loadAttendance(meetingId)
+      await loadAttendance(meetingId)
     } catch (error) {
       console.error('Error updating attendance:', error)
       showToast('Failed to update attendance', 'error')
@@ -396,8 +407,8 @@ export function StaffManagement() {
     let lines = [`${formatMeetingDate(meeting.date_time)}, ${meeting.meeting_type || 'Meeting'} Attendance`, '']
     cohortGroups.forEach(group => {
       lines.push(`${group.label}`)
-      const present = group.members.filter(m => attendance.find(a => a.meeting_id === meeting.id && a.staff_id === m.id && a.present))
-      const absent = group.members.filter(m => !attendance.find(a => a.meeting_id === meeting.id && a.staff_id === m.id && a.present))
+      const present = group.members.filter(m => allAttendance.find(a => a.meeting_id === meeting.id && a.staff_id === m.id && a.present))
+      const absent = group.members.filter(m => !allAttendance.find(a => a.meeting_id === meeting.id && a.staff_id === m.id && a.present))
       present.forEach((m, i) => lines.push(`  ${i + 1}. ${m.name} → Present ✓`))
       absent.forEach((m, i) => lines.push(`  ${present.length + i + 1}. ${m.name} → Absent ✗`))
       lines.push('')
@@ -828,7 +839,7 @@ export function StaffManagement() {
                     {meeting.meeting_type && <p className="text-xs text-gray-400 mt-0.5">{meeting.meeting_type}</p>}
                     {meeting.notes && <p className="text-sm text-gray-500 mt-1">{meeting.notes}</p>}
                     <p className="text-xs text-green-700 font-medium mt-1">
-                      {attendance.filter(a => a.meeting_id === meeting.id && a.present).length} attended
+                      {allAttendance.filter(a => a.meeting_id === meeting.id && a.present).length} attended
                     </p>
                   </div>
                   <div className="relative ml-2">
@@ -1058,9 +1069,11 @@ export function StaffManagement() {
                         </td>
                         <td className="px-3 sm:px-6 py-4 whitespace-nowrap">
                           <div className="text-sm font-medium text-gray-900">{member.name}</div>
-                          {member.niche_training?.niche_cohorts && (
+                          {member.niche_training?.niche_cohorts ? (
                             <span className="text-xs text-orange-600 italic">Cohort {member.niche_training.niche_cohorts.cohort_number}</span>
-                          )}
+                          ) : member.cohort_label ? (
+                            <span className="text-xs text-orange-600 italic">{member.cohort_label}</span>
+                          ) : null}
                         </td>
                         <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-center text-sm text-gray-500">{member.meetingsAttended || 0}</td>
                         <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-center text-sm text-gray-500">{member.referrals || 0}</td>
