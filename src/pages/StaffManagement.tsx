@@ -423,7 +423,7 @@ export function StaffManagement() {
     if (delta === 0) return
     try {
       if (delta > 0) {
-        await supabase.from('newstaff_contributions').insert({
+        const { error } = await supabase.from('newstaff_contributions').insert({
           staff_id: staffId,
           contribution_type: 'Referral',
           description: 'Referral',
@@ -431,23 +431,36 @@ export function StaffManagement() {
           date_of_contribution: new Date().toISOString().split('T')[0],
           created_by: staff?.name || user?.email || 'System'
         })
+        if (error) throw error
       } else {
-        const { data } = await supabase
+        const { data, error: fetchError } = await supabase
           .from('newstaff_contributions')
           .select('id')
           .eq('staff_id', staffId)
           .eq('contribution_type', 'Referral')
           .order('created_at', { ascending: false })
           .limit(1)
+        if (fetchError) throw fetchError
         if (data && data[0]) {
-          await supabase.from('newstaff_contributions').delete().eq('id', data[0].id)
+          const { error: deleteError } = await supabase
+            .from('newstaff_contributions')
+            .delete()
+            .eq('id', data[0].id)
+          if (deleteError) throw deleteError
         }
       }
-      const next = Math.max(0, current + delta)
-      setStaffMembers(prev => prev.map(m => m.id === staffId ? { ...m, referrals: next } : m))
-      setFilteredStaffMembers(prev => prev.map(m => m.id === staffId ? { ...m, referrals: next } : m))
-    } catch (error) {
-      showToast('Failed to update referrals', 'error')
+      // Reload contributions from DB to keep counts accurate
+      const { data: updatedContribs } = await supabase
+        .from('newstaff_contributions')
+        .select('*')
+        .eq('staff_id', staffId)
+        .eq('contribution_type', 'Referral')
+      const newCount = updatedContribs?.length || 0
+      setStaffMembers(prev => prev.map(m => m.id === staffId ? { ...m, referrals: newCount } : m))
+      setFilteredStaffMembers(prev => prev.map(m => m.id === staffId ? { ...m, referrals: newCount } : m))
+    } catch (error: any) {
+      console.error('Failed to update referrals:', error)
+      showToast(error?.message || 'Failed to update referrals', 'error')
     }
   }
 
