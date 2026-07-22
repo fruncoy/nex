@@ -90,6 +90,8 @@ export function StaffManagement() {
   const [meetingCohortFilter, setMeetingCohortFilter] = useState('all')
   const [referralSearch, setReferralSearch] = useState('')
   const [referralCohortFilter, setReferralCohortFilter] = useState('all')
+  const [pendingReferrals, setPendingReferrals] = useState<Record<string, number>>({})
+  const [savingReferrals, setSavingReferrals] = useState<Record<string, boolean>>({})
   const [openMenuMeetingId, setOpenMenuMeetingId] = useState<string | null>(null)
   const [confirmDeleteMeetingId, setConfirmDeleteMeetingId] = useState<string | null>(null)
   const [showAddStaffModal, setShowAddStaffModal] = useState(false)
@@ -419,18 +421,22 @@ export function StaffManagement() {
     }).catch(() => showToast('Failed to copy', 'error'))
   }
 
-  const handleUpdateReferrals = async (staffId: string, current: number, delta: number) => {
-    if (delta === 0) return
+  const handleSaveReferrals = async (staffId: string, savedCount: number) => {
+    const pending = pendingReferrals[staffId]
+    if (pending === undefined || pending === savedCount) return
+    const delta = pending - savedCount
+    setSavingReferrals(prev => ({ ...prev, [staffId]: true }))
     try {
       if (delta > 0) {
-        const { error } = await supabase.from('newstaff_contributions').insert({
+        const inserts = Array.from({ length: delta }, () => ({
           staff_id: staffId,
           contribution_type: 'Referral',
           description: 'Referral',
           points: 10,
           date_of_contribution: new Date().toISOString().split('T')[0],
           created_by: staff?.name || user?.email || 'System'
-        })
+        }))
+        const { error } = await supabase.from('newstaff_contributions').insert(inserts)
         if (error) throw error
       } else {
         const { data, error: fetchError } = await supabase
@@ -439,28 +445,31 @@ export function StaffManagement() {
           .eq('staff_id', staffId)
           .eq('contribution_type', 'Referral')
           .order('created_at', { ascending: false })
-          .limit(1)
+          .limit(Math.abs(delta))
         if (fetchError) throw fetchError
-        if (data && data[0]) {
+        if (data && data.length > 0) {
           const { error: deleteError } = await supabase
             .from('newstaff_contributions')
             .delete()
-            .eq('id', data[0].id)
+            .in('id', data.map(d => d.id))
           if (deleteError) throw deleteError
         }
       }
-      // Reload contributions from DB to keep counts accurate
       const { data: updatedContribs } = await supabase
         .from('newstaff_contributions')
-        .select('*')
+        .select('id')
         .eq('staff_id', staffId)
         .eq('contribution_type', 'Referral')
       const newCount = updatedContribs?.length || 0
       setStaffMembers(prev => prev.map(m => m.id === staffId ? { ...m, referrals: newCount } : m))
       setFilteredStaffMembers(prev => prev.map(m => m.id === staffId ? { ...m, referrals: newCount } : m))
+      setPendingReferrals(prev => { const n = { ...prev }; delete n[staffId]; return n })
+      showToast('Referrals saved', 'success')
     } catch (error: any) {
-      console.error('Failed to update referrals:', error)
-      showToast(error?.message || 'Failed to update referrals', 'error')
+      console.error('Failed to save referrals:', error)
+      showToast(error?.message || 'Failed to save referrals', 'error')
+    } finally {
+      setSavingReferrals(prev => { const n = { ...prev }; delete n[staffId]; return n })
     }
   }
 
@@ -1011,21 +1020,37 @@ export function StaffManagement() {
                             )}
                           </td>
                           <td className="px-6 py-3">
-                            <div className="flex items-center justify-center gap-3">
-                              <button
-                                onClick={() => handleUpdateReferrals(member.id, member.referrals || 0, -1)}
-                                className="w-7 h-7 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600"
-                              >
-                                <Minus className="w-3 h-3" />
-                              </button>
-                              <span className="text-sm font-semibold w-6 text-center">{member.referrals || 0}</span>
-                              <button
-                                onClick={() => handleUpdateReferrals(member.id, member.referrals || 0, 1)}
-                                className="w-7 h-7 flex items-center justify-center rounded-full bg-nestalk-primary hover:bg-nestalk-primary/90 text-white"
-                              >
-                                <Plus className="w-3 h-3" />
-                              </button>
-                            </div>
+                            {(() => {
+                              const saved = member.referrals || 0
+                              const pending = pendingReferrals[member.id] ?? saved
+                              const isDirty = pending !== saved
+                              return (
+                                <div className="flex items-center justify-center gap-2">
+                                  <button
+                                    onClick={() => setPendingReferrals(prev => ({ ...prev, [member.id]: Math.max(0, (prev[member.id] ?? saved) - 1) }))}
+                                    className="w-7 h-7 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600"
+                                  >
+                                    <Minus className="w-3 h-3" />
+                                  </button>
+                                  <span className={`text-sm font-semibold w-6 text-center ${isDirty ? 'text-nestalk-primary' : ''}`}>{pending}</span>
+                                  <button
+                                    onClick={() => setPendingReferrals(prev => ({ ...prev, [member.id]: (prev[member.id] ?? saved) + 1 }))}
+                                    className="w-7 h-7 flex items-center justify-center rounded-full bg-nestalk-primary hover:bg-nestalk-primary/90 text-white"
+                                  >
+                                    <Plus className="w-3 h-3" />
+                                  </button>
+                                  {isDirty && (
+                                    <button
+                                      onClick={() => handleSaveReferrals(member.id, saved)}
+                                      disabled={savingReferrals[member.id]}
+                                      className="px-2 py-1 text-xs bg-nestalk-primary text-white rounded hover:bg-nestalk-primary/90 disabled:opacity-50"
+                                    >
+                                      {savingReferrals[member.id] ? '...' : 'Save'}
+                                    </button>
+                                  )}
+                                </div>
+                              )
+                            })()}
                           </td>
                         </tr>
                       ))}
