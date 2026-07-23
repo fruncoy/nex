@@ -913,7 +913,7 @@ Karibu Sana!`
 function BroadcastTab({ onRefresh }: { onRefresh: () => void }) {
   const { staff } = useAuth()
   const { showToast } = useToast()
-  const [audience, setAudience] = useState<'all_trainees' | 'all_staff' | 'cohort' | 'custom'>('all_trainees')
+  const [audience, setAudience] = useState<'all_trainees' | 'all_staff' | 'cohort' | 'newstaff' | 'custom'>('all_trainees')
   const [cohorts, setCohorts] = useState<Cohort[]>([])
   const [selectedCohort, setSelectedCohort] = useState('')
   const [recipients, setRecipients] = useState<{ id?: string; name: string; phone: string; type: 'candidate' | 'staff' | 'client' }[]>([])
@@ -953,6 +953,16 @@ function BroadcastTab({ onRefresh }: { onRefresh: () => void }) {
       } else if (audience === 'all_staff') {
         const { data } = await supabase.from('staff').select('id, name, phone').not('phone', 'is', null).neq('phone', '')
         setRecipients((data || []).map(s => ({ id: s.id, name: s.name, phone: s.phone, type: 'staff' as const })))
+      } else if (audience === 'newstaff') {
+        const { data } = await supabase.from('newstaff_members').select('id, name, phone').not('phone', 'is', null).neq('phone', '')
+        const seen = new Set<string>()
+        const deduped = (data || []).filter(s => {
+          const normalized = formatPhone(s.phone).replace(/^\+/, '').replace(/^254254/, '254')
+          if (seen.has(normalized)) return false
+          seen.add(normalized)
+          return true
+        })
+        setRecipients(deduped.map(s => ({ id: s.id, name: s.name, phone: formatPhone(s.phone).replace(/^\+254254/, '+254'), type: 'staff' as const })))
       } else if (audience === 'cohort' && selectedCohort) {
         const { data } = await supabase.from('niche_training').select('id, name, phone').eq('cohort_id', selectedCohort).not('phone', 'is', null).neq('phone', '')
         setRecipients((data || []).map(t => ({ id: t.id, name: t.name, phone: formatPhone(t.phone), type: 'candidate' as const })))
@@ -998,10 +1008,11 @@ function BroadcastTab({ onRefresh }: { onRefresh: () => void }) {
             <div className="text-sm font-semibold text-gray-700 mb-2">Audience</div>
             <div className="grid grid-cols-2 gap-2">
               {[
-                { value: 'all_trainees', label: 'All Trainees' },
-                { value: 'all_staff', label: 'All Staff' },
-                { value: 'cohort', label: 'Specific Cohort' },
-                { value: 'custom', label: 'Custom Numbers' },
+                { value: 'all_trainees', label: 'A. All Trainees' },
+                { value: 'all_staff', label: 'B. All Staff' },
+                { value: 'cohort', label: 'C. Specific Cohort' },
+                { value: 'newstaff', label: 'D. Staff Members' },
+                { value: 'custom', label: 'E. Custom Numbers' },
               ].map(opt => (
                 <button key={opt.value} onClick={() => setAudience(opt.value as any)}
                   className={`px-3 py-2 text-sm rounded-lg border transition-colors ${audience === opt.value ? 'border-nestalk-primary bg-nestalk-primary/5 text-nestalk-primary font-medium' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
