@@ -394,25 +394,33 @@ export function StaffManagement() {
     return d.toLocaleDateString('en-GB', { weekday: 'short' }).toUpperCase() + ' ' + day + suffix + ' ' + d.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
   }
 
+  const toInitials = (name: string) => {
+    const parts = name.trim().split(/\s+/)
+    if (parts.length === 1) return name
+    const last = parts[parts.length - 1]
+    const initials = parts.slice(0, -1).map(p => p[0].toUpperCase()).join('')
+    return `${initials} ${last}`
+  }
+
   const handleCopyAttendanceList = (meeting: StaffMeeting) => {
     const nonBlacklisted = staffMembers.filter(m => m.employment_status !== 'Blacklisted')
-    // Group by cohort
-    const cohortGroups: { label: string; members: StaffMember[] }[] = []
+    const cohortGroups: { label: string; members: StaffMember[]; cohortNum: number }[] = []
     const cohortIds = [...new Set(nonBlacklisted.map(m => m.niche_training?.niche_cohorts?.id || '__none__'))]
     cohortIds.forEach(cid => {
       const members = nonBlacklisted.filter(m => (m.niche_training?.niche_cohorts?.id || '__none__') === cid)
       const cohortNum = members[0]?.niche_training?.niche_cohorts?.cohort_number
-      cohortGroups.push({ label: cohortNum ? `Cohort ${cohortNum}` : 'No Cohort', members, cohortNum: cohortNum || 9999 })
+      const fallbackLabel = members[0]?.cohort_label || 'No Cohort'
+      cohortGroups.push({ label: cohortNum ? `Cohort ${cohortNum}` : fallbackLabel, members, cohortNum: cohortNum || 9999 })
     })
-    cohortGroups.sort((a, b) => (a as any).cohortNum - (b as any).cohortNum)
+    cohortGroups.sort((a, b) => a.cohortNum - b.cohortNum)
 
     let lines = [`${formatMeetingDate(meeting.date_time)}, ${meeting.meeting_type || 'Meeting'} Attendance`, '']
     cohortGroups.forEach(group => {
       lines.push(`${group.label}`)
       const present = group.members.filter(m => allAttendance.find(a => a.meeting_id === meeting.id && a.staff_id === m.id && a.present))
       const absent = group.members.filter(m => !allAttendance.find(a => a.meeting_id === meeting.id && a.staff_id === m.id && a.present))
-      present.forEach((m, i) => lines.push(`  ${i + 1}. ${m.name} → Present ✓`))
-      absent.forEach((m, i) => lines.push(`  ${present.length + i + 1}. ${m.name} → Absent ✗`))
+      present.forEach((m, i) => lines.push(`  ${i + 1}. ${toInitials(m.name)} → Present ✓`))
+      absent.forEach((m, i) => lines.push(`  ${present.length + i + 1}. ${toInitials(m.name)} → Absent ✗`))
       lines.push('')
     })
 
