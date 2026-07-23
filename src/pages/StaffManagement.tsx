@@ -996,7 +996,8 @@ export function StaffManagement() {
                     <tr>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-12">#</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Referrals</th>
+                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-24">Referrals</th>
+                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Update</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
@@ -1007,53 +1008,52 @@ export function StaffManagement() {
                             ? m.cohort_label === referralCohortFilter.slice(6)
                             : m.niche_training?.niche_cohorts?.id === referralCohortFilter))
                       .filter(m => m.name.toLowerCase().includes(referralSearch.toLowerCase()))
-                      .map((member, index) => (
-                        <tr key={member.id} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 text-sm text-gray-500">{index + 1}</td>
-                          <td className="px-6 py-3 text-sm font-medium text-gray-900">
-                            {member.name}
-                            {member.niche_training?.niche_cohorts && (
-                              <span className="ml-2 text-xs text-orange-600 italic">Cohort {member.niche_training.niche_cohorts.cohort_number}</span>
-                            )}
-                            {!member.niche_training?.niche_cohorts && member.cohort_label && (
-                              <span className="ml-2 text-xs text-orange-600 italic">{member.cohort_label}</span>
-                            )}
-                          </td>
-                          <td className="px-6 py-3">
-                            {(() => {
-                              const saved = member.referrals || 0
-                              const pending = pendingReferrals[member.id] ?? saved
-                              const isDirty = pending !== saved
-                              return (
-                                <div className="flex items-center justify-center gap-2">
-                                  <button
-                                    onClick={() => setPendingReferrals(prev => ({ ...prev, [member.id]: Math.max(0, (prev[member.id] ?? saved) - 1) }))}
-                                    className="w-7 h-7 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600"
-                                  >
-                                    <Minus className="w-3 h-3" />
-                                  </button>
-                                  <span className={`text-sm font-semibold w-6 text-center ${isDirty ? 'text-nestalk-primary' : ''}`}>{pending}</span>
-                                  <button
-                                    onClick={() => setPendingReferrals(prev => ({ ...prev, [member.id]: (prev[member.id] ?? saved) + 1 }))}
-                                    className="w-7 h-7 flex items-center justify-center rounded-full bg-nestalk-primary hover:bg-nestalk-primary/90 text-white"
-                                  >
-                                    <Plus className="w-3 h-3" />
-                                  </button>
-                                  {isDirty && (
-                                    <button
-                                      onClick={() => handleSaveReferrals(member.id, saved)}
-                                      disabled={savingReferrals[member.id]}
-                                      className="px-2 py-1 text-xs bg-nestalk-primary text-white rounded hover:bg-nestalk-primary/90 disabled:opacity-50"
-                                    >
-                                      {savingReferrals[member.id] ? '...' : 'Save'}
-                                    </button>
-                                  )}
-                                </div>
-                              )
-                            })()}
-                          </td>
-                        </tr>
-                      ))}
+                      .map((member, index) => {
+                        const saved = member.referrals || 0
+                        const pending = pendingReferrals[member.id] ?? saved
+                        const isDirty = pending !== saved
+                        return (
+                          <tr key={member.id} className="hover:bg-gray-50">
+                            <td className="px-4 py-3 text-sm text-gray-500">{index + 1}</td>
+                            <td className="px-6 py-3 text-sm font-medium text-gray-900">
+                              {member.name}
+                              {member.niche_training?.niche_cohorts && (
+                                <span className="ml-2 text-xs text-orange-600 italic">Cohort {member.niche_training.niche_cohorts.cohort_number}</span>
+                              )}
+                              {!member.niche_training?.niche_cohorts && member.cohort_label && (
+                                <span className="ml-2 text-xs text-orange-600 italic">{member.cohort_label}</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              <span className="text-sm font-bold text-gray-900">{saved}</span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center justify-center gap-2">
+                                <button
+                                  onClick={() => setPendingReferrals(prev => ({ ...prev, [member.id]: Math.max(0, (prev[member.id] ?? saved) - 1) }))}
+                                  className="w-7 h-7 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600"
+                                >
+                                  <Minus className="w-3 h-3" />
+                                </button>
+                                <span className={`text-sm font-semibold w-6 text-center ${isDirty ? 'text-nestalk-primary' : 'text-gray-500'}`}>{pending}</span>
+                                <button
+                                  onClick={() => setPendingReferrals(prev => ({ ...prev, [member.id]: (prev[member.id] ?? saved) + 1 }))}
+                                  className="w-7 h-7 flex items-center justify-center rounded-full bg-nestalk-primary hover:bg-nestalk-primary/90 text-white"
+                                >
+                                  <Plus className="w-3 h-3" />
+                                </button>
+                                <button
+                                  onClick={() => handleSaveReferrals(member.id, saved)}
+                                  disabled={!isDirty || savingReferrals[member.id]}
+                                  className="px-3 py-1 text-xs bg-nestalk-primary text-white rounded hover:bg-nestalk-primary/90 disabled:opacity-30 disabled:cursor-not-allowed"
+                                >
+                                  {savingReferrals[member.id] ? '...' : 'Save'}
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })}
                   </tbody>
                 </table>
               </div>
