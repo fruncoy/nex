@@ -1158,24 +1158,24 @@ export function SMSManagement() {
   }
 
   return (
-    <div className="p-6">
+    <div className="p-4 md:p-6">
       {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">SMS Management</h1>
+      <div className="mb-4 md:mb-6">
+        <h1 className="text-xl md:text-2xl font-bold text-gray-900">SMS Management</h1>
         <p className="text-sm text-gray-500">Send and track all SMS communications</p>
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-gray-200 mb-6 gap-1">
+      <div className="flex overflow-x-auto border-b border-gray-200 mb-4 md:mb-6 gap-1 scrollbar-hide">
         {TABS.map(tab => (
           <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-            className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
+            className={`flex items-center gap-1.5 px-3 md:px-5 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap flex-shrink-0 ${
               activeTab === tab.id
                 ? 'border-nestalk-primary text-nestalk-primary'
                 : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}>
             {tab.icon}
-            {tab.label}
+            <span className="hidden sm:inline">{tab.label}</span>
           </button>
         ))}
       </div>
