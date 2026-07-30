@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import { smsService } from '../services/smsService'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
-import { RefreshCw, Search, Send, Users, Loader2, GraduationCap, MessageSquare, Radio, BarChart2, CheckCircle, XCircle, Clock } from 'lucide-react'
+import { RefreshCw, Search, Send, Users, Loader2, GraduationCap, MessageSquare, Radio, BarChart2, CheckCircle, XCircle, Clock, BookUser, Plus, Trash2 } from 'lucide-react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -913,7 +913,7 @@ Karibu Sana!`
 function BroadcastTab({ onRefresh }: { onRefresh: () => void }) {
   const { staff } = useAuth()
   const { showToast } = useToast()
-  const [audience, setAudience] = useState<'all_trainees' | 'all_staff' | 'cohort' | 'newstaff' | 'custom'>('all_trainees')
+  const [audience, setAudience] = useState<'all_trainees' | 'all_staff' | 'cohort' | 'newstaff' | 'custom' | 'clients'>('all_trainees')
   const [cohorts, setCohorts] = useState<Cohort[]>([])
   const [selectedCohort, setSelectedCohort] = useState('')
   const [recipients, setRecipients] = useState<{ id?: string; name: string; phone: string; type: 'candidate' | 'staff' | 'client' }[]>([])
@@ -953,6 +953,9 @@ function BroadcastTab({ onRefresh }: { onRefresh: () => void }) {
       } else if (audience === 'all_staff') {
         const { data } = await supabase.from('staff').select('id, name, phone').not('phone', 'is', null).neq('phone', '')
         setRecipients((data || []).map(s => ({ id: s.id, name: s.name, phone: s.phone, type: 'staff' as const })))
+      } else if (audience === 'clients') {
+        const { data } = await supabase.from('sms_contacts').select('id, full_name, phone').not('phone', 'is', null).neq('phone', '')
+        setRecipients((data || []).map(c => ({ id: c.id, name: c.full_name, phone: formatPhone(c.phone), type: 'client' as const })))
       } else if (audience === 'newstaff') {
         const { data } = await supabase.from('newstaff_members').select('id, name, phone').not('phone', 'is', null).neq('phone', '')
         const seen = new Set<string>()
@@ -1013,6 +1016,7 @@ function BroadcastTab({ onRefresh }: { onRefresh: () => void }) {
                 { value: 'cohort', label: 'C. Specific Cohort' },
                 { value: 'newstaff', label: 'D. Staff Members' },
                 { value: 'custom', label: 'E. Custom Numbers' },
+                { value: 'clients', label: 'F. Clients' },
               ].map(opt => (
                 <button key={opt.value} onClick={() => setAudience(opt.value as any)}
                   className={`px-3 py-2 text-sm rounded-lg border transition-colors ${audience === opt.value ? 'border-nestalk-primary bg-nestalk-primary/5 text-nestalk-primary font-medium' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
@@ -1127,9 +1131,211 @@ function BroadcastTab({ onRefresh }: { onRefresh: () => void }) {
   )
 }
 
+// ─── Tab: Contacts ───────────────────────────────────────────────────────────
+
+interface Contact {
+  id: string
+  full_name: string
+  phone: string | null
+  contact_type: string
+  notes: string | null
+  created_at: string
+}
+
+function parseContactsText(raw: string): { full_name: string; phone: string | null }[] {
+  return raw.split('\n')
+    .map(line => line.trim())
+    .filter(Boolean)
+    .map(line => {
+      // Split on tab, multiple spaces, or common delimiters
+      const parts = line.split(/\t|  +|,|;/).map(p => p.trim()).filter(Boolean)
+      if (parts.length === 0) return null
+      // Detect which part is the phone (contains digits and +)
+      const phoneIdx = parts.findIndex(p => /[\d]{7,}/.test(p.replace(/[\s+\-()]/g, '')))
+      if (phoneIdx === -1) return { full_name: parts[0], phone: null }
+      const phone = parts[phoneIdx].replace(/\s/g, '')
+      const nameParts = parts.filter((_, i) => i !== phoneIdx)
+      return { full_name: nameParts.join(' ') || phone, phone }
+    })
+    .filter(Boolean) as { full_name: string; phone: string | null }[]
+}
+
+function ContactsTab() {
+  const { staff } = useAuth()
+  const { showToast } = useToast()
+  const [contacts, setContacts] = useState<Contact[]>([])
+  const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
+  const [showUpload, setShowUpload] = useState(false)
+  const [rawText, setRawText] = useState('')
+  const [preview, setPreview] = useState<{ full_name: string; phone: string | null }[]>([])
+  const [saving, setSaving] = useState(false)
+  const fileInputRef = React.useRef<HTMLInputElement>(null)
+
+  useEffect(() => { loadContacts() }, [])
+
+  const loadContacts = async () => {
+    setLoading(true)
+    const { data } = await supabase.from('sms_contacts').select('*').order('full_name')
+    setContacts(data || [])
+    setLoading(false)
+  }
+
+  const handleTextChange = (val: string) => {
+    setRawText(val)
+    setPreview(parseContactsText(val))
+  }
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = ev => {
+      const text = ev.target?.result as string
+      setRawText(text)
+      setPreview(parseContactsText(text))
+    }
+    reader.readAsText(file)
+  }
+
+  const handleSave = async () => {
+    if (!preview.length) return
+    setSaving(true)
+    const rows = preview.map(p => ({
+      full_name: p.full_name,
+      phone: p.phone || null,
+      contact_type: 'client',
+      created_by: staff?.name || 'System',
+    }))
+    const { error } = await supabase.from('sms_contacts').insert(rows)
+    if (error) showToast('Failed to save contacts', 'error')
+    else {
+      showToast(`${rows.length} contacts saved`, 'success')
+      setRawText(''); setPreview([]); setShowUpload(false)
+      loadContacts()
+    }
+    setSaving(false)
+  }
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Delete this contact?')) return
+    await supabase.from('sms_contacts').delete().eq('id', id)
+    setContacts(prev => prev.filter(c => c.id !== id))
+  }
+
+  const filtered = contacts.filter(c =>
+    c.full_name.toLowerCase().includes(search.toLowerCase()) ||
+    (c.phone || '').includes(search)
+  )
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-3">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <input value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Search name or phone..."
+            className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent" />
+        </div>
+        <button onClick={() => setShowUpload(!showUpload)}
+          className="flex items-center gap-1.5 px-3 py-2 bg-nestalk-primary text-white text-sm rounded-lg hover:bg-nestalk-primary/90">
+          <Plus className="w-4 h-4" /> Upload
+        </button>
+      </div>
+
+      {showUpload && (
+        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 space-y-3">
+          <div className="flex items-center gap-3">
+            <div>
+              <p className="text-xs font-semibold text-gray-600 mb-1">Paste names & numbers</p>
+              <p className="text-xs text-gray-400">One per line — tab, comma, or space separated. E.g. <span className="font-mono">Jane Doe  +254712345678</span></p>
+            </div>
+            <div className="ml-auto">
+              <input ref={fileInputRef} type="file" accept=".txt,.csv" className="hidden" onChange={handleFileUpload} />
+              <button onClick={() => fileInputRef.current?.click()}
+                className="text-xs px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-white text-gray-600">
+                Upload .txt / .csv
+              </button>
+            </div>
+          </div>
+          <textarea value={rawText} onChange={e => handleTextChange(e.target.value)} rows={6}
+            placeholder={`Jane Doe\t+254712345678\nJohn Smith\t0723456789`}
+            className="w-full text-sm font-mono border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-nestalk-primary" />
+          {preview.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold text-gray-600 mb-2">{preview.length} contacts parsed — preview:</p>
+              <div className="max-h-48 overflow-y-auto border border-gray-200 rounded-lg bg-white divide-y divide-gray-100">
+                {preview.slice(0, 20).map((p, i) => (
+                  <div key={i} className="flex items-center justify-between px-3 py-2 text-sm">
+                    <span className="font-medium text-gray-800">{p.full_name}</span>
+                    <span className="font-mono text-xs text-gray-500">{p.phone || <span className="text-gray-300">no phone</span>}</span>
+                  </div>
+                ))}
+                {preview.length > 20 && <div className="text-center py-2 text-xs text-gray-400">+{preview.length - 20} more</div>}
+              </div>
+            </div>
+          )}
+          <div className="flex gap-2">
+            <button onClick={handleSave} disabled={saving || !preview.length}
+              className="px-4 py-2 bg-nestalk-primary text-white text-sm rounded-lg hover:bg-nestalk-primary/90 disabled:opacity-50">
+              {saving ? 'Saving...' : `Save ${preview.length} Contacts`}
+            </button>
+            <button onClick={() => { setShowUpload(false); setRawText(''); setPreview([]) }}
+              className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-white">Cancel</button>
+          </div>
+        </div>
+      )}
+
+      <div className="text-xs text-gray-400">{filtered.length} contact{filtered.length !== 1 ? 's' : ''}</div>
+
+      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600">#</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600">Name</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600">Phone</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600">Type</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600">Notes</th>
+                <th className="px-4 py-3"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {loading ? (
+                <tr><td colSpan={6} className="text-center py-10"><Loader2 className="w-5 h-5 animate-spin text-gray-400 mx-auto" /></td></tr>
+              ) : filtered.length === 0 ? (
+                <tr><td colSpan={6} className="text-center py-10 text-gray-400 text-sm">No contacts found</td></tr>
+              ) : filtered.map((c, i) => (
+                <tr key={c.id} className="hover:bg-gray-50">
+                  <td className="px-4 py-3 text-xs text-gray-400">{i + 1}</td>
+                  <td className="px-4 py-3 font-medium text-gray-900">{c.full_name}</td>
+                  <td className="px-4 py-3 font-mono text-xs text-gray-600">{c.phone || <span className="text-gray-300">—</span>}</td>
+                  <td className="px-4 py-3">
+                    <span className={`px-2 py-0.5 text-xs rounded-full ${
+                      c.contact_type === 'client' ? 'bg-blue-100 text-blue-700' :
+                      c.contact_type === 'candidate' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'
+                    }`}>{c.contact_type}</span>
+                  </td>
+                  <td className="px-4 py-3 text-xs text-gray-500 max-w-[200px] truncate">{c.notes || ''}</td>
+                  <td className="px-4 py-3">
+                    <button onClick={() => handleDelete(c.id)} className="text-gray-300 hover:text-red-500 transition-colors">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-type Tab = 'summary' | 'directions' | 'graduation' | 'weekly' | 'broadcast'
+type Tab = 'summary' | 'directions' | 'graduation' | 'weekly' | 'broadcast' | 'contacts'
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'summary', label: 'Summary', icon: <BarChart2 className="w-4 h-4" /> },
@@ -1137,6 +1343,7 @@ const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'graduation', label: 'Graduation', icon: <GraduationCap className="w-4 h-4" /> },
   { id: 'weekly', label: 'Daily Digest', icon: <MessageSquare className="w-4 h-4" /> },
   { id: 'broadcast', label: 'Broadcast', icon: <Radio className="w-4 h-4" /> },
+  { id: 'contacts', label: 'Contacts', icon: <BookUser className="w-4 h-4" /> },
 ]
 
 export function SMSManagement() {
@@ -1186,6 +1393,7 @@ export function SMSManagement() {
       {activeTab === 'graduation' && <GraduationTab onRefresh={loadLogs} />}
       {activeTab === 'weekly' && <WeeklyTab onRefresh={loadLogs} />}
       {activeTab === 'broadcast' && <BroadcastTab onRefresh={loadLogs} />}
+      {activeTab === 'contacts' && <ContactsTab />}
     </div>
   )
 }
