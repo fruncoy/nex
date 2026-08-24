@@ -23,6 +23,7 @@ interface NicheCohort {
   start_date: string
   end_date: string
   status: 'upcoming' | 'active' | 'completed'
+  training_type?: '2week' | 'shortcourse' | 'weekend' | 'bread'
 }
 
 interface NicheTraining {
@@ -102,6 +103,18 @@ export function NicheTraining() {
     accommodation_type: '' as '' | 'live_in' | 'live_out',
     enrolled_courses: [] as string[]
   })
+
+  // Cohort Management
+  const [showCohortManager, setShowCohortManager] = useState(false)
+  const [editingCohort, setEditingCohort] = useState<NicheCohort | null>(null)
+  const [isCreatingCohort, setIsCreatingCohort] = useState(false)
+  const [cohortFormData, setCohortFormData] = useState<Partial<NicheCohort>>({
+    cohort_number: 1,
+    start_date: '',
+    end_date: '',
+    training_type: '2week'
+  })
+  const [cohortManagerLoading, setCohortManagerLoading] = useState(false)
 
   const { user, staff } = useAuth()
   const { showToast } = useToast()
@@ -227,7 +240,24 @@ export function NicheTraining() {
   const loadCohorts = async () => {
     try {
       // First update cohort statuses automatically
-      await supabase.rpc('update_cohort_statuses')
+      try {
+        await supabase.rpc('update_cohort_statuses')
+      } catch (rpcErr: any) {
+        console.warn('RPC update_cohort_statuses not available, updating manually:', rpcErr.message)
+        // Manual fallback: determine status from dates locally, update db
+        const { data: allCohorts } = await supabase.from('niche_cohorts').select('*')
+        if (allCohorts) {
+          const today = new Date().toISOString().split('T')[0]
+          for (const c of allCohorts) {
+            let s = 'upcoming'
+            if (c.end_date < today) s = 'completed'
+            else if (c.start_date <= today && c.end_date >= today) s = 'active'
+            if (c.status !== s) {
+              await supabase.from('niche_cohorts').update({ status: s }).eq('id', c.id)
+            }
+          }
+        }
+      }
       
       const { data, error } = await supabase
         .from('niche_cohorts')
@@ -239,6 +269,100 @@ export function NicheTraining() {
     } catch (error) {
       console.error('Error loading cohorts:', error)
     }
+  }
+
+  // Cohort Management Functions
+  const openCreateCohort = () => {
+    const lastNum = cohorts.length > 0 ? Math.max(...cohorts.map(c => c.cohort_number)) : 0
+    setEditingCohort(null)
+    setIsCreatingCohort(true)
+    setCohortFormData({
+      cohort_number: lastNum + 1,
+      start_date: '',
+      end_date: '',
+      training_type: '2week'
+    })
+  }
+
+  const openEditCohort = (cohort: NicheCohort) => {
+    setEditingCohort(cohort)
+    setIsCreatingCohort(false)
+    setCohortFormData({
+      cohort_number: cohort.cohort_number,
+      start_date: cohort.start_date,
+      end_date: cohort.end_date,
+      training_type: cohort.training_type || '2week'
+    })
+  }
+
+  const closeCohortForm = () => {
+    setEditingCohort(null)
+    setIsCreatingCohort(false)
+  }
+
+  const saveCohort = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!cohortFormData.cohort_number || !cohortFormData.start_date || !cohortFormData.end_date) {
+      showToast('Please fill in cohort number, start date, and end date', 'error')
+      return
+    }
+    setCohortManagerLoading(true)
+    try {
+      // Compute status based on dates
+      const today = new Date().toISOString().split('T')[0]
+      let status: 'upcoming' | 'active' | 'completed' = 'upcoming'
+      if (cohortFormData.end_date! < today) status = 'completed'
+      else if (cohortFormData.start_date! <= today && cohortFormData.end_date! >= today) status = 'active'
+
+      if (isCreatingCohort) {
+        // Check for duplicate cohort number
+        const dup = cohorts.find(c => c.cohort_number === cohortFormData.cohort_number)
+        if (dup) {
+          showToast(`Cohort ${cohortFormData.cohort_number} already exists. Use a different number.`, 'error')
+          setCohortManagerLoading(false)
+          return
+        }
+        const { error } = await supabase.from('niche_cohorts').insert({
+          cohort_number: cohortFormData.cohort_number,
+          start_date: cohortFormData.start_date,
+          end_date: cohortFormData.end_date,
+          training_type: cohortFormData.training_type || '2week',
+          status
+        })
+        if (error) throw error
+        showToast(`Cohort ${cohortFormData.cohort_number} created successfully!`, 'success')
+      } else if (editingCohort) {
+        const { error } = await supabase.from('niche_cohorts').update({
+          cohort_number: cohortFormData.cohort_number,
+          start_date: cohortFormData.start_date,
+          end_date: cohortFormData.end_date,
+          training_type: cohortFormData.training_type || editingCohort.training_type,
+          status
+        }).eq('id', editingCohort.id)
+        if (error) throw error
+        showToast(`Cohort ${cohortFormData.cohort_number} updated successfully!`, 'success')
+      }
+
+      closeCohortForm()
+      await loadCohorts()
+      await loadTrainingRecords()
+    } catch (error: any) {
+      console.error('Error saving cohort:', error)
+      showToast(error.message || 'Failed to save cohort', 'error')
+    } finally {
+      setCohortManagerLoading(false)
+    }
+  }
+
+  const setAutoDates = (durationWeeks: number) => {
+    if (!cohortFormData.start_date) return
+    const start = new Date(cohortFormData.start_date)
+    const end = new Date(start)
+    end.setDate(end.getDate() + (durationWeeks * 7) - 1)
+    setCohortFormData(prev => ({
+      ...prev,
+      end_date: end.toISOString().split('T')[0]
+    }))
   }
 
   const filterRecords = () => {
@@ -787,7 +911,7 @@ export function NicheTraining() {
       </div>
 
       <div className="flex flex-col gap-3">
-        <div className="flex gap-3">
+        <div className="flex gap-3 items-center">
           <input
             type="text"
             placeholder="Search by name, course, or role..."
@@ -799,7 +923,7 @@ export function NicheTraining() {
           <select
             value={filterCohort}
             onChange={(e) => setFilterCohort(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white max-w-xs"
           >
             <option value="all">All Cohorts</option>
             {getVisibleCohorts().map(cohort => (
@@ -808,6 +932,15 @@ export function NicheTraining() {
                     </option>
                   ))}
           </select>
+
+          <button
+            type="button"
+            onClick={() => setShowCohortManager(true)}
+            className="flex items-center px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors shadow-sm whitespace-nowrap"
+          >
+            <Edit className="w-4 h-4 mr-2" />
+            Manage Cohorts
+          </button>
         </div>
       </div>
 
@@ -1463,6 +1596,270 @@ export function NicheTraining() {
           </div>
         </div>
       )}
+
+      {/* COHORT MANAGER MODAL */}
+      {showCohortManager && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl max-w-5xl w-full max-h-[90vh] overflow-hidden shadow-2xl flex flex-col">
+            {/* Header */}
+            <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-amber-50 to-orange-50">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+                    <span>📅</span> Cohort Manager
+                  </h2>
+                  <p className="text-sm text-gray-600 mt-1">
+                    Modify cohort dates, create new cohorts, and manage training types (Flagship / Short Course / Bread)
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowCohortManager(false)
+                    closeCohortForm()
+                  }}
+                  className="text-gray-500 hover:text-gray-700 transition-colors"
+                >
+                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              {/* Create / Edit Form */}
+              {(isCreatingCohort || editingCohort) && (
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-5 shadow-sm">
+                  <h3 className="text-lg font-bold text-gray-800 mb-4">
+                    {isCreatingCohort ? '➕ Create New Cohort' : `✏️ Edit Cohort ${getRomanNumeral(cohortFormData.cohort_number || 0)}`}
+                  </h3>
+                  <form onSubmit={saveCohort} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-1">Cohort #</label>
+                      <input
+                        type="number"
+                        min={1}
+                        required
+                        value={cohortFormData.cohort_number || ''}
+                        onChange={(e) => setCohortFormData({ ...cohortFormData, cohort_number: Number(e.target.value) })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-1">Training Type</label>
+                      <select
+                        value={cohortFormData.training_type || '2week'}
+                        onChange={(e) => setCohortFormData({ ...cohortFormData, training_type: e.target.value as any })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      >
+                        <option value="2week">🎓 2-Week Flagship</option>
+                        <option value="shortcourse">📚 Short Course</option>
+                        <option value="weekend">📅 Weekend</option>
+                        <option value="bread">🍞 Bread Program</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-1">Start Date</label>
+                      <input
+                        type="date"
+                        required
+                        value={cohortFormData.start_date || ''}
+                        onChange={(e) => setCohortFormData({ ...cohortFormData, start_date: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-1">End Date</label>
+                      <input
+                        type="date"
+                        required
+                        value={cohortFormData.end_date || ''}
+                        onChange={(e) => setCohortFormData({ ...cohortFormData, end_date: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                    </div>
+                    <div className="lg:col-span-4 flex flex-wrap gap-2 items-center pt-2">
+                      <span className="text-sm font-medium text-gray-600 mr-1">Quick Duration:</span>
+                      <button type="button" onClick={() => setAutoDates(1)} className="px-3 py-1 text-xs bg-white border border-gray-300 rounded hover:bg-gray-50">1 Week</button>
+                      <button type="button" onClick={() => setAutoDates(2)} className="px-3 py-1 text-xs bg-white border border-gray-300 rounded hover:bg-gray-50">2 Weeks (Standard)</button>
+                      <button type="button" onClick={() => setAutoDates(4)} className="px-3 py-1 text-xs bg-white border border-gray-300 rounded hover:bg-gray-50">4 Weeks</button>
+                      <button type="button" onClick={() => setAutoDates(6)} className="px-3 py-1 text-xs bg-white border border-gray-300 rounded hover:bg-gray-50">6 Weeks</button>
+
+                      <div className="flex-1"></div>
+
+                      <button
+                        type="button"
+                        onClick={closeCohortForm}
+                        className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={cohortManagerLoading}
+                        className="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 font-medium shadow-sm"
+                      >
+                        {cohortManagerLoading ? 'Saving...' : isCreatingCohort ? 'Create Cohort' : 'Save Changes'}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              )}
+
+              {/* Cohort List Table */}
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-bold text-gray-800">
+                    All Cohorts ({cohorts.length} total)
+                  </h3>
+                  {!isCreatingCohort && !editingCohort && (
+                    <button
+                      onClick={openCreateCohort}
+                      className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors shadow-sm"
+                    >
+                      <Plus className="w-4 h-4" /> New Cohort
+                    </button>
+                  )}
+                </div>
+
+                <div className="border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">#</th>
+                          <th className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Cohort</th>
+                          <th className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Type</th>
+                          <th className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Start Date</th>
+                          <th className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">End Date</th>
+                          <th className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Duration</th>
+                          <th className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Status</th>
+                          <th className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Trainees</th>
+                          <th className="px-4 py-3 text-right text-xs font-bold text-gray-600 uppercase tracking-wider">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-100">
+                        {cohorts.length === 0 && (
+                          <tr>
+                            <td colSpan={9} className="px-4 py-12 text-center text-gray-400 italic">
+                              No cohorts yet. Click "New Cohort" to create one.
+                            </td>
+                          </tr>
+                        )}
+                        {cohorts.map((cohort) => {
+                          const traineeCount = trainingRecords.filter(r => r.cohort_id === cohort.id).length
+                          const days = Math.ceil((new Date(cohort.end_date).getTime() - new Date(cohort.start_date).getTime()) / (1000 * 60 * 60 * 24)) + 1
+                          const todayStr = new Date().toISOString().split('T')[0]
+                          const isCurrent = cohort.start_date <= todayStr && cohort.end_date >= todayStr
+
+                          const statusColors: Record<string, string> = {
+                            active: 'bg-green-100 text-green-800 border-green-200',
+                            upcoming: 'bg-blue-50 text-blue-700 border-blue-200',
+                            completed: 'bg-gray-100 text-gray-700 border-gray-200'
+                          }
+                          const typeColors: Record<string, string> = {
+                            '2week': 'bg-indigo-50 text-indigo-700',
+                            shortcourse: 'bg-purple-50 text-purple-700',
+                            weekend: 'bg-orange-50 text-orange-700',
+                            bread: 'bg-amber-50 text-amber-800'
+                          }
+                          const typeLabels: Record<string, string> = {
+                            '2week': '🎓 Flagship',
+                            shortcourse: '📚 Short Course',
+                            weekend: '📅 Weekend',
+                            bread: '🍞 Bread'
+                          }
+
+                          return (
+                            <tr
+                              key={cohort.id}
+                              className={`hover:bg-gray-50 transition-colors ${isCurrent ? 'bg-green-50/50' : ''} ${editingCohort?.id === cohort.id ? 'bg-blue-50' : ''}`}
+                            >
+                              <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500 font-mono">{cohort.cohort_number}</td>
+                              <td className="px-4 py-3 whitespace-nowrap">
+                                <div className="font-semibold text-gray-900">Cohort {getRomanNumeral(cohort.cohort_number)}</div>
+                                {isCurrent && <div className="text-[10px] text-green-700 font-bold mt-0.5">⬤ RIGHT NOW</div>}
+                              </td>
+                              <td className="px-4 py-3 whitespace-nowrap">
+                                <span className={`text-xs font-medium px-2 py-1 rounded ${typeColors[cohort.training_type || '2week'] || ''}`}>
+                                  {typeLabels[cohort.training_type || '2week'] || '🎓 Flagship'}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700">
+                                {formatDateWithOrdinal(cohort.start_date)}
+                              </td>
+                              <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700">
+                                {formatDateWithOrdinal(cohort.end_date)}
+                              </td>
+                              <td className="px-4 py-3 whitespace-nowrap">
+                                <span className="text-xs px-2 py-1 bg-gray-100 rounded text-gray-700 font-medium">
+                                  {days} day{days !== 1 ? 's' : ''}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 whitespace-nowrap">
+                                <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${statusColors[cohort.status] || ''}`}>
+                                  {cohort.status.toUpperCase()}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 whitespace-nowrap text-sm font-medium">
+                                <span className={`${traineeCount > 0 ? 'text-gray-900' : 'text-gray-400'}`}>
+                                  {traineeCount} trainee{traineeCount !== 1 ? 's' : ''}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 whitespace-nowrap text-right">
+                                <button
+                                  onClick={() => openEditCohort(cohort)}
+                                  disabled={!!editingCohort || isCreatingCohort}
+                                  className="inline-flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-white bg-amber-600 rounded-lg hover:bg-amber-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                                >
+                                  <Edit className="w-3.5 h-3.5" />
+                                  Edit
+                                </button>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Helper Note */}
+                <div className="mt-5 p-4 bg-amber-50 border border-amber-200 rounded-xl">
+                  <div className="flex gap-3">
+                    <div className="text-amber-600 text-xl">💡</div>
+                    <div className="text-sm text-amber-900 space-y-1">
+                      <div><strong>Important:</strong> Editing a cohort's dates automatically recalculates its status:</div>
+                      <ul className="list-disc list-inside space-y-0.5 ml-1 text-xs">
+                        <li>End date is <em>before today</em> → <span className="font-semibold">completed</span></li>
+                        <li>Today falls between start & end dates → <span className="font-semibold text-green-700">active (RIGHT NOW)</span></li>
+                        <li>Start date is <em>after today</em> → <span className="font-semibold text-blue-700">upcoming</span></li>
+                      </ul>
+                      <div className="pt-1 text-xs">
+                        Tip: Click <strong>2 Weeks (Standard)</strong> after entering start date to auto-fill end date for flagship programs, or use the 1/4/6 week buttons.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex justify-end">
+              <button
+                onClick={() => {
+                  setShowCohortManager(false)
+                  closeCohortForm()
+                }}
+                className="px-5 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-900 transition-colors font-medium"
+              >
+                Close Manager
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       </div>
     </div>
   )
