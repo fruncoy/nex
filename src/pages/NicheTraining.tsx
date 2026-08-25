@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { SearchFilter } from '../components/ui/SearchFilter'
 import { StatusBadge } from '../components/ui/StatusBadge'
-import { Plus, Edit, Users, UserPlus, Trash2, Download } from 'lucide-react'
+import { Plus, Edit, Users, UserPlus, Trash2, Download, Calendar } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
@@ -589,35 +589,84 @@ export function NicheTraining() {
   }
 
   const getVisibleCohorts = () => {
-    return cohorts.filter(cohort => {
-      // Always show active and completed cohorts
-      if (cohort.status === 'active' || cohort.status === 'completed') {
-        return true
-      }
-      
-      // For upcoming cohorts, only show if they have trainees
-      if (cohort.status === 'upcoming') {
-        const hasTrainees = trainingRecords.some(record => record.cohort_id === cohort.id)
-        return hasTrainees
-      }
-      
-      return false
-    })
+    const sortedCohorts = [...cohorts].sort((a, b) => a.cohort_number - b.cohort_number)
+    
+    // Get 2 most recent completed cohorts
+    const completedCohorts = sortedCohorts
+      .filter(c => c.status === 'completed')
+      .sort((a, b) => b.cohort_number - a.cohort_number)
+      .slice(0, 2)
+      .sort((a, b) => a.cohort_number - b.cohort_number)
+    
+    // Get active cohort (if any)
+    const activeCohort = sortedCohorts.find(c => c.status === 'active')
+    
+    // Get next 2 upcoming cohorts
+    const upcomingCohorts = sortedCohorts
+      .filter(c => c.status === 'upcoming')
+      .sort((a, b) => a.cohort_number - b.cohort_number)
+      .slice(0, 2)
+    
+    const visibleIds = new Set([
+      ...completedCohorts.map(c => c.id),
+      ...(activeCohort ? [activeCohort.id] : []),
+      ...upcomingCohorts.map(c => c.id)
+    ])
+    
+    return sortedCohorts.filter(c => visibleIds.has(c.id))
+  }
+
+  const getFeaturedCohorts = () => {
+    const sortedCohorts = [...cohorts].sort((a, b) => a.cohort_number - b.cohort_number)
+    
+    // Get 2 most recent completed cohorts (highest numbers first, then reorder ascending)
+    const completedCohorts = sortedCohorts
+      .filter(c => c.status === 'completed' && c.training_type === '2week')
+      .sort((a, b) => b.cohort_number - a.cohort_number)
+      .slice(0, 2)
+      .sort((a, b) => a.cohort_number - b.cohort_number)
+    
+    // Get active cohort (if any) - prefer 2week type
+    const activeCohort = sortedCohorts.find(c => c.status === 'active' && c.training_type === '2week') ||
+                         sortedCohorts.find(c => c.status === 'active')
+    
+    // Get next 2 upcoming cohorts (2week type first)
+    const upcomingCohorts = sortedCohorts
+      .filter(c => c.status === 'upcoming' && c.training_type === '2week')
+      .sort((a, b) => a.cohort_number - b.cohort_number)
+      .slice(0, 2)
+    
+    return {
+      completed: completedCohorts,
+      active: activeCohort || null,
+      upcoming: upcomingCohorts
+    }
   }
 
   const getCohortsForNewTrainee = () => {
-    // Get active cohort and next 3 cohorts only for adding new trainees
-    const sortedCohorts = cohorts.sort((a, b) => a.cohort_number - b.cohort_number)
-    const activeCohort = sortedCohorts.find(c => c.status === 'active')
+    // Get 2 completed + active cohort + next 2 upcoming cohorts for adding new trainees
+    const featured = getFeaturedCohorts()
+    const result: NicheCohort[] = []
     
-    if (activeCohort) {
-      // Find active cohort index and get it + next 3
-      const activeIndex = sortedCohorts.findIndex(c => c.id === activeCohort.id)
-      return sortedCohorts.slice(activeIndex, activeIndex + 4) // Active + next 3
-    } else {
-      // If no active cohort, get first 4 upcoming cohorts
-      return sortedCohorts.filter(c => c.status === 'upcoming').slice(0, 4)
+    if (featured.completed.length > 0) result.push(...featured.completed)
+    if (featured.active) result.push(featured.active)
+    if (featured.upcoming.length > 0) result.push(...featured.upcoming)
+    
+    // If we don't have enough, fill with other 2week cohorts sorted by cohort number
+    if (result.length < 5) {
+      const sortedCohorts = [...cohorts]
+        .filter(c => c.training_type === '2week' || !c.training_type)
+        .sort((a, b) => a.cohort_number - b.cohort_number)
+      const resultIds = new Set(result.map(c => c.id))
+      for (const c of sortedCohorts) {
+        if (!resultIds.has(c.id) && result.length < 5) {
+          result.push(c)
+          resultIds.add(c.id)
+        }
+      }
     }
+    
+    return result.sort((a, b) => a.cohort_number - b.cohort_number)
   }
 
   const createNextCohorts = async () => {
@@ -944,6 +993,173 @@ export function NicheTraining() {
         </div>
       </div>
 
+      {/* Featured Cohorts Section: 2 Completed + Active + 2 Upcoming */}
+      {activeTab === '2week' && (
+        <div className="mt-5 mb-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wider">Featured Cohorts</h3>
+            <div className="flex items-center gap-4 text-xs">
+              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-gray-400"></span> Completed</span>
+              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-green-500"></span> Active</span>
+              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-blue-500"></span> Upcoming</span>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+            {/* Completed Cohorts */}
+            {getFeaturedCohorts().completed.map(cohort => {
+              const traineeCount = trainingRecords.filter(r => r.cohort_id === cohort.id).length
+              const isSelected = filterCohort === cohort.id
+              return (
+                <button
+                  key={cohort.id}
+                  onClick={() => setFilterCohort(isSelected ? 'all' : cohort.id)}
+                  className={`p-4 rounded-xl border-2 text-left transition-all shadow-sm hover:shadow-md ${
+                    isSelected
+                      ? 'border-gray-600 bg-gray-50 ring-2 ring-gray-300'
+                      : 'border-gray-200 bg-white hover:border-gray-400'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-gray-100 text-gray-600">
+                      Completed
+                    </span>
+                    <span className="text-xs text-gray-400 font-medium">#{cohort.cohort_number}</span>
+                  </div>
+                  <h4 className="text-base font-bold text-gray-900 mb-1">
+                    Cohort {getRomanNumeral(cohort.cohort_number)}
+                  </h4>
+                  <p className="text-xs text-gray-500 mb-2 leading-tight">
+                    {formatDateWithOrdinal(cohort.start_date)}
+                    <br />
+                    <span className="text-gray-400">to</span> {formatDateWithOrdinal(cohort.end_date)}
+                  </p>
+                  <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+                    <span className="text-xs text-gray-500 flex items-center gap-1">
+                      <Users className="w-3 h-3" /> {traineeCount} trainees
+                    </span>
+                  </div>
+                </button>
+              )
+            })}
+            
+            {/* Active Cohort */}
+            {getFeaturedCohorts().active && (() => {
+              const cohort = getFeaturedCohorts().active!
+              const traineeCount = trainingRecords.filter(r => r.cohort_id === cohort.id).length
+              const activeTrainees = trainingRecords.filter(r => r.cohort_id === cohort.id && (r.status === 'Active' || r.status === 'Graduated')).length
+              const isSelected = filterCohort === cohort.id
+              const today = new Date().toISOString().split('T')[0]
+              const totalDays = Math.ceil((new Date(cohort.end_date).getTime() - new Date(cohort.start_date).getTime()) / (1000 * 60 * 60 * 24)) + 1
+              const elapsedDays = Math.ceil((new Date(today).getTime() - new Date(cohort.start_date).getTime()) / (1000 * 60 * 60 * 24)) + 1
+              const progress = Math.min(100, Math.max(0, Math.round((elapsedDays / totalDays) * 100)))
+              
+              return (
+                <button
+                  key={cohort.id}
+                  onClick={() => setFilterCohort(isSelected ? 'all' : cohort.id)}
+                  className={`p-4 rounded-xl border-2 text-left transition-all shadow-md hover:shadow-lg relative overflow-hidden ${
+                    isSelected
+                      ? 'border-green-600 bg-green-50 ring-2 ring-green-300'
+                      : 'border-green-400 bg-gradient-to-br from-green-50 to-emerald-50 hover:border-green-500'
+                  }`}
+                >
+                  <div className="absolute top-0 right-0 w-16 h-16 bg-green-500/10 rounded-bl-full -mr-4 -mt-4"></div>
+                  <div className="relative">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-green-500 text-white shadow-sm">
+                        Active
+                      </span>
+                      <span className="text-xs text-green-700 font-medium">#{cohort.cohort_number}</span>
+                    </div>
+                    <h4 className="text-base font-bold text-gray-900 mb-1">
+                      Cohort {getRomanNumeral(cohort.cohort_number)}
+                    </h4>
+                    <p className="text-xs text-gray-500 mb-2 leading-tight">
+                      {formatDateWithOrdinal(cohort.start_date)}
+                      <br />
+                      <span className="text-gray-400">to</span> {formatDateWithOrdinal(cohort.end_date)}
+                    </p>
+                    <div className="mb-2">
+                      <div className="flex justify-between text-[10px] text-gray-500 mb-0.5">
+                        <span>Progress</span>
+                        <span className="font-bold text-green-700">{progress}%</span>
+                      </div>
+                      <div className="w-full h-1.5 bg-green-200 rounded-full overflow-hidden">
+                        <div className="h-full bg-green-600 rounded-full transition-all" style={{ width: `${progress}%` }}></div>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between pt-1.5 border-t border-green-200/50">
+                      <span className="text-xs text-green-700 flex items-center gap-1">
+                        <Users className="w-3 h-3" /> {activeTrainees}/{traineeCount}
+                      </span>
+                    </div>
+                  </div>
+                </button>
+              )
+            })()}
+            
+            {/* Upcoming Cohorts */}
+            {getFeaturedCohorts().upcoming.map(cohort => {
+              const traineeCount = trainingRecords.filter(r => r.cohort_id === cohort.id).length
+              const isSelected = filterCohort === cohort.id
+              const today = new Date()
+              const startDate = new Date(cohort.start_date)
+              const daysUntilStart = Math.ceil((startDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+              return (
+                <button
+                  key={cohort.id}
+                  onClick={() => setFilterCohort(isSelected ? 'all' : cohort.id)}
+                  className={`p-4 rounded-xl border-2 text-left transition-all shadow-sm hover:shadow-md relative overflow-hidden ${
+                    isSelected
+                      ? 'border-blue-600 bg-blue-50 ring-2 ring-blue-300'
+                      : 'border-blue-200 bg-gradient-to-br from-blue-50 to-sky-50 hover:border-blue-400'
+                  }`}
+                >
+                  <div className="absolute top-0 right-0 w-16 h-16 bg-blue-500/10 rounded-bl-full -mr-4 -mt-4"></div>
+                  <div className="relative">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-blue-500 text-white shadow-sm">
+                        Upcoming
+                      </span>
+                      <span className="text-xs text-blue-700 font-medium">#{cohort.cohort_number}</span>
+                    </div>
+                    <h4 className="text-base font-bold text-gray-900 mb-1">
+                      Cohort {getRomanNumeral(cohort.cohort_number)}
+                    </h4>
+                    <p className="text-xs text-gray-500 mb-2 leading-tight">
+                      {formatDateWithOrdinal(cohort.start_date)}
+                      <br />
+                      <span className="text-gray-400">to</span> {formatDateWithOrdinal(cohort.end_date)}
+                    </p>
+                    {daysUntilStart > 0 && daysUntilStart <= 60 && (
+                      <div className="mb-2">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-100 text-blue-700">
+                          <Calendar className="w-2.5 h-2.5" />
+                          Starts in {daysUntilStart} day{daysUntilStart !== 1 ? 's' : ''}
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between pt-2 border-t border-blue-200/50">
+                      <span className="text-xs text-blue-700 flex items-center gap-1">
+                        <Users className="w-3 h-3" /> {traineeCount} enrolled
+                      </span>
+                    </div>
+                  </div>
+                </button>
+              )
+            })}
+            
+            {/* Empty state placeholders if we have fewer than 5 */}
+            {getFeaturedCohorts().completed.length === 0 && !getFeaturedCohorts().active && getFeaturedCohorts().upcoming.length === 0 && (
+              <div className="col-span-full p-8 text-center rounded-xl border-2 border-dashed border-gray-200 bg-gray-50">
+                <Users className="w-8 h-8 mx-auto text-gray-300 mb-2" />
+                <p className="text-sm text-gray-500">No 2-Week cohorts yet. Click "Manage Cohorts" to create one.</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Summary Cards */}
       <div className="grid grid-cols-4 gap-4 mt-4 mb-6">
         <div className="bg-white rounded-lg shadow p-4 border-l-4 border-green-500">
@@ -1265,42 +1481,47 @@ export function NicheTraining() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">
+              <div className="mb-4">
+                <h2 className="text-lg font-semibold text-gray-900">
                   Import {importType === '2week' ? '2 Week' : 'Short Course'} Trainees from Candidates
                 </h2>
+                <p className="text-sm text-gray-500 mt-1">
+                  NICHE TRAINING — Select qualified candidates to enroll into {importType === '2week' ? '2-Week Flagship' : 'Short Course'} training
+                </p>
+              </div>
                 
-                <div className="mb-4 flex gap-3">
+                <div className="mb-4 flex flex-col sm:flex-row gap-3">
                   <div className="flex-1">
                     <input
                       type="text"
-                      placeholder={`Search ${importType === '2week' ? '2 Week' : 'Short Course'} candidates...`}
+                      placeholder={`Search ${importType === '2week' ? '2 Week Flagship' : 'Short Course'} candidates...`}
                       value={candidateSearch}
                       onChange={(e) => setCandidateSearch(e.target.value)}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
                     />
                   </div>
-                  <div className="flex bg-gray-100 p-1 rounded-lg">
+                  <div className="flex bg-gray-100 p-1 rounded-lg w-full sm:w-auto">
                     <button
                       onClick={() => {
                         setImportType('2week')
                         setSelectedCandidates([])
                       }}
-                      className={`px-4 py-1 text-sm font-medium rounded-md transition-colors ${
+                      className={`flex-1 sm:flex-none px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
                         importType === '2week' ? 'bg-nestalk-primary text-white shadow-sm' : 'text-gray-600 hover:text-gray-900'
                       }`}
                     >
-                      2 Week
+                      🎓 2 Week
                     </button>
                     <button
                       onClick={() => {
                         setImportType('shortcourse')
                         setSelectedCandidates([])
                       }}
-                      className={`px-4 py-1 text-sm font-medium rounded-md transition-colors ${
-                        importType === 'shortcourse' ? 'bg-nestalk-primary text-white shadow-sm' : 'text-gray-600 hover:text-gray-900'
+                      className={`flex-1 sm:flex-none px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                        importType === 'shortcourse' ? 'bg-purple-600 text-white shadow-sm' : 'text-gray-600 hover:text-gray-900'
                       }`}
                     >
-                      Short Course
+                      📚 Short Course
                     </button>
                   </div>
                 </div>
