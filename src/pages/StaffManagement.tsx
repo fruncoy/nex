@@ -77,7 +77,7 @@ const contributionTypes = ['Volunteer Work', 'Leadership', 'Referral']
 const employmentStatuses = ['Employed', 'Yet to be Employed', 'Blacklisted']
 
 export function StaffManagement() {
-  const [activeTab, setActiveTab] = useState<'directory' | 'meetings' | 'referrals' | 'sponsorship' | 'welfare'>('directory')
+  const [activeTab, setActiveTab] = useState<'directory' | 'meetings' | 'referrals' | 'sponsorship' | 'reports'>('directory')
   const [staffMembers, setStaffMembers] = useState<StaffMember[]>([])
   const [filteredStaffMembers, setFilteredStaffMembers] = useState<StaffMember[]>([])
   const [cohorts, setCohorts] = useState<Cohort[]>([])
@@ -119,7 +119,7 @@ export function StaffManagement() {
 
   useEffect(() => {
     if (cohortFilter === 'all') {
-      setFilteredStaffMembers(staffMembers.filter(m => m.employment_status !== 'Blacklisted'))
+      setFilteredStaffMembers(staffMembers)
     } else if (cohortFilter.startsWith('label:')) {
       const label = cohortFilter.slice(6)
       setFilteredStaffMembers(staffMembers.filter(m => m.cohort_label === label))
@@ -473,6 +473,7 @@ export function StaffManagement() {
       setFilteredStaffMembers(prev => prev.map(m => m.id === staffId ? { ...m, referrals: newCount } : m))
       setPendingReferrals(prev => { const n = { ...prev }; delete n[staffId]; return n })
       showToast('Referrals saved', 'success')
+      loadData()
     } catch (error: any) {
       console.error('Failed to save referrals:', error)
       showToast(error?.message || 'Failed to save referrals', 'error')
@@ -631,8 +632,8 @@ export function StaffManagement() {
       {/* Tabs */}
       <div className="border-b border-gray-200 mb-6">
         <nav className="flex overflow-x-auto space-x-2 sm:space-x-8 pb-1">
-          {['Staff Directory', 'Meetings', 'Referrals', 'Sponsorship', 'Welfare'].map((name, i) => {
-            const id = ['directory', 'meetings', 'referrals', 'sponsorship', 'welfare'][i]
+          {['Staff Directory', 'Meetings', 'Referrals', 'Sponsorship', 'Reports'].map((name, i) => {
+            const id = ['directory', 'meetings', 'referrals', 'sponsorship', 'reports'][i]
             return (
               <button
                 key={id}
@@ -1069,12 +1070,103 @@ export function StaffManagement() {
           </div>
         )}
 
-        {activeTab === 'welfare' && (
-          <div className="bg-white rounded-lg shadow p-8 text-center">
-            <h3 className="text-lg font-medium text-gray-900 mb-2">Welfare Management</h3>
-            <p className="text-gray-500">Coming soon!</p>
-          </div>
-        )}
+        {activeTab === 'reports' && (() => {
+          const total = staffMembers.length
+          const employed = staffMembers.filter(m => m.employment_status === 'Employed').length
+          const yetToBeEmployed = staffMembers.filter(m => !m.employment_status || m.employment_status === 'Yet to be Employed').length
+          const blacklisted = staffMembers.filter(m => m.employment_status === 'Blacklisted').length
+          const signedCoc = staffMembers.filter(m => m.signed_coc).length
+          const notSignedCoc = staffMembers.filter(m => !m.signed_coc).length
+          const totalMeetings = meetings.length
+          const totalReferrals = staffMembers.reduce((s, m) => s + (m.referrals || 0), 0)
+          const totalMeetingAttendances = allAttendance.filter(a => a.present).length
+          const avgAttendanceRate = total > 0 && totalMeetings > 0
+            ? Math.round((totalMeetingAttendances / (total * totalMeetings)) * 100)
+            : 0
+
+          // Per-cohort breakdown
+          const cohortBreakdown = (() => {
+            const groups: { label: string; cohortNum: number; count: number; employed: number; blacklisted: number }[] = []
+            const seen = new Map<string, number>()
+            staffMembers.forEach(m => {
+              const cohortNum = m.niche_training?.niche_cohorts?.cohort_number
+              const label = cohortNum ? `Cohort ${cohortNum}` : (m.cohort_label || 'No Cohort')
+              if (!seen.has(label)) { seen.set(label, groups.length); groups.push({ label, cohortNum: cohortNum || 9999, count: 0, employed: 0, blacklisted: 0 }) }
+              const g = groups[seen.get(label)!]
+              g.count++
+              if (m.employment_status === 'Employed') g.employed++
+              if (m.employment_status === 'Blacklisted') g.blacklisted++
+            })
+            return groups.sort((a, b) => a.cohortNum - b.cohortNum)
+          })()
+
+          const tiles = [
+            { label: 'Total Staff', value: total },
+            { label: 'Employed', value: employed },
+            { label: 'Yet to be Employed', value: yetToBeEmployed },
+            { label: 'Blacklisted', value: blacklisted },
+          ]
+
+          return (
+            <div className="space-y-6">
+              {/* Stat tiles */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {tiles.map(t => (
+                  <div key={t.label} className="bg-white border border-gray-200 rounded-lg p-4">
+                    <div className="text-xs font-medium text-gray-500">{t.label}</div>
+                    <div className="text-3xl font-bold my-1 text-gray-900">{t.value}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Cohort breakdown table */}
+              <div className="bg-white rounded-lg shadow overflow-hidden">
+                <div className="px-4 py-3 border-b">
+                  <h3 className="text-sm font-semibold text-gray-700">Breakdown by Cohort</h3>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200 text-sm">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Cohort</th>
+                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Employed</th>
+                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Yet to be Employed</th>
+                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Blacklisted</th>
+                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Employment / Blacklist</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {cohortBreakdown.map(g => (
+                        <tr key={g.label} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 font-medium text-gray-900">{g.label}</td>
+                          <td className="px-4 py-3 text-center text-emerald-700 font-semibold">{g.employed}/{g.count}</td>
+                          <td className="px-4 py-3 text-center text-amber-700">{g.count - g.employed - g.blacklisted}/{g.count}</td>
+                          <td className="px-4 py-3 text-center text-red-600">{g.blacklisted}/{g.count}</td>
+                          <td className="px-4 py-3">
+                            <div className="flex flex-col items-center gap-1.5">
+                              <div className="flex items-center gap-2">
+                                <div className="w-20 bg-gray-200 rounded-full h-1.5">
+                                  <div className="bg-emerald-500 h-1.5 rounded-full" style={{ width: `${g.count > 0 ? Math.round((g.employed/g.count)*100) : 0}%` }} />
+                                </div>
+                                <span className="text-xs text-gray-500 w-8">{g.count > 0 ? Math.round((g.employed/g.count)*100) : 0}%</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <div className="w-20 bg-gray-200 rounded-full h-1.5">
+                                  <div className="bg-red-500 h-1.5 rounded-full" style={{ width: `${g.count > 0 ? Math.round((g.blacklisted/g.count)*100) : 0}%` }} />
+                                </div>
+                                <span className="text-xs text-gray-500 w-8">{g.count > 0 ? Math.round((g.blacklisted/g.count)*100) : 0}%</span>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )
+        })()}
 
         {activeTab === 'sponsorship' && (
           <div className="bg-white rounded-lg shadow overflow-hidden">

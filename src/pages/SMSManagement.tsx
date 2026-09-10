@@ -65,8 +65,16 @@ interface StaffMember {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const formatPhone = (phone: string) =>
-  phone?.startsWith('+') ? phone : `+254${phone.replace(/^0/, '')}`
+const formatPhone = (phone: string) => {
+  if (!phone) return phone
+  const digits = phone.replace(/\D/g, '')
+  // Fix +2540XXXXXXXXX (extra 0 after 254) → 13 digits starting with 2540
+  if (digits.startsWith('2540') && digits.length === 13) return `+254${digits.slice(4)}`
+  if (digits.startsWith('254') && digits.length === 12) return `+${digits}`
+  if (digits.startsWith('0') && digits.length === 10) return `+254${digits.slice(1)}`
+  if (digits.length === 9) return `+254${digits}`
+  return `+${digits}`
+}
 
 const MSG_TYPE_LABEL: Record<string, string> = {
   interview_reminder: 'Interview Reminder',
@@ -910,13 +918,25 @@ Karibu Sana!`
   )
 }
 
+interface StaffWithCohort {
+  id: string
+  name: string
+  phone: string
+  employment_status?: string
+  cohort_label?: string
+  niche_training?: { niche_cohorts?: { id: string; cohort_number: number } }
+}
+
 function BroadcastTab({ onRefresh }: { onRefresh: () => void }) {
   const { staff } = useAuth()
   const { showToast } = useToast()
-  const [audience, setAudience] = useState<'all_trainees' | 'all_staff' | 'cohort' | 'newstaff' | 'custom' | 'clients'>('all_trainees')
-  const [cohorts, setCohorts] = useState<Cohort[]>([])
-  const [selectedCohort, setSelectedCohort] = useState('')
-  const [recipients, setRecipients] = useState<{ id?: string; name: string; phone: string; type: 'candidate' | 'staff' | 'client' }[]>([])
+  const [audience, setAudience] = useState<'staff' | 'custom' | 'clients'>('staff')
+  const [allStaff, setAllStaff] = useState<StaffWithCohort[]>([])
+  const [selectedStaffIds, setSelectedStaffIds] = useState<Set<string>>(new Set())
+  const [staffSearch, setStaffSearch] = useState('')
+  const [allClients, setAllClients] = useState<{ id: string; full_name: string; phone: string }[]>([])
+  const [selectedClientIds, setSelectedClientIds] = useState<Set<string>>(new Set())
+  const [clientSearch, setClientSearch] = useState('')
   const [customNumbers, setCustomNumbers] = useState('')
   const [message, setMessage] = useState('')
   const [sending, setSending] = useState(false)
@@ -924,70 +944,70 @@ function BroadcastTab({ onRefresh }: { onRefresh: () => void }) {
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
 
   useEffect(() => {
-    loadCohorts()
+    loadStaff()
+    loadClients()
     loadCampaigns()
   }, [])
 
-  useEffect(() => {
-    if (audience !== 'custom') loadRecipients()
-  }, [audience, selectedCohort])
+  const loadStaff = async () => {
+    setLoadingRecipients(true)
+    const { data } = await supabase.from('newstaff_members').select(`
+      id, name, phone, employment_status, cohort_label,
+      niche_training:niche_training_id(niche_cohorts:cohort_id(id, cohort_number))
+    `).not('phone', 'is', null).neq('phone', '')
+    const nonBlacklisted = (data || []).filter((m: any) => m.employment_status !== 'Blacklisted')
+    setAllStaff(nonBlacklisted as StaffWithCohort[])
+    setSelectedStaffIds(new Set(nonBlacklisted.map((m: any) => m.id)))
+    setLoadingRecipients(false)
+  }
 
-  const loadCohorts = async () => {
-    const { data } = await supabase.from('niche_cohorts').select('*')
-      .in('status', ['active', 'completed', 'graduated'])
-      .order('cohort_number', { ascending: false })
-    setCohorts(data || [])
+  const loadClients = async () => {
+    const { data } = await supabase.from('sms_contacts').select('id, full_name, phone').not('phone', 'is', null).neq('phone', '')
+    setAllClients(data || [])
+    setSelectedClientIds(new Set((data || []).map((c: any) => c.id)))
   }
 
   const loadCampaigns = async () => {
-    const { data } = await supabase.from('sms_campaigns').select('*').eq('type', 'broadcast').order('created_at', { ascending: false }).limit(10)
+    const { data } = await supabase.from('sms_campaigns').select('*').eq('campaign_type', 'broadcast').order('created_at', { ascending: false }).limit(10)
     setCampaigns(data || [])
   }
 
-  const loadRecipients = async () => {
-    setLoadingRecipients(true)
-    try {
-      if (audience === 'all_trainees') {
-        const { data } = await supabase.from('niche_training').select('id, name, phone').not('phone', 'is', null).neq('phone', '')
-        setRecipients((data || []).map(t => ({ id: t.id, name: t.name, phone: formatPhone(t.phone), type: 'candidate' as const })))
-      } else if (audience === 'all_staff') {
-        const { data } = await supabase.from('staff').select('id, name, phone').not('phone', 'is', null).neq('phone', '')
-        setRecipients((data || []).map(s => ({ id: s.id, name: s.name, phone: s.phone, type: 'staff' as const })))
-      } else if (audience === 'clients') {
-        const { data } = await supabase.from('sms_contacts').select('id, full_name, phone').not('phone', 'is', null).neq('phone', '')
-        setRecipients((data || []).map(c => ({ id: c.id, name: c.full_name, phone: formatPhone(c.phone), type: 'client' as const })))
-      } else if (audience === 'newstaff') {
-        const { data } = await supabase.from('newstaff_members').select('id, name, phone').not('phone', 'is', null).neq('phone', '')
-        const seen = new Set<string>()
-        const deduped = (data || []).filter(s => {
-          const normalized = formatPhone(s.phone).replace(/^\+/, '').replace(/^254254/, '254')
-          if (seen.has(normalized)) return false
-          seen.add(normalized)
-          return true
-        })
-        setRecipients(deduped.map(s => ({ id: s.id, name: s.name, phone: formatPhone(s.phone).replace(/^\+254254/, '+254'), type: 'staff' as const })))
-      } else if (audience === 'cohort' && selectedCohort) {
-        const { data } = await supabase.from('niche_training').select('id, name, phone').eq('cohort_id', selectedCohort).not('phone', 'is', null).neq('phone', '')
-        setRecipients((data || []).map(t => ({ id: t.id, name: t.name, phone: formatPhone(t.phone), type: 'candidate' as const })))
-      } else {
-        setRecipients([])
-      }
-    } finally {
-      setLoadingRecipients(false)
-    }
-  }
+  // Group staff by cohort
+  const staffByCohort = (() => {
+    const groups: { label: string; cohortNum: number; members: StaffWithCohort[] }[] = []
+    const seen = new Map<string, number>()
+    allStaff.forEach(m => {
+      const cohortNum = m.niche_training?.niche_cohorts?.cohort_number
+      const label = cohortNum ? `Cohort ${cohortNum}` : (m.cohort_label || 'No Cohort')
+      const key = label
+      if (!seen.has(key)) { seen.set(key, groups.length); groups.push({ label, cohortNum: cohortNum || 9999, members: [] }) }
+      groups[seen.get(key)!].members.push(m)
+    })
+    return groups.sort((a, b) => a.cohortNum - b.cohortNum)
+  })()
 
-  const parseCustomNumbers = () => {
-    const lines = customNumbers.split(/[\n,]+/).map(l => l.trim()).filter(Boolean)
-    return lines.map(phone => ({ name: phone, phone: formatPhone(phone), type: 'candidate' as const }))
-  }
+  const filteredStaff = allStaff.filter(m =>
+    !staffSearch || m.name.toLowerCase().includes(staffSearch.toLowerCase()) || (m.phone || '').includes(staffSearch)
+  )
 
-  const finalRecipients = audience === 'custom' ? parseCustomNumbers() : recipients
+  const filteredClients = allClients.filter(c =>
+    !clientSearch || c.full_name.toLowerCase().includes(clientSearch.toLowerCase()) || (c.phone || '').includes(clientSearch)
+  )
+
+  const parseCustomNumbers = () =>
+    customNumbers.split(/[\n,]+/).map(l => l.trim()).filter(Boolean)
+      .map(phone => ({ name: phone, phone: formatPhone(phone), type: 'candidate' as const }))
+
+  const finalRecipients = audience === 'custom'
+    ? parseCustomNumbers()
+    : audience === 'staff'
+      ? allStaff.filter(m => selectedStaffIds.has(m.id)).map(m => ({ id: m.id, name: m.name, phone: formatPhone(m.phone), type: 'staff' as const }))
+      : allClients.filter(c => selectedClientIds.has(c.id)).map(c => ({ id: c.id, name: c.full_name, phone: formatPhone(c.phone), type: 'client' as const }))
 
   const handleSend = async () => {
     if (!finalRecipients.length || !message.trim()) return
     setSending(true)
-    const audienceLabel = audience === 'all_trainees' ? 'All Trainees' : audience === 'all_staff' ? 'All Staff' : audience === 'cohort' ? `Cohort ${cohorts.find(c => c.id === selectedCohort)?.cohort_number}` : 'Custom'
+    const audienceLabel = audience === 'staff' ? 'Staff Members' : audience === 'clients' ? 'Clients' : 'Custom'
     await sendCampaign({
       name: `Broadcast - ${audienceLabel} - ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`,
       type: 'broadcast',
@@ -1009,32 +1029,81 @@ function BroadcastTab({ onRefresh }: { onRefresh: () => void }) {
           {/* Audience */}
           <div>
             <div className="text-sm font-semibold text-gray-700 mb-2">Audience</div>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               {[
-                { value: 'all_trainees', label: 'A. All Trainees' },
-                { value: 'all_staff', label: 'B. All Staff' },
-                { value: 'cohort', label: 'C. Specific Cohort' },
-                { value: 'newstaff', label: 'D. Staff Members' },
-                { value: 'custom', label: 'E. Custom Numbers' },
-                { value: 'clients', label: 'F. Clients' },
+                { value: 'staff', label: 'A. Staff Members' },
+                { value: 'custom', label: 'B. Custom Numbers' },
+                { value: 'clients', label: 'C. Clients' },
               ].map(opt => (
                 <button key={opt.value} onClick={() => setAudience(opt.value as any)}
-                  className={`px-3 py-2 text-sm rounded-lg border transition-colors ${audience === opt.value ? 'border-nestalk-primary bg-nestalk-primary/5 text-nestalk-primary font-medium' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+                  className={`px-3 py-2 text-sm rounded-lg border transition-colors ${
+                    audience === opt.value ? 'border-nestalk-primary bg-nestalk-primary/5 text-nestalk-primary font-medium' : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                  }`}>
                   {opt.label}
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Cohort picker */}
-          {audience === 'cohort' && (
+          {/* Staff selector */}
+          {audience === 'staff' && (
             <div>
-              <div className="text-sm font-semibold text-gray-700 mb-2">Select Cohort</div>
-              <select value={selectedCohort} onChange={e => setSelectedCohort(e.target.value)}
-                className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-nestalk-primary">
-                <option value="">-- Select cohort --</option>
-                {cohorts.map(c => <option key={c.id} value={c.id}>Cohort {c.cohort_number} ({c.status})</option>)}
-              </select>
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-sm font-semibold text-gray-700">Select Staff <span className="text-gray-400 font-normal">({selectedStaffIds.size} selected)</span></div>
+                <button onClick={() => setSelectedStaffIds(
+                  selectedStaffIds.size === allStaff.length ? new Set() : new Set(allStaff.map(m => m.id))
+                )} className="text-xs text-nestalk-primary underline">
+                  {selectedStaffIds.size === allStaff.length ? 'Deselect all' : 'Select all'}
+                </button>
+              </div>
+              <div className="relative mb-2">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                <input value={staffSearch} onChange={e => setStaffSearch(e.target.value)}
+                  placeholder="Search staff..."
+                  className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary" />
+              </div>
+              <div className="border border-gray-200 rounded-lg overflow-hidden max-h-64 overflow-y-auto">
+                {loadingRecipients ? (
+                  <div className="flex items-center justify-center py-6"><Loader2 className="w-4 h-4 animate-spin text-gray-400" /></div>
+                ) : staffByCohort.map(group => {
+                  const groupMembers = group.members.filter(m =>
+                    !staffSearch || m.name.toLowerCase().includes(staffSearch.toLowerCase()) || (m.phone || '').includes(staffSearch)
+                  )
+                  if (groupMembers.length === 0) return null
+                  const allSelected = groupMembers.every(m => selectedStaffIds.has(m.id))
+                  return (
+                    <div key={group.label}>
+                      <div className="flex items-center justify-between px-3 py-1.5 bg-gray-50 border-b border-gray-100">
+                        <span className="text-xs font-semibold text-gray-600">{group.label}</span>
+                        <button onClick={() => {
+                          const next = new Set(selectedStaffIds)
+                          groupMembers.forEach(m => allSelected ? next.delete(m.id) : next.add(m.id))
+                          setSelectedStaffIds(next)
+                        }} className="text-xs text-nestalk-primary underline">
+                          {allSelected ? 'Deselect' : 'Select all'}
+                        </button>
+                      </div>
+                      {groupMembers.map(m => (
+                        <div key={m.id} onClick={() => {
+                          const next = new Set(selectedStaffIds)
+                          next.has(m.id) ? next.delete(m.id) : next.add(m.id)
+                          setSelectedStaffIds(next)
+                        }} className={`flex items-center justify-between px-3 py-2 border-b border-gray-100 last:border-0 cursor-pointer hover:bg-gray-50 ${
+                          selectedStaffIds.has(m.id) ? 'bg-nestalk-primary/5' : ''
+                        }`}>
+                          <div className="flex items-center gap-2">
+                            <div className={`w-3.5 h-3.5 rounded border-2 flex-shrink-0 ${
+                              selectedStaffIds.has(m.id) ? 'border-nestalk-primary bg-nestalk-primary' : 'border-gray-300'
+                            }`} />
+                            <span className="text-sm text-gray-900">{m.name}</span>
+                          </div>
+                          <span className="text-xs font-mono text-gray-400">{m.phone}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )
+                })}
+              </div>
             </div>
           )}
 
@@ -1046,6 +1115,46 @@ function BroadcastTab({ onRefresh }: { onRefresh: () => void }) {
                 placeholder="0712345678&#10;0723456789&#10;+254734567890"
                 className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-nestalk-primary font-mono" />
               <div className="text-xs text-gray-400 mt-1">{parseCustomNumbers().length} numbers parsed</div>
+            </div>
+          )}
+
+          {/* Clients selector */}
+          {audience === 'clients' && (
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-sm font-semibold text-gray-700">Select Clients <span className="text-gray-400 font-normal">({selectedClientIds.size} selected)</span></div>
+                <button onClick={() => setSelectedClientIds(
+                  selectedClientIds.size === allClients.length ? new Set() : new Set(allClients.map(c => c.id))
+                )} className="text-xs text-nestalk-primary underline">
+                  {selectedClientIds.size === allClients.length ? 'Deselect all' : 'Select all'}
+                </button>
+              </div>
+              <div className="relative mb-2">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                <input value={clientSearch} onChange={e => setClientSearch(e.target.value)}
+                  placeholder="Search clients..."
+                  className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary" />
+              </div>
+              <div className="border border-gray-200 rounded-lg overflow-hidden max-h-64 overflow-y-auto">
+                {filteredClients.map(c => (
+                  <div key={c.id} onClick={() => {
+                    const next = new Set(selectedClientIds)
+                    next.has(c.id) ? next.delete(c.id) : next.add(c.id)
+                    setSelectedClientIds(next)
+                  }} className={`flex items-center justify-between px-3 py-2 border-b border-gray-100 last:border-0 cursor-pointer hover:bg-gray-50 ${
+                    selectedClientIds.has(c.id) ? 'bg-nestalk-primary/5' : ''
+                  }`}>
+                    <div className="flex items-center gap-2">
+                      <div className={`w-3.5 h-3.5 rounded border-2 flex-shrink-0 ${
+                        selectedClientIds.has(c.id) ? 'border-nestalk-primary bg-nestalk-primary' : 'border-gray-300'
+                      }`} />
+                      <span className="text-sm text-gray-900">{c.full_name}</span>
+                    </div>
+                    <span className="text-xs font-mono text-gray-400">{c.phone}</span>
+                  </div>
+                ))}
+                {filteredClients.length === 0 && <div className="text-sm text-gray-400 text-center py-6">No clients found</div>}
+              </div>
             </div>
           )}
 
@@ -1071,9 +1180,7 @@ function BroadcastTab({ onRefresh }: { onRefresh: () => void }) {
             {finalRecipients.length > 0 && <span className="text-gray-400 font-normal ml-1">({finalRecipients.length})</span>}
           </div>
           {finalRecipients.length === 0 ? (
-            <div className="text-sm text-gray-400 text-center py-10 border border-dashed border-gray-200 rounded-lg">
-              {audience === 'cohort' && !selectedCohort ? 'Select a cohort above' : 'No recipients yet'}
-            </div>
+            <div className="text-sm text-gray-400 text-center py-10 border border-dashed border-gray-200 rounded-lg">No recipients selected</div>
           ) : (
             <div className="border border-gray-200 rounded-lg overflow-hidden max-h-96 overflow-y-auto">
               {finalRecipients.slice(0, 100).map((r, i) => (
@@ -1160,6 +1267,25 @@ function parseContactsText(raw: string): { full_name: string; phone: string | nu
     .filter(Boolean) as { full_name: string; phone: string | null }[]
 }
 
+// Normalize phone to 2547XXXXXXXX for dedup comparison
+// Handles malformed +2540XXXXXXXXX (extra 0 after 254) from some imports
+const normalizePhone = (phone: string) => {
+  let digits = phone.replace(/\D/g, '')
+  // Fix +2540XXXXXXXXX → 254XXXXXXXXX (extra 0 inserted)
+  if (digits.startsWith('2540') && digits.length === 13) digits = '254' + digits.slice(4)
+  if (digits.startsWith('254') && digits.length === 12) return digits
+  if (digits.startsWith('0') && digits.length === 10) return '254' + digits.slice(1)
+  if (digits.length === 9) return '254' + digits
+  return digits
+}
+
+// Store phones as 07XXXXXXXX (local format)
+const toLocalFormat = (phone: string) => {
+  const norm = normalizePhone(phone)
+  if (norm.startsWith('254') && norm.length === 12) return '0' + norm.slice(3)
+  return phone.replace(/\D/g, '')
+}
+
 function ContactsTab() {
   const { staff } = useAuth()
   const { showToast } = useToast()
@@ -1170,6 +1296,8 @@ function ContactsTab() {
   const [rawText, setRawText] = useState('')
   const [preview, setPreview] = useState<{ full_name: string; phone: string | null }[]>([])
   const [saving, setSaving] = useState(false)
+  const [removingDupes, setRemovingDupes] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string } | null>(null)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
 
   useEffect(() => { loadContacts() }, [])
@@ -1201,27 +1329,86 @@ function ContactsTab() {
   const handleSave = async () => {
     if (!preview.length) return
     setSaving(true)
-    const rows = preview.map(p => ({
-      full_name: p.full_name,
-      phone: p.phone || null,
-      contact_type: 'client',
-      created_by: staff?.name || 'System',
-    }))
-    const { error } = await supabase.from('sms_contacts').insert(rows)
+
+    // Deduplicate against existing contacts by normalized phone
+    const existingPhones = new Set(contacts.filter(c => c.phone).map(c => normalizePhone(c.phone!)))
+    const newRows = preview
+      .filter(p => !p.phone || !existingPhones.has(normalizePhone(p.phone)))
+      .map(p => ({ full_name: p.full_name, phone: p.phone ? toLocalFormat(p.phone) : null, contact_type: 'client', created_by: staff?.name || 'System' }))
+
+    const skipped = preview.length - newRows.length
+
+    if (newRows.length === 0) {
+      showToast(`All ${skipped} contacts already exist (duplicate phones skipped)`, 'error')
+      setSaving(false)
+      return
+    }
+
+    const { error } = await supabase.from('sms_contacts').insert(newRows)
     if (error) showToast('Failed to save contacts', 'error')
     else {
-      showToast(`${rows.length} contacts saved`, 'success')
+      showToast(`${newRows.length} contacts saved${skipped > 0 ? `, ${skipped} duplicates skipped` : ''}`, 'success')
       setRawText(''); setPreview([]); setShowUpload(false)
       loadContacts()
     }
     setSaving(false)
   }
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Delete this contact?')) return
-    await supabase.from('sms_contacts').delete().eq('id', id)
-    setContacts(prev => prev.filter(c => c.id !== id))
+  const handleDelete = async () => {
+    if (!confirmDelete) return
+    await supabase.from('sms_contacts').delete().eq('id', confirmDelete.id)
+    setContacts(prev => prev.filter(c => c.id !== confirmDelete.id))
+    showToast('Contact deleted', 'success')
+    setConfirmDelete(null)
   }
+
+  const handleClearPhone = async (id: string) => {
+    await supabase.from('sms_contacts').update({ phone: null }).eq('id', id)
+    setContacts(prev => prev.map(c => c.id === id ? { ...c, phone: null } : c))
+  }
+
+  const handleRemoveDuplicates = async () => {
+    // Find duplicate phone numbers — keep the oldest (lowest created_at), delete the rest
+    const withPhone = contacts.filter(c => c.phone)
+    const seen = new Map<string, string>() // normalized phone -> id to keep
+    const toDelete: string[] = []
+
+    // Sort by created_at ascending so we keep the first one
+    const sorted = [...withPhone].sort((a, b) => a.created_at.localeCompare(b.created_at))
+    for (const c of sorted) {
+      const norm = normalizePhone(c.phone!)
+      if (seen.has(norm)) toDelete.push(c.id)
+      else seen.set(norm, c.id)
+    }
+
+    if (toDelete.length === 0) {
+      showToast('No duplicates found', 'success')
+      return
+    }
+
+    if (!confirm(`Found ${toDelete.length} duplicate contact(s). Delete them?`)) return
+    setRemovingDupes(true)
+    const { error } = await supabase.from('sms_contacts').delete().in('id', toDelete)
+    if (error) showToast('Failed to remove duplicates', 'error')
+    else {
+      showToast(`Removed ${toDelete.length} duplicate(s)`, 'success')
+      loadContacts()
+    }
+    setRemovingDupes(false)
+  }
+
+  // Count duplicates for badge
+  const dupCount = (() => {
+    const seen = new Set<string>()
+    let count = 0
+    for (const c of contacts) {
+      if (!c.phone) continue
+      const norm = normalizePhone(c.phone)
+      if (seen.has(norm)) count++
+      else seen.add(norm)
+    }
+    return count
+  })()
 
   const filtered = contacts.filter(c =>
     c.full_name.toLowerCase().includes(search.toLowerCase()) ||
@@ -1237,6 +1424,13 @@ function ContactsTab() {
             placeholder="Search name or phone..."
             className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent" />
         </div>
+        {dupCount > 0 && (
+          <button onClick={handleRemoveDuplicates} disabled={removingDupes}
+            className="flex items-center gap-1.5 px-3 py-2 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 disabled:opacity-50">
+            <Trash2 className="w-4 h-4" />
+            Remove {dupCount} Duplicate{dupCount !== 1 ? 's' : ''}
+          </button>
+        )}
         <button onClick={() => setShowUpload(!showUpload)}
           className="flex items-center gap-1.5 px-3 py-2 bg-nestalk-primary text-white text-sm rounded-lg hover:bg-nestalk-primary/90">
           <Plus className="w-4 h-4" /> Upload
@@ -1310,7 +1504,9 @@ function ContactsTab() {
                 <tr key={c.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3 text-xs text-gray-400">{i + 1}</td>
                   <td className="px-4 py-3 font-medium text-gray-900">{c.full_name}</td>
-                  <td className="px-4 py-3 font-mono text-xs text-gray-600">{c.phone || <span className="text-gray-300">—</span>}</td>
+                  <td className="px-4 py-3 font-mono text-xs text-gray-600">
+                    {c.phone || <span className="text-gray-300">—</span>}
+                  </td>
                   <td className="px-4 py-3">
                     <span className={`px-2 py-0.5 text-xs rounded-full ${
                       c.contact_type === 'client' ? 'bg-blue-100 text-blue-700' :
@@ -1319,8 +1515,9 @@ function ContactsTab() {
                   </td>
                   <td className="px-4 py-3 text-xs text-gray-500 max-w-[200px] truncate">{c.notes || ''}</td>
                   <td className="px-4 py-3">
-                    <button onClick={() => handleDelete(c.id)} className="text-gray-300 hover:text-red-500 transition-colors">
-                      <Trash2 className="w-4 h-4" />
+                    <button onClick={() => setConfirmDelete({ id: c.id, name: c.full_name })}
+                      className="flex items-center gap-1 text-xs text-gray-400 hover:text-red-600 transition-colors px-2 py-1 rounded hover:bg-red-50">
+                      <Trash2 className="w-3.5 h-3.5" /> Delete
                     </button>
                   </td>
                 </tr>
@@ -1329,6 +1526,20 @@ function ContactsTab() {
           </table>
         </div>
       </div>
+      {confirmDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-sm mx-4 space-y-4">
+            <p className="text-sm font-semibold text-gray-900">Delete contact?</p>
+            <p className="text-sm text-gray-500">This will permanently remove <span className="font-medium text-gray-800">{confirmDelete.name}</span>.</p>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setConfirmDelete(null)}
+                className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
+              <button onClick={handleDelete}
+                className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700">Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
