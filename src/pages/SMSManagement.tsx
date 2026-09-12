@@ -110,7 +110,7 @@ async function sendCampaign(opts: {
   name: string
   type: 'graduation' | 'weekly_digest' | 'broadcast'
   message: string
-  recipients: { id?: string; name: string; phone: string; type: 'candidate' | 'staff' | 'client' }[]
+  recipients: { id?: string; name: string; phone: string; type: 'candidate' | 'staff' | 'client'; personalizedMessage?: string }[]
   cohortId?: string
   staffId: string
   staffName: string
@@ -143,13 +143,14 @@ async function sendCampaign(opts: {
 
   for (const r of recipients) {
     const phone = formatPhone(r.phone)
+    const msgToSend = r.personalizedMessage ?? message
     const result = await smsService.sendSMS({
       recipientType: r.type,
       recipientId: r.id,
       recipientName: r.name,
       phoneNumber: phone,
       messageType: type,
-      messageContent: message,
+      messageContent: msgToSend,
       sentBy: staffId,
     })
 
@@ -158,7 +159,7 @@ async function sendCampaign(opts: {
       campaign_id: campaign.id,
       recipient_name: r.name,
       recipient_phone: phone,
-      message,
+      message: msgToSend,
       status: result.success ? 'sent' : 'failed',
       error_message: result.error || null,
     })
@@ -331,7 +332,7 @@ function SummaryTab({ logs, onRefresh, loading }: { logs: SMSLog[]; onRefresh: (
                   </tr>
                   {expandedId === log.id && (
                     <tr className="bg-gray-50">
-                      <td colSpan={7} className="px-6 py-4">
+                      <td colSpan={6} className="px-6 py-4">
                         <div className="text-xs font-semibold text-gray-500 uppercase mb-2">Full Message</div>
                         <div className="text-sm text-gray-800 whitespace-pre-wrap bg-white border border-gray-200 rounded-lg p-3">{log.message_content}</div>
                         <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-3 text-xs text-gray-500">
@@ -349,7 +350,7 @@ function SummaryTab({ logs, onRefresh, loading }: { logs: SMSLog[]; onRefresh: (
                 </React.Fragment>
               ))}
               {filtered.length === 0 && (
-                <tr><td colSpan={7} className="text-center py-10 text-gray-400 text-sm">No logs found</td></tr>
+                <tr><td colSpan={6} className="text-center py-10 text-gray-400 text-sm">No logs found</td></tr>
               )}
             </tbody>
           </table>
@@ -572,7 +573,7 @@ function GraduationTab({ onRefresh }: { onRefresh: () => void }) {
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600">Campaign</th>
-                  <th className="text-center px-4 py-3 text-xs font-semibold text-gray-600">Recipients</th>
+                  
                   <th className="text-center px-4 py-3 text-xs font-semibold text-gray-600">Sent</th>
                   <th className="text-center px-4 py-3 text-xs font-semibold text-gray-600">Failed</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600">Date</th>
@@ -582,9 +583,9 @@ function GraduationTab({ onRefresh }: { onRefresh: () => void }) {
                 {campaigns.map(c => (
                   <tr key={c.id} className="hover:bg-gray-50">
                     <td className="px-4 py-3 font-medium text-gray-900">{c.name}</td>
-                    <td className="text-center px-4 py-3 text-gray-700">{c.recipients_count}</td>
-                    <td className="text-center px-4 py-3 text-emerald-700 font-semibold">{c.sent_count}</td>
-                    <td className="text-center px-4 py-3 text-red-600">{c.failed_count}</td>
+                    
+                    <td className="text-center px-4 py-3 text-emerald-700 font-semibold">{c.sent_count}/{c.recipients_count}</td>
+                    <td className="text-center px-4 py-3 text-red-600">{c.failed_count}/{c.recipients_count}</td>
                     <td className="px-4 py-3 text-xs text-gray-500">{new Date(c.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</td>
                   </tr>
                 ))}
@@ -818,8 +819,8 @@ function WeeklyTab({ onRefresh }: { onRefresh: () => void }) {
                 {campaigns.map(c => (
                   <tr key={c.id} className="hover:bg-gray-50">
                     <td className="px-4 py-3 font-medium text-gray-900">{c.name}</td>
-                    <td className="text-center px-4 py-3 text-emerald-700 font-semibold">{c.sent_count}</td>
-                    <td className="text-center px-4 py-3 text-red-600">{c.failed_count}</td>
+                    <td className="text-center px-4 py-3 text-emerald-700 font-semibold">{c.sent_count}/{c.recipients_count}</td>
+                    <td className="text-center px-4 py-3 text-red-600">{c.failed_count}/{c.recipients_count}</td>
                     <td className="px-4 py-3 text-xs text-gray-500">{new Date(c.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</td>
                   </tr>
                 ))}
@@ -927,6 +928,16 @@ interface StaffWithCohort {
   niche_training?: { niche_cohorts?: { id: string; cohort_number: number } }
 }
 
+interface SmsRecord {
+  id: string
+  campaign_id: string
+  recipient_name: string
+  recipient_phone: string
+  message: string
+  status: string
+  error_message?: string
+}
+
 function BroadcastTab({ onRefresh }: { onRefresh: () => void }) {
   const { staff } = useAuth()
   const { showToast } = useToast()
@@ -939,9 +950,13 @@ function BroadcastTab({ onRefresh }: { onRefresh: () => void }) {
   const [clientSearch, setClientSearch] = useState('')
   const [customNumbers, setCustomNumbers] = useState('')
   const [message, setMessage] = useState('')
+  const [usePersonalization, setUsePersonalization] = useState(false)
   const [sending, setSending] = useState(false)
   const [loadingRecipients, setLoadingRecipients] = useState(false)
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
+  const [expandedCampaignId, setExpandedCampaignId] = useState<string | null>(null)
+  const [campaignRecords, setCampaignRecords] = useState<Record<string, SmsRecord[]>>({})
+  const [loadingRecords, setLoadingRecords] = useState<string | null>(null)
 
   useEffect(() => {
     loadStaff()
@@ -969,7 +984,27 @@ function BroadcastTab({ onRefresh }: { onRefresh: () => void }) {
 
   const loadCampaigns = async () => {
     const { data } = await supabase.from('sms_campaigns').select('*').eq('campaign_type', 'broadcast').order('created_at', { ascending: false }).limit(10)
-    setCampaigns(data || [])
+    if (!data) { setCampaigns([]); return }
+    const enriched = await Promise.all(data.map(async c => {
+      if (c.sent_count > 0 || c.failed_count > 0) return c
+      const { data: records } = await supabase.from('sms_records').select('status').eq('campaign_id', c.id)
+      if (!records || records.length === 0) return c
+      const sent = records.filter((r: any) => r.status === 'sent').length
+      const failed = records.filter((r: any) => r.status === 'failed').length
+      await supabase.from('sms_campaigns').update({ sent_count: sent, failed_count: failed, recipients_count: records.length }).eq('id', c.id)
+      return { ...c, sent_count: sent, failed_count: failed, recipients_count: records.length }
+    }))
+    setCampaigns(enriched)
+  }
+
+  const toggleCampaignRecords = async (campaignId: string) => {
+    if (expandedCampaignId === campaignId) { setExpandedCampaignId(null); return }
+    setExpandedCampaignId(campaignId)
+    if (campaignRecords[campaignId]) return
+    setLoadingRecords(campaignId)
+    const { data } = await supabase.from('sms_records').select('*').eq('campaign_id', campaignId).order('recipient_name')
+    setCampaignRecords(prev => ({ ...prev, [campaignId]: data || [] }))
+    setLoadingRecords(null)
   }
 
   // Group staff by cohort
@@ -1008,11 +1043,14 @@ function BroadcastTab({ onRefresh }: { onRefresh: () => void }) {
     if (!finalRecipients.length || !message.trim()) return
     setSending(true)
     const audienceLabel = audience === 'staff' ? 'Staff Members' : audience === 'clients' ? 'Clients' : 'Custom'
+    const recipientsWithMsg = usePersonalization
+      ? finalRecipients.map(r => ({ ...r, personalizedMessage: message.replace(/\{firstName\}/g, r.name.split(' ')[0]) }))
+      : finalRecipients
     await sendCampaign({
       name: `Broadcast - ${audienceLabel} - ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`,
       type: 'broadcast',
       message,
-      recipients: finalRecipients,
+      recipients: recipientsWithMsg,
       staffId: staff?.id || '',
       staffName: staff?.name || 'System',
       showToast,
@@ -1160,10 +1198,34 @@ function BroadcastTab({ onRefresh }: { onRefresh: () => void }) {
 
           {/* Message */}
           <div>
-            <div className="text-sm font-semibold text-gray-700 mb-2">Message <span className="text-gray-400 font-normal">({message.length} chars)</span></div>
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-sm font-semibold text-gray-700">Message <span className="text-gray-400 font-normal">({message.length} chars)</span></div>
+              <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                <div onClick={() => setUsePersonalization(p => !p)}
+                  className={`w-8 h-4 rounded-full transition-colors ${usePersonalization ? 'bg-nestalk-primary' : 'bg-gray-300'} relative`}>
+                  <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full shadow transition-transform ${usePersonalization ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                </div>
+                <span className="text-xs text-gray-500">Personalise</span>
+              </label>
+            </div>
+            {usePersonalization && (
+              <div className="mb-1.5">
+                <button type="button" onClick={() => setMessage(m => m + '{firstName}')}
+                  className="text-xs px-2 py-1 border border-nestalk-primary text-nestalk-primary rounded hover:bg-nestalk-primary/10 transition-colors">
+                  + Insert &#123;firstName&#125;
+                </button>
+                <span className="text-xs text-gray-400 ml-2">replaced with each recipient's first name on send</span>
+              </div>
+            )}
             <textarea value={message} onChange={e => setMessage(e.target.value)} rows={6}
               placeholder="Type your broadcast message..."
               className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-nestalk-primary focus:border-transparent" />
+            {usePersonalization && finalRecipients.length > 0 && message.includes('{firstName}') && (
+              <div className="mt-1.5 text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded px-3 py-2">
+                <span className="font-medium text-gray-600">Preview: </span>
+                {message.replace(/\{firstName\}/g, finalRecipients[0].name.split(' ')[0])}
+              </div>
+            )}
           </div>
 
           <button onClick={handleSend} disabled={sending || !finalRecipients.length || !message.trim()}
@@ -1210,7 +1272,7 @@ function BroadcastTab({ onRefresh }: { onRefresh: () => void }) {
                 <tr>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600">Campaign</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600">Message</th>
-                  <th className="text-center px-4 py-3 text-xs font-semibold text-gray-600">Recipients</th>
+                  
                   <th className="text-center px-4 py-3 text-xs font-semibold text-gray-600">Sent</th>
                   <th className="text-center px-4 py-3 text-xs font-semibold text-gray-600">Failed</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600">By</th>
@@ -1219,15 +1281,49 @@ function BroadcastTab({ onRefresh }: { onRefresh: () => void }) {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {campaigns.map(c => (
-                  <tr key={c.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 font-medium text-gray-900 max-w-[160px] truncate">{c.name}</td>
-                    <td className="px-4 py-3 text-xs text-gray-500 max-w-[200px] truncate" title={c.message}>{c.message}</td>
-                    <td className="text-center px-4 py-3 text-gray-700">{c.recipients_count}</td>
-                    <td className="text-center px-4 py-3 text-emerald-700 font-semibold">{c.sent_count}</td>
-                    <td className="text-center px-4 py-3 text-red-600">{c.failed_count}</td>
-                    <td className="px-4 py-3 text-xs text-gray-500">{c.created_by}</td>
-                    <td className="px-4 py-3 text-xs text-gray-500">{new Date(c.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</td>
-                  </tr>
+                  <React.Fragment key={c.id}>
+                    <tr className="hover:bg-gray-50 cursor-pointer" onClick={() => toggleCampaignRecords(c.id)}>
+                      <td className="px-4 py-3 font-medium text-gray-900 max-w-[160px] truncate">{c.name}</td>
+                      <td className="px-4 py-3 text-xs text-gray-500 max-w-[200px] truncate" title={c.message}>{c.message}</td>
+                      
+                      <td className="text-center px-4 py-3 text-emerald-700 font-semibold">{c.sent_count}/{c.recipients_count}</td>
+                      <td className="text-center px-4 py-3 text-red-600">{c.failed_count}/{c.recipients_count}</td>
+                      <td className="px-4 py-3 text-xs text-gray-500">{c.created_by}</td>
+                      <td className="px-4 py-3 text-xs text-gray-500">{new Date(c.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</td>
+                    </tr>
+                    {expandedCampaignId === c.id && (
+                      <tr>
+                        <td colSpan={6} className="bg-gray-50 px-6 py-4">
+                          {loadingRecords === c.id ? (
+                            <div className="flex items-center gap-2 text-sm text-gray-400"><Loader2 className="w-4 h-4 animate-spin" /> Loading recipients...</div>
+                          ) : (
+                            <div>
+                              <div className="text-xs font-semibold text-gray-500 uppercase mb-2">Recipients ({campaignRecords[c.id]?.length || 0})</div>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-1.5 max-h-64 overflow-y-auto">
+                                {(campaignRecords[c.id] || []).map((r, i) => (
+                                  <div key={r.id} className="flex items-center justify-between bg-white border border-gray-100 rounded px-3 py-1.5 text-xs">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-gray-400">{i + 1}.</span>
+                                      <div>
+                                        <div className="font-medium text-gray-800">{r.recipient_name}</div>
+                                        <div className="font-mono text-gray-400">{r.recipient_phone}</div>
+                                      </div>
+                                    </div>
+                                    <span className={`px-1.5 py-0.5 rounded-full text-xs font-medium ${
+                                      r.status === 'sent' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-600'
+                                    }`}>{r.status}</span>
+                                  </div>
+                                ))}
+                                {(campaignRecords[c.id] || []).length === 0 && (
+                                  <div className="text-sm text-gray-400">No records found</div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
                 ))}
               </tbody>
             </table>

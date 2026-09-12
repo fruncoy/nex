@@ -77,6 +77,7 @@ export function Layout() {
       ]
     },
     { name: 'Staff Management', href: '/staff-management', icon: UserCog },
+    { name: 'Member Portal', href: '/member-admin', icon: Users },
     { name: 'Updates', href: '/updates', icon: MessageCircle },
 
     { name: 'SMS Management', href: '/sms', icon: MessageCircle },

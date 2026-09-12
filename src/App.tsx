@@ -24,6 +24,8 @@ import NicheProgressTracking from './pages/NicheProgressTracking'
 import { Digest } from './pages/Digest'
 
 import { StaffManagement } from './pages/StaffManagement'
+import { MemberPortal } from './pages/MemberPortal'
+import { MemberAdmin } from './pages/MemberAdmin'
 
 function ProtectedLayout() {
   const { user, loading } = useAuth()
@@ -81,9 +83,11 @@ function AppRoutes() {
         <Route path="sms" element={<SMSManagement />} />
         <Route path="nestara-ai" element={<NestaraAI />} />
         <Route path="staff-management" element={<StaffManagement />} />
+        <Route path="member-admin" element={<MemberAdmin />} />
         <Route path="updates" element={<Updates />} />
       </Route>
       <Route path="/digest" element={<ProtectedDigest />} />
+      <Route path="/member" element={<MemberPortal />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )
