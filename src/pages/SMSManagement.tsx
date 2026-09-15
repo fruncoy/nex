@@ -1181,10 +1181,9 @@ function BroadcastTab({ onRefresh }: { onRefresh: () => void }) {
               <div className="flex items-center justify-between mb-2">
                 <div className="text-sm font-semibold text-gray-700">Select Clients <span className="text-gray-400 font-normal">({selectedClientIds.size} selected)</span></div>
                 <button onClick={() => {
-                  const visible = filteredClients.map(c => c.id)
-                  const allSelected = visible.every(id => selectedClientIds.has(id))
+                  const allSelected = filteredClients.every(c => selectedClientIds.has(c.id))
                   const next = new Set(selectedClientIds)
-                  visible.forEach(id => allSelected ? next.delete(id) : next.add(id))
+                  filteredClients.forEach(c => allSelected ? next.delete(c.id) : next.add(c.id))
                   setSelectedClientIds(next)
                 }} className="text-xs text-nestalk-primary underline">
                   {filteredClients.every(c => selectedClientIds.has(c.id)) ? 'Deselect all' : 'Select all'}
@@ -1195,7 +1194,12 @@ function BroadcastTab({ onRefresh }: { onRefresh: () => void }) {
                 {(['all', 'placement', 'non-placement'] as const).map(t => {
                   const count = t === 'all' ? allClients.length : allClients.filter(c => c.contact_type === t).length
                   return (
-                    <button key={t} onClick={() => setClientTypeFilter(t)}
+                    <button key={t} onClick={() => {
+                      setClientTypeFilter(t)
+                      // Auto-update selection to match the chosen type
+                      const matching = t === 'all' ? allClients : allClients.filter(c => c.contact_type === t)
+                      setSelectedClientIds(new Set(matching.map(c => c.id)))
+                    }}
                       className={`px-3 py-1 text-xs rounded-md transition-colors ${clientTypeFilter === t ? 'bg-white shadow text-gray-900 font-medium' : 'text-gray-500 hover:text-gray-700'}`}>
                       {t === 'all' ? 'All' : t === 'placement' ? 'Placement' : 'Non-Placement'} <span className="text-gray-400">({count})</span>
                     </button>
