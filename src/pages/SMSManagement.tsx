@@ -941,13 +941,17 @@ interface SmsRecord {
 function BroadcastTab({ onRefresh }: { onRefresh: () => void }) {
   const { staff } = useAuth()
   const { showToast } = useToast()
-  const [audience, setAudience] = useState<'staff' | 'custom' | 'clients'>('staff')
+  const [audience, setAudience] = useState<'staff' | 'custom' | 'clients' | 'bad-debt'>('staff')
   const [allStaff, setAllStaff] = useState<StaffWithCohort[]>([])
   const [selectedStaffIds, setSelectedStaffIds] = useState<Set<string>>(new Set())
   const [staffSearch, setStaffSearch] = useState('')
-  const [allClients, setAllClients] = useState<{ id: string; full_name: string; phone: string }[]>([])
+  const [allClients, setAllClients] = useState<{ id: string; full_name: string; phone: string; contact_type: string }[]>([])
   const [selectedClientIds, setSelectedClientIds] = useState<Set<string>>(new Set())
   const [clientSearch, setClientSearch] = useState('')
+  const [clientTypeFilter, setClientTypeFilter] = useState<'all' | 'placement' | 'non-placement'>('all')
+  const [allBadDebt, setAllBadDebt] = useState<{ id: string; full_name: string; phone: string }[]>([])
+  const [selectedBadDebtIds, setSelectedBadDebtIds] = useState<Set<string>>(new Set())
+  const [badDebtSearch, setBadDebtSearch] = useState('')
   const [customNumbers, setCustomNumbers] = useState('')
   const [message, setMessage] = useState('')
   const [usePersonalization, setUsePersonalization] = useState(false)
@@ -961,6 +965,7 @@ function BroadcastTab({ onRefresh }: { onRefresh: () => void }) {
   useEffect(() => {
     loadStaff()
     loadClients()
+    loadBadDebt()
     loadCampaigns()
   }, [])
 
@@ -977,9 +982,15 @@ function BroadcastTab({ onRefresh }: { onRefresh: () => void }) {
   }
 
   const loadClients = async () => {
-    const { data } = await supabase.from('sms_contacts').select('id, full_name, phone').not('phone', 'is', null).neq('phone', '')
+    const { data } = await supabase.from('sms_contacts').select('id, full_name, phone, contact_type').not('phone', 'is', null).neq('phone', '')
     setAllClients(data || [])
     setSelectedClientIds(new Set((data || []).map((c: any) => c.id)))
+  }
+
+  const loadBadDebt = async () => {
+    const { data } = await supabase.from('bad_debt_contacts').select('id, full_name, phone').not('phone', 'is', null).neq('phone', '')
+    setAllBadDebt(data || [])
+    setSelectedBadDebtIds(new Set((data || []).map((r: any) => r.id)))
   }
 
   const loadCampaigns = async () => {
@@ -1025,8 +1036,13 @@ function BroadcastTab({ onRefresh }: { onRefresh: () => void }) {
     !staffSearch || m.name.toLowerCase().includes(staffSearch.toLowerCase()) || (m.phone || '').includes(staffSearch)
   )
 
-  const filteredClients = allClients.filter(c =>
-    !clientSearch || c.full_name.toLowerCase().includes(clientSearch.toLowerCase()) || (c.phone || '').includes(clientSearch)
+  const filteredClients = allClients.filter(c => {
+    if (clientTypeFilter !== 'all' && c.contact_type !== clientTypeFilter) return false
+    return !clientSearch || c.full_name.toLowerCase().includes(clientSearch.toLowerCase()) || (c.phone || '').includes(clientSearch)
+  })
+
+  const filteredBadDebt = allBadDebt.filter(r =>
+    !badDebtSearch || r.full_name.toLowerCase().includes(badDebtSearch.toLowerCase()) || (r.phone || '').includes(badDebtSearch)
   )
 
   const parseCustomNumbers = () =>
@@ -1037,12 +1053,14 @@ function BroadcastTab({ onRefresh }: { onRefresh: () => void }) {
     ? parseCustomNumbers()
     : audience === 'staff'
       ? allStaff.filter(m => selectedStaffIds.has(m.id)).map(m => ({ id: m.id, name: m.name, phone: formatPhone(m.phone), type: 'staff' as const }))
-      : allClients.filter(c => selectedClientIds.has(c.id)).map(c => ({ id: c.id, name: c.full_name, phone: formatPhone(c.phone), type: 'client' as const }))
+      : audience === 'clients'
+        ? allClients.filter(c => selectedClientIds.has(c.id)).map(c => ({ id: c.id, name: c.full_name, phone: formatPhone(c.phone), type: 'client' as const }))
+        : allBadDebt.filter(r => selectedBadDebtIds.has(r.id)).map(r => ({ id: r.id, name: r.full_name, phone: formatPhone(r.phone), type: 'client' as const }))
 
   const handleSend = async () => {
     if (!finalRecipients.length || !message.trim()) return
     setSending(true)
-    const audienceLabel = audience === 'staff' ? 'Staff Members' : audience === 'clients' ? 'Clients' : 'Custom'
+    const audienceLabel = audience === 'staff' ? 'Staff Members' : audience === 'clients' ? 'Clients' : audience === 'bad-debt' ? 'Bad Debt' : 'Custom'
     const recipientsWithMsg = usePersonalization
       ? finalRecipients.map(r => ({ ...r, personalizedMessage: message.replace(/\{firstName\}/g, r.name.split(' ')[0]) }))
       : finalRecipients
@@ -1067,11 +1085,12 @@ function BroadcastTab({ onRefresh }: { onRefresh: () => void }) {
           {/* Audience */}
           <div>
             <div className="text-sm font-semibold text-gray-700 mb-2">Audience</div>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               {[
                 { value: 'staff', label: 'A. Staff Members' },
                 { value: 'custom', label: 'B. Custom Numbers' },
                 { value: 'clients', label: 'C. Clients' },
+                { value: 'bad-debt', label: 'D. Bad Debt' },
               ].map(opt => (
                 <button key={opt.value} onClick={() => setAudience(opt.value as any)}
                   className={`px-3 py-2 text-sm rounded-lg border transition-colors ${
@@ -1161,11 +1180,27 @@ function BroadcastTab({ onRefresh }: { onRefresh: () => void }) {
             <div>
               <div className="flex items-center justify-between mb-2">
                 <div className="text-sm font-semibold text-gray-700">Select Clients <span className="text-gray-400 font-normal">({selectedClientIds.size} selected)</span></div>
-                <button onClick={() => setSelectedClientIds(
-                  selectedClientIds.size === allClients.length ? new Set() : new Set(allClients.map(c => c.id))
-                )} className="text-xs text-nestalk-primary underline">
-                  {selectedClientIds.size === allClients.length ? 'Deselect all' : 'Select all'}
+                <button onClick={() => {
+                  const visible = filteredClients.map(c => c.id)
+                  const allSelected = visible.every(id => selectedClientIds.has(id))
+                  const next = new Set(selectedClientIds)
+                  visible.forEach(id => allSelected ? next.delete(id) : next.add(id))
+                  setSelectedClientIds(next)
+                }} className="text-xs text-nestalk-primary underline">
+                  {filteredClients.every(c => selectedClientIds.has(c.id)) ? 'Deselect all' : 'Select all'}
                 </button>
+              </div>
+              {/* Type filter */}
+              <div className="flex gap-1 mb-2 border border-gray-200 rounded-lg p-0.5 bg-gray-50 w-fit">
+                {(['all', 'placement', 'non-placement'] as const).map(t => {
+                  const count = t === 'all' ? allClients.length : allClients.filter(c => c.contact_type === t).length
+                  return (
+                    <button key={t} onClick={() => setClientTypeFilter(t)}
+                      className={`px-3 py-1 text-xs rounded-md transition-colors ${clientTypeFilter === t ? 'bg-white shadow text-gray-900 font-medium' : 'text-gray-500 hover:text-gray-700'}`}>
+                      {t === 'all' ? 'All' : t === 'placement' ? 'Placement' : 'Non-Placement'} <span className="text-gray-400">({count})</span>
+                    </button>
+                  )
+                })}
               </div>
               <div className="relative mb-2">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
@@ -1187,11 +1222,54 @@ function BroadcastTab({ onRefresh }: { onRefresh: () => void }) {
                         selectedClientIds.has(c.id) ? 'border-nestalk-primary bg-nestalk-primary' : 'border-gray-300'
                       }`} />
                       <span className="text-sm text-gray-900">{c.full_name}</span>
+                      <span className={`text-xs px-1.5 py-0.5 rounded-full ${c.contact_type === 'placement' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>
+                        {c.contact_type === 'placement' ? 'P' : 'NP'}
+                      </span>
                     </div>
                     <span className="text-xs font-mono text-gray-400">{c.phone}</span>
                   </div>
                 ))}
                 {filteredClients.length === 0 && <div className="text-sm text-gray-400 text-center py-6">No clients found</div>}
+              </div>
+            </div>
+          )}
+
+          {/* Bad Debt selector */}
+          {audience === 'bad-debt' && (
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-sm font-semibold text-gray-700">Select Bad Debt Contacts <span className="text-gray-400 font-normal">({selectedBadDebtIds.size} selected)</span></div>
+                <button onClick={() => setSelectedBadDebtIds(
+                  selectedBadDebtIds.size === allBadDebt.length ? new Set() : new Set(allBadDebt.map(r => r.id))
+                )} className="text-xs text-nestalk-primary underline">
+                  {selectedBadDebtIds.size === allBadDebt.length ? 'Deselect all' : 'Select all'}
+                </button>
+              </div>
+              <div className="relative mb-2">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                <input value={badDebtSearch} onChange={e => setBadDebtSearch(e.target.value)}
+                  placeholder="Search bad debt contacts..."
+                  className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary" />
+              </div>
+              <div className="border border-gray-200 rounded-lg overflow-hidden max-h-64 overflow-y-auto">
+                {filteredBadDebt.map(r => (
+                  <div key={r.id} onClick={() => {
+                    const next = new Set(selectedBadDebtIds)
+                    next.has(r.id) ? next.delete(r.id) : next.add(r.id)
+                    setSelectedBadDebtIds(next)
+                  }} className={`flex items-center justify-between px-3 py-2 border-b border-gray-100 last:border-0 cursor-pointer hover:bg-gray-50 ${
+                    selectedBadDebtIds.has(r.id) ? 'bg-red-50' : ''
+                  }`}>
+                    <div className="flex items-center gap-2">
+                      <div className={`w-3.5 h-3.5 rounded border-2 flex-shrink-0 ${
+                        selectedBadDebtIds.has(r.id) ? 'border-red-500 bg-red-500' : 'border-gray-300'
+                      }`} />
+                      <span className="text-sm text-gray-900">{r.full_name}</span>
+                    </div>
+                    <span className="text-xs font-mono text-gray-400">{r.phone}</span>
+                  </div>
+                ))}
+                {filteredBadDebt.length === 0 && <div className="text-sm text-gray-400 text-center py-6">No bad debt contacts found</div>}
               </div>
             </div>
           )}
