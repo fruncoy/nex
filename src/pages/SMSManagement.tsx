@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import { smsService } from '../services/smsService'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
-import { RefreshCw, Search, Send, Users, Loader2, GraduationCap, MessageSquare, Radio, BarChart2, CheckCircle, XCircle, Clock, BookUser, Plus, Trash2 } from 'lucide-react'
+import { RefreshCw, Search, Send, Users, Loader2, GraduationCap, MessageSquare, Radio, BarChart2, CheckCircle, XCircle, Clock, BookUser, Plus, Trash2, Pencil } from 'lucide-react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1487,6 +1487,8 @@ function ContactsTab() {
   const [saving, setSaving] = useState(false)
   const [removingDupes, setRemovingDupes] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string } | null>(null)
+  const [editingContact, setEditingContact] = useState<{ id: string; full_name: string; phone: string; contact_type: string } | null>(null)
+  const [editSaving, setEditSaving] = useState(false)
   const [contactsSubTab, setContactsSubTab] = useState<'clients' | 'bad-debt'>('clients')
   const [typeFilter, setTypeFilter] = useState<'all' | 'placement' | 'non-placement'>('all')
   const [newContactType, setNewContactType] = useState<'placement' | 'non-placement'>('placement')
@@ -1557,6 +1559,24 @@ function ContactsTab() {
   const handleClearPhone = async (id: string) => {
     await supabase.from('sms_contacts').update({ phone: null }).eq('id', id)
     setContacts(prev => prev.map(c => c.id === id ? { ...c, phone: null } : c))
+  }
+
+  const handleUpdateContact = async () => {
+    if (!editingContact || !editingContact.full_name.trim()) return
+    setEditSaving(true)
+    const updates = {
+      full_name: editingContact.full_name.trim(),
+      phone: editingContact.phone.trim() ? toLocalFormat(editingContact.phone.trim()) : null,
+      contact_type: editingContact.contact_type,
+    }
+    const { error } = await supabase.from('sms_contacts').update(updates).eq('id', editingContact.id)
+    if (error) showToast('Failed to update contact', 'error')
+    else {
+      setContacts(prev => prev.map(c => c.id === editingContact.id ? { ...c, ...updates } : c))
+      showToast('Contact updated', 'success')
+      setEditingContact(null)
+    }
+    setEditSaving(false)
   }
 
   const handleRemoveDuplicates = async () => {
@@ -1739,10 +1759,16 @@ function ContactsTab() {
                   </td>
                   <td className="px-4 py-3 text-xs text-gray-500 max-w-[200px] truncate">{c.notes || ''}</td>
                   <td className="px-4 py-3">
-                    <button onClick={() => setConfirmDelete({ id: c.id, name: c.full_name })}
-                      className="flex items-center gap-1 text-xs text-gray-400 hover:text-red-600 transition-colors px-2 py-1 rounded hover:bg-red-50">
-                      <Trash2 className="w-3.5 h-3.5" /> Delete
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => setEditingContact({ id: c.id, full_name: c.full_name, phone: c.phone || '', contact_type: c.contact_type })}
+                        className="flex items-center gap-1 text-xs text-gray-400 hover:text-blue-600 transition-colors px-2 py-1 rounded hover:bg-blue-50">
+                        <Pencil className="w-3.5 h-3.5" /> Edit
+                      </button>
+                      <button onClick={() => setConfirmDelete({ id: c.id, name: c.full_name })}
+                        className="flex items-center gap-1 text-xs text-gray-400 hover:text-red-600 transition-colors px-2 py-1 rounded hover:bg-red-50">
+                        <Trash2 className="w-3.5 h-3.5" /> Delete
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -1760,6 +1786,48 @@ function ContactsTab() {
                 className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
               <button onClick={handleDelete}
                 className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700">Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Contact Modal */}
+      {editingContact && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-sm mx-4 space-y-4">
+            <p className="text-sm font-semibold text-gray-900">Edit Contact</p>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-medium text-gray-600 mb-1 block">Name</label>
+                <input value={editingContact.full_name}
+                  onChange={e => setEditingContact(prev => prev ? { ...prev, full_name: e.target.value } : null)}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-600 mb-1 block">Phone</label>
+                <input value={editingContact.phone}
+                  onChange={e => setEditingContact(prev => prev ? { ...prev, phone: e.target.value } : null)}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg font-mono focus:ring-2 focus:ring-nestalk-primary" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-600 mb-1 block">Type</label>
+                <div className="flex gap-2">
+                  {(['placement', 'non-placement'] as const).map(t => (
+                    <button key={t} onClick={() => setEditingContact(prev => prev ? { ...prev, contact_type: t } : null)}
+                      className={`flex-1 py-1.5 text-xs rounded-lg border transition-colors ${editingContact.contact_type === t ? (t === 'placement' ? 'bg-blue-600 text-white border-blue-600' : 'bg-purple-600 text-white border-purple-600') : 'border-gray-300 text-gray-500 hover:border-gray-400'}`}>
+                      {t === 'placement' ? 'Placement' : 'Non-Placement'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setEditingContact(null)}
+                className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
+              <button onClick={handleUpdateContact} disabled={editSaving || !editingContact.full_name.trim()}
+                className="px-4 py-2 text-sm bg-nestalk-primary text-white rounded-lg hover:bg-nestalk-primary/90 disabled:opacity-50">
+                {editSaving ? 'Saving...' : 'Save'}
+              </button>
             </div>
           </div>
         </div>
