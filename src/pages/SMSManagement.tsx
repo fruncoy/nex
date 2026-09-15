@@ -1682,9 +1682,12 @@ function ContactsTab() {
           </div>
         </div>
       )}
+      </div>
+      )}
     </div>
   )
 }
+
 
 
 function BadDebtSection() {
