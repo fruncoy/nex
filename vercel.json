@@ -5,7 +5,20 @@
       "maxDuration": 60
     }
   },
+  "redirects": [
+    {
+      "source": "/member",
+      "missing": [{ "type": "host", "value": "member.nestara.co.ke" }],
+      "destination": "https://member.nestara.co.ke",
+      "permanent": false
+    }
+  ],
   "rewrites": [
+    {
+      "source": "/(.*)",
+      "has": [{ "type": "host", "value": "member.nestara.co.ke" }],
+      "destination": "/member"
+    },
     { "source": "/(.*)", "destination": "/" }
   ]
 }

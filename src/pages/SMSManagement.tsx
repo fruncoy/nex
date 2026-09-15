@@ -1345,6 +1345,17 @@ interface Contact {
   created_at: string
 }
 
+interface BadDebtContact {
+  id: string
+  full_name: string
+  id_number: string | null
+  phone: string | null
+  location: string | null
+  fee_balance: number | null
+  notes: string | null
+  created_at: string
+}
+
 function parseContactsText(raw: string): { full_name: string; phone: string | null }[] {
   return raw.split('\n')
     .map(line => line.trim())
@@ -1394,6 +1405,9 @@ function ContactsTab() {
   const [saving, setSaving] = useState(false)
   const [removingDupes, setRemovingDupes] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string } | null>(null)
+  const [contactsSubTab, setContactsSubTab] = useState<'clients' | 'bad-debt'>('clients')
+  const [typeFilter, setTypeFilter] = useState<'all' | 'placement' | 'non-placement'>('all')
+  const [newContactType, setNewContactType] = useState<'placement' | 'non-placement'>('placement')
   const fileInputRef = React.useRef<HTMLInputElement>(null)
 
   useEffect(() => { loadContacts() }, [])
@@ -1430,7 +1444,7 @@ function ContactsTab() {
     const existingPhones = new Set(contacts.filter(c => c.phone).map(c => normalizePhone(c.phone!)))
     const newRows = preview
       .filter(p => !p.phone || !existingPhones.has(normalizePhone(p.phone)))
-      .map(p => ({ full_name: p.full_name, phone: p.phone ? toLocalFormat(p.phone) : null, contact_type: 'client', created_by: staff?.name || 'System' }))
+      .map(p => ({ full_name: p.full_name, phone: p.phone ? toLocalFormat(p.phone) : null, contact_type: newContactType, created_by: staff?.name || 'System' }))
 
     const skipped = preview.length - newRows.length
 
@@ -1506,19 +1520,41 @@ function ContactsTab() {
     return count
   })()
 
-  const filtered = contacts.filter(c =>
-    c.full_name.toLowerCase().includes(search.toLowerCase()) ||
-    (c.phone || '').includes(search)
-  )
+  const filtered = contacts.filter(c => {
+    if (typeFilter !== 'all' && c.contact_type !== typeFilter) return false
+    return c.full_name.toLowerCase().includes(search.toLowerCase()) || (c.phone || '').includes(search)
+  })
 
   return (
     <div className="space-y-4">
+      <div className="flex gap-1 border-b border-gray-200">
+        {([{ id: 'clients', label: 'Clients' }, { id: 'bad-debt', label: 'Bad Debt' }] as const).map(t => (
+          <button key={t.id} onClick={() => setContactsSubTab(t.id)}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px ${contactsSubTab === t.id ? 'border-nestalk-primary text-nestalk-primary' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {contactsSubTab === 'bad-debt' ? <BadDebtSection /> : (
+      <div className="space-y-4">
       <div className="flex items-center gap-3">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input value={search} onChange={e => setSearch(e.target.value)}
             placeholder="Search name or phone..."
             className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent" />
+        </div>
+        <div className="flex gap-1 border border-gray-200 rounded-lg p-0.5 bg-gray-50">
+          {(['all', 'placement', 'non-placement'] as const).map(t => {
+            const count = t === 'all' ? contacts.length : contacts.filter(c => c.contact_type === t).length
+            return (
+              <button key={t} onClick={() => setTypeFilter(t)}
+                className={`px-3 py-1 text-xs rounded-md transition-colors ${typeFilter === t ? 'bg-white shadow text-gray-900 font-medium' : 'text-gray-500 hover:text-gray-700'}`}>
+                {t === 'all' ? 'All' : t === 'placement' ? 'Placement' : 'Non-Placement'} <span className="text-gray-400">({count})</span>
+              </button>
+            )
+          })}
         </div>
         {dupCount > 0 && (
           <button onClick={handleRemoveDuplicates} disabled={removingDupes}
@@ -1547,6 +1583,15 @@ function ContactsTab() {
                 Upload .txt / .csv
               </button>
             </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-gray-600">Contact Type:</span>
+            {(['placement', 'non-placement'] as const).map(t => (
+              <button key={t} onClick={() => setNewContactType(t)}
+                className={`px-3 py-1 text-xs rounded-full border transition-colors ${newContactType === t ? (t === 'placement' ? 'bg-blue-600 text-white border-blue-600' : 'bg-purple-600 text-white border-purple-600') : 'border-gray-300 text-gray-500 hover:border-gray-400'}`}>
+                {t === 'placement' ? 'Placement' : 'Non-Placement'}
+              </button>
+            ))}
           </div>
           <textarea value={rawText} onChange={e => handleTextChange(e.target.value)} rows={6}
             placeholder={`Jane Doe\t+254712345678\nJohn Smith\t0723456789`}
@@ -1605,9 +1650,10 @@ function ContactsTab() {
                   </td>
                   <td className="px-4 py-3">
                     <span className={`px-2 py-0.5 text-xs rounded-full ${
-                      c.contact_type === 'client' ? 'bg-blue-100 text-blue-700' :
+                      c.contact_type === 'placement' || c.contact_type === 'client' ? 'bg-blue-100 text-blue-700' :
+                      c.contact_type === 'non-placement' ? 'bg-purple-100 text-purple-700' :
                       c.contact_type === 'candidate' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'
-                    }`}>{c.contact_type}</span>
+                    }`}>{c.contact_type === 'client' ? 'placement' : c.contact_type}</span>
                   </td>
                   <td className="px-4 py-3 text-xs text-gray-500 max-w-[200px] truncate">{c.notes || ''}</td>
                   <td className="px-4 py-3">
@@ -1635,6 +1681,302 @@ function ContactsTab() {
             </div>
           </div>
         </div>
+      )}
+    </div>
+  )
+}
+
+
+function BadDebtSection() {
+  const { staff } = useAuth()
+  const { showToast } = useToast()
+  const [records, setRecords] = useState<BadDebtContact[]>([])
+  const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
+  const [showForm, setShowForm] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string } | null>(null)
+  const [form, setForm] = useState({ full_name: '', id_number: '', phone: '', location: '', fee_balance: '', notes: '' })
+  const [showBulk, setShowBulk] = useState(false)
+  const [bulkRaw, setBulkRaw] = useState('')
+  const [bulkPreview, setBulkPreview] = useState<{ full_name: string; id_number: string | null; phone: string | null; location: string | null; fee_balance: number | null; notes: string | null }[]>([])
+  const bulkFileRef = React.useRef<HTMLInputElement>(null)
+
+  useEffect(() => { load() }, [])
+
+  const load = async () => {
+    setLoading(true)
+    const { data } = await supabase.from('bad_debt_contacts').select('*').order('full_name')
+    setRecords(data || [])
+    setLoading(false)
+  }
+
+  const handleSave = async () => {
+    if (!form.full_name.trim()) return
+    setSaving(true)
+    const row = {
+      full_name: form.full_name.trim(),
+      id_number: form.id_number.trim() || null,
+      phone: form.phone.trim() ? toLocalFormat(form.phone.trim()) : null,
+      location: form.location.trim() || null,
+      fee_balance: form.fee_balance ? parseFloat(form.fee_balance) : null,
+      notes: form.notes.trim() || null,
+      created_by: staff?.name || 'System',
+    }
+    const { error } = await supabase.from('bad_debt_contacts').insert(row)
+    if (error) showToast('Failed to save', 'error')
+    else {
+      showToast('Record saved', 'success')
+      setForm({ full_name: '', id_number: '', phone: '', location: '', fee_balance: '', notes: '' })
+      setShowForm(false)
+      load()
+    }
+    setSaving(false)
+  }
+
+  const handleDelete = async () => {
+    if (!confirmDelete) return
+    await supabase.from('bad_debt_contacts').delete().eq('id', confirmDelete.id)
+    setRecords(prev => prev.filter(r => r.id !== confirmDelete.id))
+    showToast('Record deleted', 'success')
+    setConfirmDelete(null)
+  }
+
+  const parseBulk = (raw: string) => {
+    return raw.split('\n').map(l => l.trim()).filter(Boolean).map(line => {
+      const parts = line.split(/\t|,|;/).map(p => p.trim())
+      const [full_name = '', id_number = '', phone = '', location = '', fee_balance_raw = '', notes = ''] = parts
+      return {
+        full_name,
+        id_number: id_number || null,
+        phone: phone || null,
+        location: location || null,
+        fee_balance: fee_balance_raw ? parseFloat(fee_balance_raw.replace(/[^0-9.]/g, '')) || null : null,
+        notes: notes || null,
+      }
+    }).filter(r => r.full_name)
+  }
+
+  const handleBulkTextChange = (val: string) => {
+    setBulkRaw(val)
+    setBulkPreview(parseBulk(val))
+  }
+
+  const handleBulkFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = ev => {
+      const text = ev.target?.result as string
+      setBulkRaw(text)
+      setBulkPreview(parseBulk(text))
+    }
+    reader.readAsText(file)
+  }
+
+  const handleBulkSave = async () => {
+    if (!bulkPreview.length) return
+    setSaving(true)
+    const rows = bulkPreview.map(r => ({
+      ...r,
+      phone: r.phone ? toLocalFormat(r.phone) : null,
+      created_by: staff?.name || 'System',
+    }))
+    const { error } = await supabase.from('bad_debt_contacts').insert(rows)
+    if (error) showToast('Failed to save bulk records', 'error')
+    else {
+      showToast(`${rows.length} records saved`, 'success')
+      setBulkRaw(''); setBulkPreview([]); setShowBulk(false)
+      load()
+    }
+    setSaving(false)
+  }
+
+  const filtered = records.filter(r =>
+    r.full_name.toLowerCase().includes(search.toLowerCase()) ||
+    (r.phone || '').includes(search) ||
+    (r.id_number || '').includes(search) ||
+    (r.location || '').toLowerCase().includes(search.toLowerCase())
+  )
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-3">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <input value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Search name, phone, ID, location..."
+            className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent" />
+        </div>
+        <button onClick={() => { setShowBulk(false); setShowForm(f => !f) }}
+          className="flex items-center gap-1.5 px-3 py-2 border border-nestalk-primary text-nestalk-primary text-sm rounded-lg hover:bg-nestalk-primary/10">
+          <Plus className="w-4 h-4" /> Add Single
+        </button>
+        <button onClick={() => { setShowForm(false); setShowBulk(b => !b) }}
+          className="flex items-center gap-1.5 px-3 py-2 bg-nestalk-primary text-white text-sm rounded-lg hover:bg-nestalk-primary/90">
+          <Plus className="w-4 h-4" /> Bulk Upload
+        </button>
+      </div>
+
+      {showBulk && (
+        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-semibold text-gray-700 mb-0.5">Paste bulk records</p>
+              <p className="text-xs text-gray-400">Columns (tab or comma separated): <span className="font-mono">Name, ID Number, Phone, Location, Fee Balance, Notes</span></p>
+            </div>
+            <div>
+              <input ref={bulkFileRef} type="file" accept=".txt,.csv" className="hidden" onChange={handleBulkFile} />
+              <button onClick={() => bulkFileRef.current?.click()}
+                className="text-xs px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-white text-gray-600">
+                Upload .txt / .csv
+              </button>
+            </div>
+          </div>
+          <textarea value={bulkRaw} onChange={e => handleBulkTextChange(e.target.value)} rows={6}
+            placeholder={"Jane Doe\t12345678\t0712345678\tNairobi\t5000\tLeft without paying"}
+            className="w-full text-sm font-mono border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-nestalk-primary" />
+          {bulkPreview.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold text-gray-600 mb-2">{bulkPreview.length} records parsed — preview:</p>
+              <div className="max-h-48 overflow-y-auto border border-gray-200 rounded-lg bg-white divide-y divide-gray-100">
+                {bulkPreview.slice(0, 15).map((r, i) => (
+                  <div key={i} className="grid grid-cols-5 gap-2 px-3 py-2 text-xs">
+                    <span className="font-medium text-gray-800 truncate">{r.full_name}</span>
+                    <span className="text-gray-500 font-mono truncate">{r.id_number || '—'}</span>
+                    <span className="text-gray-500 font-mono truncate">{r.phone || '—'}</span>
+                    <span className="text-gray-500 truncate">{r.location || '—'}</span>
+                    <span className="text-red-600 font-semibold">{r.fee_balance != null ? r.fee_balance.toLocaleString() : '—'}</span>
+                  </div>
+                ))}
+                {bulkPreview.length > 15 && <div className="text-center py-2 text-xs text-gray-400">+{bulkPreview.length - 15} more</div>}
+              </div>
+            </div>
+          )}
+          <div className="flex gap-2">
+            <button onClick={handleBulkSave} disabled={saving || !bulkPreview.length}
+              className="px-4 py-2 bg-nestalk-primary text-white text-sm rounded-lg hover:bg-nestalk-primary/90 disabled:opacity-50">
+              {saving ? 'Saving...' : `Save ${bulkPreview.length} Records`}
+            </button>
+            <button onClick={() => { setShowBulk(false); setBulkRaw(''); setBulkPreview([]) }}
+              className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-white">Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {showForm && (
+        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 space-y-3">
+          <p className="text-xs font-semibold text-gray-700">New Bad Debt Record</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">Full Name *</label>
+              <input value={form.full_name} onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))}
+                className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
+                placeholder="Jane Doe" />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">ID Number</label>
+              <input value={form.id_number} onChange={e => setForm(f => ({ ...f, id_number: e.target.value }))}
+                className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
+                placeholder="12345678" />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">Phone</label>
+              <input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
+                className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
+                placeholder="0712345678" />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">Location</label>
+              <input value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))}
+                className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
+                placeholder="Nairobi" />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">Fee Balance (KES)</label>
+              <input type="number" value={form.fee_balance} onChange={e => setForm(f => ({ ...f, fee_balance: e.target.value }))}
+                className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
+                placeholder="5000" />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">Notes</label>
+              <input value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+                className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
+                placeholder="Optional notes" />
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={handleSave} disabled={saving || !form.full_name.trim()}
+              className="px-4 py-2 bg-nestalk-primary text-white text-sm rounded-lg hover:bg-nestalk-primary/90 disabled:opacity-50">
+              {saving ? 'Saving...' : 'Save Record'}
+            </button>
+            <button onClick={() => { setShowForm(false); setForm({ full_name: '', id_number: '', phone: '', location: '', fee_balance: '', notes: '' }) }}
+              className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-white">Cancel</button>
+          </div>
+        </div>
+      )}
+
+      <div className="text-xs text-gray-400">{filtered.length} record{filtered.length !== 1 ? 's' : ''}</div>
+
+      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600">#</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600">Name</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600">ID No.</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600">Phone</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600">Location</th>
+                <th className="text-right px-4 py-3 text-xs font-semibold text-gray-600">Balance (KES)</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600">Notes</th>
+                <th className="px-4 py-3"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {loading ? (
+                <tr><td colSpan={8} className="text-center py-10"><Loader2 className="w-5 h-5 animate-spin text-gray-400 mx-auto" /></td></tr>
+              ) : filtered.length === 0 ? (
+                <tr><td colSpan={8} className="text-center py-10 text-gray-400 text-sm">No records found</td></tr>
+              ) : filtered.map((r, i) => (
+                <tr key={r.id} className="hover:bg-gray-50">
+                  <td className="px-4 py-3 text-xs text-gray-400">{i + 1}</td>
+                  <td className="px-4 py-3 font-medium text-gray-900">{r.full_name}</td>
+                  <td className="px-4 py-3 font-mono text-xs text-gray-600">{r.id_number || <span className="text-gray-300">—</span>}</td>
+                  <td className="px-4 py-3 font-mono text-xs text-gray-600">{r.phone || <span className="text-gray-300">—</span>}</td>
+                  <td className="px-4 py-3 text-xs text-gray-600">{r.location || <span className="text-gray-300">—</span>}</td>
+                  <td className="px-4 py-3 text-right text-xs font-semibold text-red-600">
+                    {r.fee_balance != null ? r.fee_balance.toLocaleString() : <span className="text-gray-300 font-normal">—</span>}
+                  </td>
+                  <td className="px-4 py-3 text-xs text-gray-500 max-w-[160px] truncate">{r.notes || ''}</td>
+                  <td className="px-4 py-3">
+                    <button onClick={() => setConfirmDelete({ id: r.id, name: r.full_name })}
+                      className="flex items-center gap-1 text-xs text-gray-400 hover:text-red-600 transition-colors px-2 py-1 rounded hover:bg-red-50">
+                      <Trash2 className="w-3.5 h-3.5" /> Delete
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {confirmDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-sm mx-4 space-y-4">
+            <p className="text-sm font-semibold text-gray-900">Delete record?</p>
+            <p className="text-sm text-gray-500">This will permanently remove <span className="font-medium text-gray-800">{confirmDelete.name}</span>.</p>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setConfirmDelete(null)}
+                className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
+              <button onClick={handleDelete}
+                className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700">Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
+      </div>
       )}
     </div>
   )
