@@ -1979,8 +1979,6 @@ function BadDebtSection() {
           </div>
         </div>
       )}
-      </div>
-      )}
     </div>
   )
 }
