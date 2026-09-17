@@ -16,6 +16,7 @@ import { NicheReports } from './pages/NicheReports'
 import { NicheGrading } from './pages/NicheGrading'
 import { Blacklisted } from './pages/Blacklisted'
 import { SMSManagement } from './pages/SMSManagement'
+import { BadDebt } from './pages/BadDebt'
 import { NestaraAI } from './pages/NestaraAI'
 import { CreateProfile } from './pages/CreateProfile'
 
@@ -75,6 +76,7 @@ function AppRoutes() {
         <Route path="niche-reports" element={<NicheReports />} />
         <Route path="niche-training" element={<NicheTraining />} />
         <Route path="niche-fees" element={<NicheFees />} />
+        <Route path="bad-debt" element={<BadDebt />} />
         <Route path="niche-timetable" element={<NicheTimetable />} />
         <Route path="niche-grading" element={<NicheGrading />} />
         <Route path="niche-progress" element={<NicheProgressTracking />} />

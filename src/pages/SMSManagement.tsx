@@ -1637,7 +1637,16 @@ function ContactsTab() {
         ))}
       </div>
 
-      {contactsSubTab === 'bad-debt' ? <BadDebtSection /> : (
+      {contactsSubTab === 'bad-debt' ? (
+        <div className="flex flex-col items-center justify-center py-16 space-y-3 text-center">
+          <p className="text-sm font-semibold text-gray-700">Bad Debt Recovery has moved</p>
+          <p className="text-xs text-gray-400">It now has its own dedicated page under NICHE Fees.</p>
+          <a href="/bad-debt"
+            className="flex items-center gap-2 px-4 py-2 bg-nestalk-primary text-white text-sm rounded-lg hover:bg-nestalk-primary/90">
+            Go to Bad Debt Recovery →
+          </a>
+        </div>
+      ) : (
       <div className="space-y-4">
       <div className="flex items-center gap-3">
         <div className="relative flex-1">
