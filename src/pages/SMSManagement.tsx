@@ -1430,10 +1430,9 @@ interface Contact {
 interface BadDebtContact {
   id: string
   full_name: string
-  id_number: string | null
   phone: string | null
-  location: string | null
-  fee_balance: number | null
+  total_fee: number | null
+  amount_paid: number | null
   notes: string | null
   created_at: string
 }
@@ -1849,10 +1848,10 @@ function BadDebtSection() {
   const [showForm, setShowForm] = useState(false)
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string } | null>(null)
-  const [form, setForm] = useState({ full_name: '', id_number: '', phone: '', location: '', fee_balance: '', notes: '' })
+  const [form, setForm] = useState({ full_name: '', phone: '', total_fee: '', amount_paid: '', notes: '' })
   const [showBulk, setShowBulk] = useState(false)
   const [bulkRaw, setBulkRaw] = useState('')
-  const [bulkPreview, setBulkPreview] = useState<{ full_name: string; id_number: string | null; phone: string | null; location: string | null; fee_balance: number | null; notes: string | null }[]>([])
+  const [bulkPreview, setBulkPreview] = useState<{ full_name: string; phone: string | null; total_fee: number | null; amount_paid: number | null; notes: string | null }[]>([])
   const bulkFileRef = React.useRef<HTMLInputElement>(null)
 
   useEffect(() => { load() }, [])
@@ -1869,10 +1868,9 @@ function BadDebtSection() {
     setSaving(true)
     const row = {
       full_name: form.full_name.trim(),
-      id_number: form.id_number.trim() || null,
       phone: form.phone.trim() ? toLocalFormat(form.phone.trim()) : null,
-      location: form.location.trim() || null,
-      fee_balance: form.fee_balance ? parseFloat(form.fee_balance) : null,
+      total_fee: form.total_fee ? parseFloat(form.total_fee) : null,
+      amount_paid: form.amount_paid ? parseFloat(form.amount_paid) : null,
       notes: form.notes.trim() || null,
       created_by: staff?.name || 'System',
     }
@@ -1880,7 +1878,7 @@ function BadDebtSection() {
     if (error) showToast('Failed to save', 'error')
     else {
       showToast('Record saved', 'success')
-      setForm({ full_name: '', id_number: '', phone: '', location: '', fee_balance: '', notes: '' })
+      setForm({ full_name: '', phone: '', total_fee: '', amount_paid: '', notes: '' })
       setShowForm(false)
       load()
     }
@@ -1898,13 +1896,12 @@ function BadDebtSection() {
   const parseBulk = (raw: string) => {
     return raw.split('\n').map(l => l.trim()).filter(Boolean).map(line => {
       const parts = line.split(/\t|,|;/).map(p => p.trim())
-      const [full_name = '', id_number = '', phone = '', location = '', fee_balance_raw = '', notes = ''] = parts
+      const [full_name = '', phone = '', total_fee_raw = '', amount_paid_raw = '', notes = ''] = parts
       return {
         full_name,
-        id_number: id_number || null,
         phone: phone || null,
-        location: location || null,
-        fee_balance: fee_balance_raw ? parseFloat(fee_balance_raw.replace(/[^0-9.]/g, '')) || null : null,
+        total_fee: total_fee_raw ? parseFloat(total_fee_raw.replace(/[^0-9.]/g, '')) || null : null,
+        amount_paid: amount_paid_raw ? parseFloat(amount_paid_raw.replace(/[^0-9.]/g, '')) || null : null,
         notes: notes || null,
       }
     }).filter(r => r.full_name)
@@ -1947,9 +1944,7 @@ function BadDebtSection() {
 
   const filtered = records.filter(r =>
     r.full_name.toLowerCase().includes(search.toLowerCase()) ||
-    (r.phone || '').includes(search) ||
-    (r.id_number || '').includes(search) ||
-    (r.location || '').toLowerCase().includes(search.toLowerCase())
+    (r.phone || '').includes(search)
   )
 
   return (
@@ -1976,7 +1971,7 @@ function BadDebtSection() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs font-semibold text-gray-700 mb-0.5">Paste bulk records</p>
-              <p className="text-xs text-gray-400">Columns (tab or comma separated): <span className="font-mono">Name, ID Number, Phone, Location, Fee Balance, Notes</span></p>
+              <p className="text-xs text-gray-400">Columns (tab or comma separated): <span className="font-mono">Name, Phone, Total Fee, Amount Paid, Notes</span></p>
             </div>
             <div>
               <input ref={bulkFileRef} type="file" accept=".txt,.csv" className="hidden" onChange={handleBulkFile} />
@@ -1987,7 +1982,7 @@ function BadDebtSection() {
             </div>
           </div>
           <textarea value={bulkRaw} onChange={e => handleBulkTextChange(e.target.value)} rows={6}
-            placeholder={"Jane Doe\t12345678\t0712345678\tNairobi\t5000\tLeft without paying"}
+            placeholder={"Jane Doe\t0712345678\t5000\t2000\tLeft without paying"}
             className="w-full text-sm font-mono border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-nestalk-primary" />
           {bulkPreview.length > 0 && (
             <div>
@@ -1996,10 +1991,10 @@ function BadDebtSection() {
                 {bulkPreview.slice(0, 15).map((r, i) => (
                   <div key={i} className="grid grid-cols-5 gap-2 px-3 py-2 text-xs">
                     <span className="font-medium text-gray-800 truncate">{r.full_name}</span>
-                    <span className="text-gray-500 font-mono truncate">{r.id_number || '—'}</span>
                     <span className="text-gray-500 font-mono truncate">{r.phone || '—'}</span>
-                    <span className="text-gray-500 truncate">{r.location || '—'}</span>
-                    <span className="text-red-600 font-semibold">{r.fee_balance != null ? r.fee_balance.toLocaleString() : '—'}</span>
+                    <span className="text-gray-500">{r.total_fee != null ? r.total_fee.toLocaleString() : '—'}</span>
+                    <span className="text-gray-500">{r.amount_paid != null ? r.amount_paid.toLocaleString() : '—'}</span>
+                    <span className="text-red-600 font-semibold">{r.total_fee != null ? ((r.total_fee) - (r.amount_paid || 0)).toLocaleString() : '—'}</span>
                   </div>
                 ))}
                 {bulkPreview.length > 15 && <div className="text-center py-2 text-xs text-gray-400">+{bulkPreview.length - 15} more</div>}
@@ -2028,30 +2023,24 @@ function BadDebtSection() {
                 placeholder="Jane Doe" />
             </div>
             <div>
-              <label className="text-xs text-gray-500 mb-1 block">ID Number</label>
-              <input value={form.id_number} onChange={e => setForm(f => ({ ...f, id_number: e.target.value }))}
-                className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
-                placeholder="12345678" />
-            </div>
-            <div>
               <label className="text-xs text-gray-500 mb-1 block">Phone</label>
               <input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
                 className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
                 placeholder="0712345678" />
             </div>
             <div>
-              <label className="text-xs text-gray-500 mb-1 block">Location</label>
-              <input value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))}
-                className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
-                placeholder="Nairobi" />
-            </div>
-            <div>
-              <label className="text-xs text-gray-500 mb-1 block">Fee Balance (KES)</label>
-              <input type="number" value={form.fee_balance} onChange={e => setForm(f => ({ ...f, fee_balance: e.target.value }))}
+              <label className="text-xs text-gray-500 mb-1 block">Total Fee (KES)</label>
+              <input type="number" value={form.total_fee} onChange={e => setForm(f => ({ ...f, total_fee: e.target.value }))}
                 className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
                 placeholder="5000" />
             </div>
             <div>
+              <label className="text-xs text-gray-500 mb-1 block">Amount Paid (KES)</label>
+              <input type="number" value={form.amount_paid} onChange={e => setForm(f => ({ ...f, amount_paid: e.target.value }))}
+                className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
+                placeholder="0" />
+            </div>
+            <div className="col-span-2">
               <label className="text-xs text-gray-500 mb-1 block">Notes</label>
               <input value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
                 className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
@@ -2063,7 +2052,7 @@ function BadDebtSection() {
               className="px-4 py-2 bg-nestalk-primary text-white text-sm rounded-lg hover:bg-nestalk-primary/90 disabled:opacity-50">
               {saving ? 'Saving...' : 'Save Record'}
             </button>
-            <button onClick={() => { setShowForm(false); setForm({ full_name: '', id_number: '', phone: '', location: '', fee_balance: '', notes: '' }) }}
+            <button onClick={() => { setShowForm(false); setForm({ full_name: '', phone: '', total_fee: '', amount_paid: '', notes: '' }) }}
               className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-white">Cancel</button>
           </div>
         </div>
@@ -2078,10 +2067,10 @@ function BadDebtSection() {
               <tr>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600">#</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600">Name</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600">ID No.</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600">Phone</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600">Location</th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-gray-600">Balance (KES)</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600">Phone Number</th>
+                <th className="text-right px-4 py-3 text-xs font-semibold text-gray-600">Total Fee</th>
+                <th className="text-right px-4 py-3 text-xs font-semibold text-gray-600">Amount Paid</th>
+                <th className="text-right px-4 py-3 text-xs font-semibold text-red-600">Amount Owed</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600">Notes</th>
                 <th className="px-4 py-3"></th>
               </tr>
@@ -2091,25 +2080,32 @@ function BadDebtSection() {
                 <tr><td colSpan={8} className="text-center py-10"><Loader2 className="w-5 h-5 animate-spin text-gray-400 mx-auto" /></td></tr>
               ) : filtered.length === 0 ? (
                 <tr><td colSpan={8} className="text-center py-10 text-gray-400 text-sm">No records found</td></tr>
-              ) : filtered.map((r, i) => (
-                <tr key={r.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 text-xs text-gray-400">{i + 1}</td>
-                  <td className="px-4 py-3 font-medium text-gray-900">{r.full_name}</td>
-                  <td className="px-4 py-3 font-mono text-xs text-gray-600">{r.id_number || <span className="text-gray-300">—</span>}</td>
-                  <td className="px-4 py-3 font-mono text-xs text-gray-600">{r.phone || <span className="text-gray-300">—</span>}</td>
-                  <td className="px-4 py-3 text-xs text-gray-600">{r.location || <span className="text-gray-300">—</span>}</td>
-                  <td className="px-4 py-3 text-right text-xs font-semibold text-red-600">
-                    {r.fee_balance != null ? r.fee_balance.toLocaleString() : <span className="text-gray-300 font-normal">—</span>}
-                  </td>
-                  <td className="px-4 py-3 text-xs text-gray-500 max-w-[160px] truncate">{r.notes || ''}</td>
-                  <td className="px-4 py-3">
-                    <button onClick={() => setConfirmDelete({ id: r.id, name: r.full_name })}
-                      className="flex items-center gap-1 text-xs text-gray-400 hover:text-red-600 transition-colors px-2 py-1 rounded hover:bg-red-50">
-                      <Trash2 className="w-3.5 h-3.5" /> Delete
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              ) : filtered.map((r, i) => {
+                const owed = (r.total_fee ?? 0) - (r.amount_paid ?? 0)
+                return (
+                  <tr key={r.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 text-xs text-gray-400">{i + 1}</td>
+                    <td className="px-4 py-3 font-medium text-gray-900">{r.full_name}</td>
+                    <td className="px-4 py-3 font-mono text-xs text-gray-600">{r.phone || <span className="text-gray-300">—</span>}</td>
+                    <td className="px-4 py-3 text-right text-xs text-gray-600">
+                      {r.total_fee != null ? r.total_fee.toLocaleString() : <span className="text-gray-300">—</span>}
+                    </td>
+                    <td className="px-4 py-3 text-right text-xs text-gray-600">
+                      {r.amount_paid != null ? r.amount_paid.toLocaleString() : <span className="text-gray-300">—</span>}
+                    </td>
+                    <td className="px-4 py-3 text-right text-xs font-semibold text-red-600">
+                      {r.total_fee != null ? owed.toLocaleString() : <span className="text-gray-300 font-normal">—</span>}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-gray-500 max-w-[160px] truncate">{r.notes || ''}</td>
+                    <td className="px-4 py-3">
+                      <button onClick={() => setConfirmDelete({ id: r.id, name: r.full_name })}
+                        className="flex items-center gap-1 text-xs text-gray-400 hover:text-red-600 transition-colors px-2 py-1 rounded hover:bg-red-50">
+                        <Trash2 className="w-3.5 h-3.5" /> Delete
+                      </button>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
