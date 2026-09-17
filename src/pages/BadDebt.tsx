@@ -315,7 +315,7 @@ export function BadDebt() {
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-xl md:text-2xl font-bold text-gray-900">Bad Debt Recovery</h1>
+          <h1 className="text-xl md:text-2xl font-bold text-gray-900">Bad Debt</h1>
           <p className="text-sm text-gray-500 mt-0.5">Track outstanding balances and send recovery notices</p>
         </div>
         <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-lg px-4 py-2 shrink-0">
