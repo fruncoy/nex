@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+﻿import React, { useEffect, useRef, useState } from 'react'
 import * as XLSX from 'xlsx'
 import { supabase } from '../lib/supabase'
 import { smsService } from '../services/smsService'
@@ -21,40 +21,6 @@ interface BadDebtRecord {
   created_at: string
 }
 
-interface SmsTemplate {
-  id: string
-  label: string
-  message: string
-}
-
-// ─── Default Templates ────────────────────────────────────────────────────────
-
-const DEFAULT_TEMPLATES: SmsTemplate[] = [
-  {
-    id: 'reminder_1',
-    label: '1st Reminder — Friendly',
-    message:
-      'Dear {name}, this is a gentle reminder that you have an outstanding balance of KES {owed} with NICHE. Kindly visit our office or contact us to arrange payment. Thank you.',
-  },
-  {
-    id: 'reminder_2',
-    label: '2nd Reminder — Firm',
-    message:
-      'Dear {name}, your balance of KES {owed} with NICHE remains unpaid. Failure to settle or contact us within 7 days may lead to formal recovery action. Please reach us urgently.',
-  },
-  {
-    id: 'reminder_3',
-    label: '3rd Reminder — Serious',
-    message:
-      'NICHE NOTICE: {name}, your balance of KES {owed} is overdue. We hold your full personal records & next-of-kin details. Appear at our offices within 7 days to discuss a payment plan or face escalated recovery. 3rd & final courtesy notice.',
-  },
-  {
-    id: 'reminder_4',
-    label: '4th Notice — Final',
-    message:
-      'FINAL NOTICE: {name}, KES {owed} owed to NICHE. Your file is being prepared for submission to relevant authorities. Appear at NICHE within 14 days to resolve this. Ignoring this will have serious legal & reputational consequences.',
-  },
-]
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -409,56 +375,91 @@ function ProfilesTab({ records, loading, onRefresh }: {
 
 // ─── SMS Tab ──────────────────────────────────────────────────────────────────
 
+interface BatchLog {
+  id: string
+  sent_at: string
+  message: string
+  sent_count: number
+  failed_count: number
+  recipients_count: number
+  created_by: string
+  records: { name: string; phone: string; status: 'sent' | 'failed' }[]
+}
+
 function SmsTab({ records }: { records: BadDebtRecord[] }) {
   const { staff } = useAuth()
   const { showToast } = useToast()
 
-  // Templates management
-  const [templates, setTemplates] = useState<SmsTemplate[]>(DEFAULT_TEMPLATES)
-  const [editTpl, setEditTpl] = useState<SmsTemplate | null>(null)
-  const [previewTpl, setPreviewTpl] = useState<SmsTemplate | null>(null)
-  const [previewRecord, setPreviewRecord] = useState<BadDebtRecord | null>(null)
-
-  // Send state
-  const [selectedTpl, setSelectedTpl] = useState<string>(DEFAULT_TEMPLATES[0].id)
-  const [customMsg, setCustomMsg] = useState(DEFAULT_TEMPLATES[0].message)
+  // Compose
+  const [customMsg, setCustomMsg] = useState('')
   const [search, setSearch] = useState('')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [sending, setSending] = useState(false)
-  const [sendLog, setSendLog] = useState<{ name: string; phone: string; status: 'sent' | 'failed'; error?: string }[]>([])
+
+  // Single SMS
   const [singleTarget, setSingleTarget] = useState<BadDebtRecord | null>(null)
   const [singleMsg, setSingleMsg] = useState('')
-  const [singleTpl, setSingleTpl] = useState(DEFAULT_TEMPLATES[0].id)
   const [singleSending, setSingleSending] = useState(false)
+
+  // History
+  const [batches, setBatches] = useState<BatchLog[]>([])
+  const [loadingBatches, setLoadingBatches] = useState(true)
+  const [expandedBatch, setExpandedBatch] = useState<string | null>(null)
 
   const withPhone = records.filter(r => r.phone)
   const filteredRecords = withPhone.filter(r =>
     !search || r.full_name.toLowerCase().includes(search.toLowerCase()) || (r.phone || '').includes(search)
   )
-
   const selectedRecords = filteredRecords.filter(r => selectedIds.has(r.id))
 
-  const getTpl = (id: string) => templates.find(t => t.id === id)
+  useEffect(() => { loadBatches() }, [])
 
-  const handleTplChange = (id: string) => {
-    setSelectedTpl(id)
-    const tpl = getTpl(id)
-    if (tpl) setCustomMsg(tpl.message)
-  }
-
-  // Edit template
-  const saveTemplate = () => {
-    if (!editTpl) return
-    setTemplates(prev => prev.map(t => t.id === editTpl.id ? editTpl : t))
-    setEditTpl(null)
-    showToast('Template updated', 'success')
+  const loadBatches = async () => {
+    setLoadingBatches(true)
+    const { data } = await supabase
+      .from('sms_campaigns')
+      .select('*')
+      .eq('campaign_type', 'bad_debt')
+      .order('created_at', { ascending: false })
+      .limit(20)
+    if (!data) { setBatches([]); setLoadingBatches(false); return }
+    // Enrich with records
+    const enriched = await Promise.all(data.map(async (c: any) => {
+      const { data: recs } = await supabase
+        .from('sms_records')
+        .select('recipient_name, recipient_phone, status')
+        .eq('campaign_id', c.id)
+      return {
+        id: c.id,
+        sent_at: c.created_at,
+        message: c.message,
+        sent_count: c.sent_count || 0,
+        failed_count: c.failed_count || 0,
+        recipients_count: c.recipients_count || 0,
+        created_by: c.created_by,
+        records: (recs || []).map((r: any) => ({ name: r.recipient_name, phone: r.recipient_phone, status: r.status })),
+      }
+    }))
+    setBatches(enriched)
+    setLoadingBatches(false)
   }
 
   // Bulk send
   const handleBulkSend = async () => {
-    if (!selectedRecords.length) return
+    if (!selectedRecords.length || !customMsg.trim()) return
     setSending(true)
-    const log: typeof sendLog = []
+
+    // Create campaign
+    const { data: campaign } = await supabase.from('sms_campaigns').insert({
+      name: `Bad Debt — ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`,
+      campaign_type: 'bad_debt',
+      message: customMsg,
+      recipients_count: selectedRecords.length,
+      status: 'sending',
+      created_by: staff?.name || 'System',
+    }).select().single()
+
+    let success = 0, failed = 0
     for (const r of selectedRecords) {
       const msg = applyVars(customMsg, r)
       const phone = formatPhone(r.phone!)
@@ -466,113 +467,93 @@ function SmsTab({ records }: { records: BadDebtRecord[] }) {
         recipientType: 'client', recipientId: r.id, recipientName: r.full_name,
         phoneNumber: phone, messageType: 'broadcast', messageContent: msg, sentBy: staff?.id || '',
       })
-      log.push({ name: r.full_name, phone, status: result.success ? 'sent' : 'failed', error: result.error })
+      if (campaign) {
+        await supabase.from('sms_records').insert({
+          campaign_id: campaign.id,
+          recipient_name: r.full_name,
+          recipient_phone: phone,
+          message: msg,
+          status: result.success ? 'sent' : 'failed',
+          error_message: result.error || null,
+        })
+      }
+      result.success ? success++ : failed++
     }
-    setSendLog(log)
-    const sent = log.filter(l => l.status === 'sent').length
-    showToast(`Sent ${sent}/${log.length}`, sent > 0 ? 'success' : 'error')
+
+    if (campaign) {
+      await supabase.from('sms_campaigns').update({
+        status: 'completed', sent_count: success, failed_count: failed, sent_at: new Date().toISOString(),
+      }).eq('id', campaign.id)
+    }
+
+    showToast(`Sent ${success}/${selectedRecords.length}`, success > 0 ? 'success' : 'error')
     setSending(false)
+    loadBatches()
   }
 
   // Single send
   const openSingle = (r: BadDebtRecord) => {
     setSingleTarget(r)
-    setSingleTpl(DEFAULT_TEMPLATES[0].id)
-    setSingleMsg(applyVars(getTpl(DEFAULT_TEMPLATES[0].id)?.message || '', r))
-  }
-
-  const handleSingleTplChange = (id: string) => {
-    setSingleTpl(id)
-    if (singleTarget) setSingleMsg(applyVars(getTpl(id)?.message || '', singleTarget))
+    setSingleMsg(applyVars(customMsg, r))
   }
 
   const handleSingleSend = async () => {
     if (!singleTarget || !singleMsg.trim() || !singleTarget.phone) return
     setSingleSending(true)
     const phone = formatPhone(singleTarget.phone)
+
+    const { data: campaign } = await supabase.from('sms_campaigns').insert({
+      name: `Bad Debt (Single) — ${singleTarget.full_name}`,
+      campaign_type: 'bad_debt',
+      message: singleMsg,
+      recipients_count: 1,
+      status: 'sending',
+      created_by: staff?.name || 'System',
+    }).select().single()
+
     const result = await smsService.sendSMS({
       recipientType: 'client', recipientId: singleTarget.id, recipientName: singleTarget.full_name,
       phoneNumber: phone, messageType: 'broadcast', messageContent: singleMsg, sentBy: staff?.id || '',
     })
+
+    if (campaign) {
+      await supabase.from('sms_records').insert({
+        campaign_id: campaign.id, recipient_name: singleTarget.full_name, recipient_phone: phone,
+        message: singleMsg, status: result.success ? 'sent' : 'failed', error_message: result.error || null,
+      })
+      await supabase.from('sms_campaigns').update({
+        status: 'completed', sent_count: result.success ? 1 : 0, failed_count: result.success ? 0 : 1, sent_at: new Date().toISOString(),
+      }).eq('id', campaign.id)
+    }
+
     showToast(result.success ? 'SMS sent' : `Failed: ${result.error}`, result.success ? 'success' : 'error')
     setSingleSending(false)
+    setSingleTarget(null)
+    loadBatches()
   }
 
   return (
     <div className="space-y-6">
-      {/* ── Templates Section ─────────────────────────────────────────── */}
-      <div>
-        <p className="text-sm font-semibold text-gray-700 mb-3">SMS Templates</p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {templates.map(t => (
-            <div key={t.id} className="border border-gray-200 rounded-lg p-3 space-y-2 bg-white">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-gray-700">{t.label}</span>
-                <div className="flex gap-1">
-                  <button onClick={() => { setPreviewTpl(t); setPreviewRecord(withPhone[0] || null) }}
-                    className="text-xs text-gray-400 hover:text-nestalk-primary px-2 py-0.5 rounded hover:bg-blue-50">Preview</button>
-                  <button onClick={() => setEditTpl({ ...t })}
-                    className="text-xs text-gray-400 hover:text-blue-600 px-2 py-0.5 rounded hover:bg-blue-50">
-                    <Pencil className="w-3 h-3" />
-                  </button>
-                </div>
-              </div>
-              <p className="text-xs text-gray-500 line-clamp-3">{t.message}</p>
-              <div className="flex items-center justify-between text-xs text-gray-400">
-                <span>{t.message.length} chars · {Math.ceil(t.message.length / 160)} SMS unit{Math.ceil(t.message.length / 160) !== 1 ? 's' : ''}</span>
-                <span className="font-mono bg-gray-100 rounded px-1">{'{name}'} {'{owed}'}</span>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
       {/* ── Compose & Send ────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Left: compose */}
         <div className="space-y-4">
           <p className="text-sm font-semibold text-gray-700">Compose Message</p>
-
-          {/* Template picker */}
-          <div className="grid grid-cols-2 gap-2">
-            {templates.map(t => (
-              <button key={t.id} onClick={() => handleTplChange(t.id)}
-                className={`px-3 py-2 text-xs rounded-lg border text-left transition-colors ${selectedTpl === t.id ? 'border-nestalk-primary bg-nestalk-primary/5 text-nestalk-primary font-medium' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
-                {t.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Message editor */}
           <div>
             <div className="flex items-center justify-between mb-1">
               <span className="text-xs font-semibold text-gray-600">Message</span>
               <span className={`text-xs ${customMsg.length > 320 ? 'text-red-500' : customMsg.length > 160 ? 'text-orange-500' : 'text-gray-400'}`}>
-                {customMsg.length} chars · {Math.ceil(customMsg.length / 160)} SMS
+                {customMsg.length} chars · {Math.ceil((customMsg.length || 1) / 160)} SMS
               </span>
             </div>
-            <textarea value={customMsg} onChange={e => setCustomMsg(e.target.value)} rows={6}
+            <textarea value={customMsg} onChange={e => setCustomMsg(e.target.value)} rows={7}
+              placeholder="Type your message... Use {name}, {fullname}, {owed}, {total}, {paid}"
               className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-nestalk-primary" />
             <p className="text-xs text-gray-400 mt-1">Variables: <span className="font-mono">{'{name}'} {'{fullname}'} {'{owed}'} {'{total}'} {'{paid}'}</span></p>
           </div>
-
-          {/* Bulk send log */}
-          {sendLog.length > 0 && (
-            <div className="max-h-40 overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-100">
-              {sendLog.map((l, i) => (
-                <div key={i} className="flex items-center justify-between px-3 py-2 text-xs">
-                  <span className="font-medium text-gray-700">{l.name}</span>
-                  <span className={`flex items-center gap-1 ${l.status === 'sent' ? 'text-green-600' : 'text-red-500'}`}>
-                    {l.status === 'sent' ? <CheckCircle className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
-                    {l.status}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
 
-        {/* Right: recipient selector */}
+        {/* Right: recipients */}
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <p className="text-sm font-semibold text-gray-700">Recipients <span className="text-gray-400 font-normal text-xs">({selectedIds.size} selected)</span></p>
@@ -584,15 +565,14 @@ function SmsTab({ records }: { records: BadDebtRecord[] }) {
           </div>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-            <input value={search} onChange={e => setSearch(e.target.value)}
-              placeholder="Search..."
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search..."
               className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary" />
           </div>
-          <div className="border border-gray-200 rounded-lg overflow-hidden max-h-72 overflow-y-auto">
+          <div className="border border-gray-200 rounded-lg overflow-hidden max-h-64 overflow-y-auto">
             {filteredRecords.length === 0 ? (
               <div className="text-sm text-gray-400 text-center py-6">No contacts with phone numbers</div>
             ) : filteredRecords.map(r => {
-              const owed = ((r.total_fee ?? 0) - (r.amount_paid ?? 0))
+              const owed = (r.total_fee ?? 0) - (r.amount_paid ?? 0)
               return (
                 <div key={r.id} className={`flex items-center justify-between px-3 py-2.5 border-b border-gray-100 last:border-0 hover:bg-gray-50 ${selectedIds.has(r.id) ? 'bg-nestalk-primary/5' : ''}`}>
                   <div className="flex items-center gap-2 cursor-pointer flex-1" onClick={() => {
@@ -622,71 +602,67 @@ function SmsTab({ records }: { records: BadDebtRecord[] }) {
         </div>
       </div>
 
-      {/* Edit Template Modal */}
-      {editTpl && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-lg mx-4 space-y-4">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-semibold text-gray-900">Edit Template</p>
-              <button onClick={() => setEditTpl(null)}><X className="w-4 h-4 text-gray-400" /></button>
-            </div>
-            <div>
-              <label className="text-xs font-medium text-gray-600 mb-1 block">Label</label>
-              <input value={editTpl.label} onChange={e => setEditTpl(t => t ? { ...t, label: e.target.value } : t)}
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary" />
-            </div>
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-xs font-medium text-gray-600">Message</label>
-                <span className={`text-xs ${editTpl.message.length > 320 ? 'text-red-500' : editTpl.message.length > 160 ? 'text-orange-500' : 'text-gray-400'}`}>
-                  {editTpl.message.length} chars · {Math.ceil(editTpl.message.length / 160)} SMS
-                </span>
-              </div>
-              <textarea value={editTpl.message} onChange={e => setEditTpl(t => t ? { ...t, message: e.target.value } : t)}
-                rows={6} className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-nestalk-primary" />
-              <p className="text-xs text-gray-400 mt-1">Variables: <span className="font-mono">{'{name}'} {'{fullname}'} {'{owed}'} {'{total}'} {'{paid}'}</span></p>
-            </div>
-            <div className="flex gap-2 justify-end">
-              <button onClick={() => setEditTpl(null)} className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
-              <button onClick={saveTemplate} className="px-4 py-2 text-sm bg-nestalk-primary text-white rounded-lg hover:bg-nestalk-primary/90">Save</button>
-            </div>
+      {/* ── Send History ──────────────────────────────────────────────── */}
+      <div>
+        <p className="text-sm font-semibold text-gray-700 mb-3">Send History</p>
+        {loadingBatches ? (
+          <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-gray-400" /></div>
+        ) : batches.length === 0 ? (
+          <div className="text-sm text-gray-400 text-center py-8 border border-dashed border-gray-200 rounded-lg">No sends yet</div>
+        ) : (
+          <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600">Batch</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600">Message</th>
+                  <th className="text-center px-4 py-3 text-xs font-semibold text-gray-600">Sent</th>
+                  <th className="text-center px-4 py-3 text-xs font-semibold text-gray-600">Failed</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600">By</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600">Date</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {batches.map(b => (
+                  <React.Fragment key={b.id}>
+                    <tr className="hover:bg-gray-50 cursor-pointer" onClick={() => setExpandedBatch(expandedBatch === b.id ? null : b.id)}>
+                      <td className="px-4 py-3 font-medium text-gray-900 max-w-[160px] truncate">{b.recipients_count === 1 ? 'Single' : 'Bulk'} · {b.recipients_count}</td>
+                      <td className="px-4 py-3 text-xs text-gray-500 max-w-[220px] truncate" title={b.message}>{b.message}</td>
+                      <td className="text-center px-4 py-3 text-emerald-700 font-semibold">{b.sent_count}/{b.recipients_count}</td>
+                      <td className="text-center px-4 py-3 text-red-600">{b.failed_count}</td>
+                      <td className="px-4 py-3 text-xs text-gray-500">{b.created_by}</td>
+                      <td className="px-4 py-3 text-xs text-gray-500">{new Date(b.sent_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
+                    </tr>
+                    {expandedBatch === b.id && b.records.length > 0 && (
+                      <tr>
+                        <td colSpan={6} className="bg-gray-50 px-6 py-4">
+                          <div className="text-xs font-semibold text-gray-500 uppercase mb-2">Recipients ({b.records.length})</div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-1.5 max-h-48 overflow-y-auto">
+                            {b.records.map((r, i) => (
+                              <div key={i} className="flex items-center justify-between bg-white border border-gray-100 rounded px-3 py-1.5 text-xs">
+                                <div>
+                                  <div className="font-medium text-gray-800">{r.name}</div>
+                                  <div className="font-mono text-gray-400">{r.phone}</div>
+                                </div>
+                                <span className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs font-medium ${r.status === 'sent' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-600'}`}>
+                                  {r.status === 'sent' ? <CheckCircle className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
+                                  {r.status}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                ))}
+              </tbody>
+            </table>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
-      {/* Preview Template Modal */}
-      {previewTpl && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-lg mx-4 space-y-4">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-semibold text-gray-900">Preview — {previewTpl.label}</p>
-              <button onClick={() => setPreviewTpl(null)}><X className="w-4 h-4 text-gray-400" /></button>
-            </div>
-            {previewRecord ? (
-              <div className="space-y-3">
-                <div className="text-xs text-gray-500 mb-1">Previewing for: <span className="font-semibold text-gray-700">{previewRecord.full_name}</span></div>
-                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm text-gray-800">
-                  {applyVars(previewTpl.message, previewRecord)}
-                </div>
-                <div className="text-xs text-gray-400">{applyVars(previewTpl.message, previewRecord).length} chars · {Math.ceil(applyVars(previewTpl.message, previewRecord).length / 160)} SMS</div>
-                {/* record picker */}
-                <div>
-                  <label className="text-xs font-medium text-gray-600 mb-1 block">Preview for different person</label>
-                  <select value={previewRecord.id} onChange={e => setPreviewRecord(records.find(r => r.id === e.target.value) || null)}
-                    className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-nestalk-primary">
-                    {withPhone.map(r => <option key={r.id} value={r.id}>{r.full_name}</option>)}
-                  </select>
-                </div>
-              </div>
-            ) : <p className="text-sm text-gray-400">No contacts with phone numbers to preview.</p>}
-            <div className="flex justify-end">
-              <button onClick={() => setPreviewTpl(null)} className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">Close</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Single SMS Modal */}
+      {/* ── Single SMS Modal ─────────────────────────────────────────── */}
       {singleTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-lg mx-4 space-y-4">
@@ -697,19 +673,11 @@ function SmsTab({ records }: { records: BadDebtRecord[] }) {
               </div>
               <button onClick={() => setSingleTarget(null)}><X className="w-4 h-4 text-gray-400" /></button>
             </div>
-            <div className="grid grid-cols-2 gap-2">
-              {templates.map(t => (
-                <button key={t.id} onClick={() => handleSingleTplChange(t.id)}
-                  className={`px-3 py-2 text-xs rounded-lg border text-left transition-colors ${singleTpl === t.id ? 'border-nestalk-primary bg-nestalk-primary/5 text-nestalk-primary font-medium' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
-                  {t.label}
-                </button>
-              ))}
-            </div>
             <div>
               <div className="flex items-center justify-between mb-1">
                 <span className="text-xs font-semibold text-gray-600">Message</span>
                 <span className={`text-xs ${singleMsg.length > 320 ? 'text-red-500' : singleMsg.length > 160 ? 'text-orange-500' : 'text-gray-400'}`}>
-                  {singleMsg.length} chars · {Math.ceil(singleMsg.length / 160)} SMS
+                  {singleMsg.length} chars · {Math.ceil((singleMsg.length || 1) / 160)} SMS
                 </span>
               </div>
               <textarea value={singleMsg} onChange={e => setSingleMsg(e.target.value)} rows={6}
@@ -728,8 +696,6 @@ function SmsTab({ records }: { records: BadDebtRecord[] }) {
     </div>
   )
 }
-
-// ─── Main Page ────────────────────────────────────────────────────────────────
 
 export function BadDebt() {
   const [tab, setTab] = useState<'profiles' | 'sms'>('profiles')

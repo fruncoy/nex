@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+﻿import React, { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { smsService } from '../services/smsService'
 import { useAuth } from '../contexts/AuthContext'
@@ -1812,6 +1812,7 @@ function ContactsTab() {
         </div>
       )}
     </div>
+    </div>
   )
 }
 
@@ -1819,6 +1820,19 @@ function ContactsTab() {
 
 
 
+
+// --- Main Component -----------------------------------------------------------
+
+type Tab = 'summary' | 'directions' | 'graduation' | 'weekly' | 'broadcast' | 'contacts'
+
+const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
+  { id: 'summary', label: 'Summary', icon: <BarChart2 className="w-4 h-4" /> },
+  { id: 'directions', label: 'Directions', icon: <Send className="w-4 h-4" /> },
+  { id: 'graduation', label: 'Graduation', icon: <GraduationCap className="w-4 h-4" /> },
+  { id: 'weekly', label: 'Daily Digest', icon: <MessageSquare className="w-4 h-4" /> },
+  { id: 'broadcast', label: 'Broadcast', icon: <Radio className="w-4 h-4" /> },
+  { id: 'contacts', label: 'Contacts', icon: <BookUser className="w-4 h-4" /> },
+]
 export function SMSManagement() {
   const [activeTab, setActiveTab] = useState<Tab>('summary')
   const [logs, setLogs] = useState<SMSLog[]>([])
