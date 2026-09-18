@@ -1,5 +1,5 @@
 import React from 'react'
-import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom'
+import { BrowserRouter as Router, Routes, Route, Navigate, Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { ToastProvider } from './contexts/ToastContext'
 import { Layout } from './components/Layout'
@@ -62,35 +62,48 @@ function ProtectedDigest() {
   return <Digest />
 }
 
+function MemberSubdomainRedirect() {
+  const location = useLocation()
+  const isMemberDomain = window.location.hostname === 'member.nestara.co.ke'
+
+  if (isMemberDomain && !location.pathname.startsWith('/member')) {
+    return <Navigate to="/member" replace />
+  }
+
+  return <Outlet />
+}
+
 function AppRoutes() {
   console.log('AppRoutes rendering')
   return (
     <Routes>
-      <Route path="/createprofile" element={<CreateProfile />} />
-      <Route path="/" element={<ProtectedLayout />}>
-        <Route index element={<Niche />} />
-        <Route path="niche-candidates" element={<NicheCandidates />} />
-        <Route path="niche-interviews" element={<NicheInterviews />} />
-        <Route path="niche" element={<Niche />} />
-        <Route path="niche-courses" element={<NicheCourses />} />
-        <Route path="niche-reports" element={<NicheReports />} />
-        <Route path="niche-training" element={<NicheTraining />} />
-        <Route path="niche-fees" element={<NicheFees />} />
-        <Route path="bad-debt" element={<BadDebt />} />
-        <Route path="niche-timetable" element={<NicheTimetable />} />
-        <Route path="niche-grading" element={<NicheGrading />} />
-        <Route path="niche-progress" element={<NicheProgressTracking />} />
-        <Route path="get-match" element={<GetMatch />} />
+      <Route element={<MemberSubdomainRedirect />}>
+        <Route path="/createprofile" element={<CreateProfile />} />
+        <Route path="/" element={<ProtectedLayout />}>
+          <Route index element={<Niche />} />
+          <Route path="niche-candidates" element={<NicheCandidates />} />
+          <Route path="niche-interviews" element={<NicheInterviews />} />
+          <Route path="niche" element={<Niche />} />
+          <Route path="niche-courses" element={<NicheCourses />} />
+          <Route path="niche-reports" element={<NicheReports />} />
+          <Route path="niche-training" element={<NicheTraining />} />
+          <Route path="niche-fees" element={<NicheFees />} />
+          <Route path="bad-debt" element={<BadDebt />} />
+          <Route path="niche-timetable" element={<NicheTimetable />} />
+          <Route path="niche-grading" element={<NicheGrading />} />
+          <Route path="niche-progress" element={<NicheProgressTracking />} />
+          <Route path="get-match" element={<GetMatch />} />
 
-        <Route path="sms" element={<SMSManagement />} />
-        <Route path="nestara-ai" element={<NestaraAI />} />
-        <Route path="staff-management" element={<StaffManagement />} />
-        <Route path="member-admin" element={<MemberAdmin />} />
-        <Route path="updates" element={<Updates />} />
+          <Route path="sms" element={<SMSManagement />} />
+          <Route path="nestara-ai" element={<NestaraAI />} />
+          <Route path="staff-management" element={<StaffManagement />} />
+          <Route path="member-admin" element={<MemberAdmin />} />
+          <Route path="updates" element={<Updates />} />
+        </Route>
+        <Route path="/digest" element={<ProtectedDigest />} />
+        <Route path="/member" element={<MemberPortal />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
-      <Route path="/digest" element={<ProtectedDigest />} />
-      <Route path="/member" element={<MemberPortal />} />
-      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )
 }

@@ -17,8 +17,8 @@
     {
       "source": "/(.*)",
       "has": [{ "type": "host", "value": "member.nestara.co.ke" }],
-      "destination": "/member"
+      "destination": "/index.html"
     },
-    { "source": "/(.*)", "destination": "/" }
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
