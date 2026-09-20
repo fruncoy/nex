@@ -1,5 +1,5 @@
 import React from 'react'
-import { BrowserRouter as Router, Routes, Route, Navigate, Outlet, useNavigate, useLocation } from 'react-router-dom'
+import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { ToastProvider } from './contexts/ToastContext'
 import { Layout } from './components/Layout'
@@ -63,11 +63,10 @@ function ProtectedDigest() {
 }
 
 function MemberSubdomainRedirect() {
-  const location = useLocation()
   const isMemberDomain = window.location.hostname === 'member.nestara.co.ke'
 
-  if (isMemberDomain && !location.pathname.startsWith('/member')) {
-    return <Navigate to="/member" replace />
+  if (isMemberDomain) {
+    return <MemberPortal />
   }
 
   return <Outlet />
