@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { ArrowLeft, LogOut, MoreHorizontal } from 'lucide-react'
 
@@ -93,6 +93,15 @@ export function MemberPortal() {
   const [loading, setLoading] = useState(false)
   const [showCoc, setShowCoc] = useState(false)
   const [showMenu, setShowMenu] = useState(false)
+
+  useEffect(() => {
+    if (window.location.hostname === 'member.nestara.co.ke') {
+      document.title = 'Nestara Member Portal'
+    }
+    return () => {
+      document.title = 'NEX'
+    }
+  }, [])
 
   const handleLookup = async (e: React.FormEvent) => {
     e.preventDefault()
