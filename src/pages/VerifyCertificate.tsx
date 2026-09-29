@@ -83,15 +83,15 @@ const VerifyCertificate: React.FC = () => {
         { label: 'Full Name',     value: record.niche_training.name },
         { label: 'Phone Number',  value: record.niche_training.phone || 'N/A' },
         { label: 'Course',        value: record.niche_training.course || 'N/A' },
-        { label: 'Grade / Tier',  value: record.tier || 'Completed' },
-        {
+        ...(record.tier ? [{ label: 'Grade / Tier', value: record.tier }] : []),
+        ...(record.final_score !== null ? [{
           label: 'Final Score',
-          value: record.final_score !== null ? `${record.final_score.toFixed(1)} / 100` : 'N/A',
-        },
-        {
+          value: `${record.final_score.toFixed(1)} / 100`,
+        }] : []),
+        ...(record.niche_cohorts ? [{
           label: 'Cohort',
-          value: record.niche_cohorts ? `Cohort #${record.niche_cohorts.cohort_number}` : 'N/A',
-        },
+          value: `Cohort #${record.niche_cohorts.cohort_number}`,
+        }] : []),
         { label: 'Date Started',   value: formatDate(record.niche_training.date_started) },
         { label: 'Date Completed', value: formatDate(record.niche_training.date_completed) },
       ]
