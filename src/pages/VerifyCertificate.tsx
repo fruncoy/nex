@@ -109,6 +109,7 @@ const VerifyCertificate: React.FC = () => {
       <div style={{
         minHeight: '100vh',
         background: '#FAF9F6',
+        position: 'relative',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
@@ -116,6 +117,20 @@ const VerifyCertificate: React.FC = () => {
         padding: '48px 16px 80px',
         fontFamily: "'Poppins', sans-serif",
       }}>
+        {/* Watermark background — both logos tiled, 10% opacity */}
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          backgroundImage: 'url("/NICHE Logo.png"), url("/Logo.png")',
+          backgroundSize: '110px 110px, 90px 90px',
+          backgroundRepeat: 'repeat, repeat',
+          backgroundPosition: '0 0, 120px 120px',
+          opacity: 0.10,
+          pointerEvents: 'none',
+          zIndex: 0,
+        }} />
+        {/* All page content sits above the watermark */}
+        <div style={{ position: 'relative', zIndex: 1, width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
 
         {/* ── Header ── */}
         <div style={{ textAlign: 'center', marginBottom: 36 }}>
@@ -246,14 +261,13 @@ const VerifyCertificate: React.FC = () => {
         )}
 
         {/* ── Footer note + CTA ── */}
-        <div style={{ marginTop: 32, textAlign: 'justify', maxWidth: 400 }}>
+        <div style={{ marginTop: 32, textAlign: 'center', maxWidth: 400 }}>
           <p style={{
             fontSize: 11,
             color: '#999',
             lineHeight: 1.7,
             marginBottom: 16,
             fontFamily: "'Poppins', sans-serif",
-            textAlign: 'justify',
           }}>
             This certificate is the property of Nestara. If you found it lost, or if you have
             a concern, need trained personnel, or are interested in our training programmes.
@@ -281,31 +295,10 @@ const VerifyCertificate: React.FC = () => {
             >
               Questions? Contact Us
             </a>
-
-            <a
-              href="https://nestara.co.ke"
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                padding: '9px 20px',
-                background: 'transparent',
-                color: '#555',
-                border: '1px solid #ccc',
-                borderRadius: 999,
-                fontSize: 12,
-                fontWeight: 500,
-                textDecoration: 'none',
-                fontFamily: "'Poppins', sans-serif",
-                boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
-              }}
-            >
-              Visit nestara.co.ke
-            </a>
           </div>
         </div>
 
+        </div> {/* end content wrapper */}
       </div>
     </>
   )
