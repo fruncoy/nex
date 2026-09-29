@@ -1,4 +1,6 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import QRCode from 'qrcode'
+import { getOrCreateVerificationUrl } from '../utils/certificateToken'
 
 interface NicheCertificateProps {
   recipientName: string
@@ -21,6 +23,8 @@ interface NicheCertificateProps {
   description?: string
   dateStarted?: string
   dateCompleted?: string
+  gradeId?: string
+  certificateToken?: string | null
 }
 
 const styles = `
@@ -112,7 +116,9 @@ const NicheCertificate: React.FC<NicheCertificateProps> = ({
   onClose,
   description,
   dateStarted,
-  dateCompleted
+  dateCompleted,
+  gradeId,
+  certificateToken
 }) => {
   const nannyPillars = [
     { name: 'Childcare & Development', weight: 1.8, maxWeighted: 45 },
@@ -133,6 +139,24 @@ const NicheCertificate: React.FC<NicheCertificateProps> = ({
   const weightedScores = [pillar1Weighted || 0, pillar2Weighted || 0, pillar3Weighted || 0, pillar4Weighted || 0]
 
   const [isDownloading, setIsDownloading] = useState(false)
+
+  // QR code state — generated on mount so it's visible in preview AND in PDF
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!gradeId) return
+
+    getOrCreateVerificationUrl(gradeId, certificateToken)
+      .then((url) => {
+        return QRCode.toDataURL(url, {
+          width: 130,  // high-res source; displayed at 65px via CSS
+          margin: 1,
+          color: { dark: '#d95637', light: '#fff9f7' }  // brand red-orange on warm white
+        })
+      })
+      .then((dataUrl) => setQrDataUrl(dataUrl))
+      .catch((err) => console.warn('QR generation failed:', err))
+  }, [gradeId, certificateToken])
 
   const downloadCertificate = async () => {
     setIsDownloading(true)
@@ -418,6 +442,43 @@ const NicheCertificate: React.FC<NicheCertificateProps> = ({
                         Nestara Limited
                       </span>
                     </div>
+
+                    {/* QR Verification badge — centred between signatories */}
+                    {qrDataUrl && (
+                      <div style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: 4,
+                        padding: '6px 8px 5px',
+                        border: '1px solid #d95637',
+                        borderRadius: 6,
+                        background: '#fdf3f0',
+                        flexShrink: 0,
+                        marginBottom: '-18px',
+                      }}>
+                        {/* QR code */}
+                        <img
+                          src={qrDataUrl}
+                          width={52}
+                          height={52}
+                          alt="Verify certificate"
+                          style={{ display: 'block' }}
+                        />
+                        {/* Label below */}
+                        <span style={{
+                          fontFamily: "'Poppins', sans-serif",
+                          fontSize: '5.5px',
+                          fontWeight: 600,
+                          color: '#000',
+                          letterSpacing: '0.1em',
+                          textTransform: 'uppercase',
+                        }}>
+                          Scan to Verify
+                        </span>
+                      </div>
+                    )}
+
                     <div style={{ width:"200px", textAlign:"center" }}>
                       <div style={{ borderBottom:"2px solid #000", height:"40px", marginBottom:"8px", position:"relative" }}>
                       </div>

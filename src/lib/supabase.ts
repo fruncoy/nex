@@ -403,3 +403,40 @@ export type Database = {
     }
   }
 }
+
+// ============================================================
+// QR Certificate Verification — Public lookup (no auth needed)
+// ============================================================
+
+/**
+ * Looks up a grade record by its certificate_token.
+ * Used by the public /verify/:token page — no login required.
+ * Returns only the fields needed for the verification display.
+ */
+export async function verifyCertificateToken(token: string) {
+  const { data, error } = await supabase
+    .from('trainee_grades')
+    .select(`
+      certificate_token,
+      tier,
+      final_score,
+      training_type,
+      created_at,
+      niche_training (
+        name,
+        phone,
+        course,
+        role,
+        date_started,
+        date_completed,
+        training_category
+      ),
+      niche_cohorts (
+        cohort_number
+      )
+    `)
+    .eq('certificate_token', token)
+    .single()
+
+  return { data, error }
+}

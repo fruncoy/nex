@@ -1661,6 +1661,8 @@ export function NicheGrading() {
             pillar3Weighted={nicheCardData.pillar3_weighted || 0}
             pillar4Weighted={nicheCardData.pillar4_weighted || 0}
             trainingType={nicheCardData.training_type || 'nanny'}
+            gradeId={nicheCardData.id}
+            certificateToken={nicheCardData.certificate_token}
             onClose={() => setShowCertificate(false)}
           />
         ) : null
@@ -1686,6 +1688,8 @@ export function NicheGrading() {
           pillar4Weighted={nicheCardData.pillar4_weighted || 0}
           trainingType={nicheCardData.training_type || 'nanny'}
           subPillarScores={nicheCardData.subPillarScores || {}}
+          gradeId={nicheCardData.id}
+          certificateToken={nicheCardData.certificate_token}
           onClose={() => setShowTranscript(false)}
         />
       )}
@@ -1709,6 +1713,8 @@ export function NicheGrading() {
           pillar3Weighted={nicheCardData.pillar3_weighted || 0}
           pillar4Weighted={nicheCardData.pillar4_weighted || 0}
           trainingType={nicheCardData.training_type || 'nanny'}
+          gradeId={nicheCardData.id}
+          certificateToken={nicheCardData.certificate_token}
           onClose={() => setNicheCardData(null)}
         />
       )}

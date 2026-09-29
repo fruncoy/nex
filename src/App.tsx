@@ -23,6 +23,7 @@ import { CreateProfile } from './pages/CreateProfile'
 import { GetMatch } from './pages/GetMatch'
 import NicheProgressTracking from './pages/NicheProgressTracking'
 import { Digest } from './pages/Digest'
+import VerifyCertificate from './pages/VerifyCertificate'
 
 import { StaffManagement } from './pages/StaffManagement'
 import { MemberPortal } from './pages/MemberPortal'
@@ -76,6 +77,10 @@ function AppRoutes() {
   console.log('AppRoutes rendering')
   return (
     <Routes>
+      {/* Public certificate verification — must be outside MemberSubdomainRedirect
+          so it works on member.nestara.co.ke without hitting the member portal */}
+      <Route path="/verify/:token" element={<VerifyCertificate />} />
+
       <Route element={<MemberSubdomainRedirect />}>
         <Route path="/createprofile" element={<CreateProfile />} />
         <Route path="/" element={<ProtectedLayout />}>
