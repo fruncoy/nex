@@ -497,7 +497,7 @@ const NicheTranscript: React.FC<NicheTranscriptProps> = ({
                     <div style={{ textAlign:"right" }}>
                       <div style={{ position:"relative", width:"180px", height:"30px", marginBottom:"1px" }}>
                         <img
-                          src="/Lead-Trainer-Signature.png"
+                          src="/Nestara-Limited-Signature.png"
                           alt="Lead Trainer Signature"
                           style={{
                             position:"absolute",
