@@ -435,7 +435,7 @@ const NicheTranscript: React.FC<NicheTranscriptProps> = ({
                 </div>
 
                 {/* ── FOOTER ── */}
-                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", width:"100%", maxWidth:600, zIndex:10, marginTop:"8px", gap:"20px" }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", width:"100%", maxWidth:600, zIndex:10, marginTop:"4px", gap:"12px" }}>
                   
                   {/* Grading Scale Table */}
                   <div style={{ flex:1, display:"flex", justifyContent:"flex-start" }}>
@@ -459,29 +459,29 @@ const NicheTranscript: React.FC<NicheTranscriptProps> = ({
                     </table>
                   </div>
 
-                  {/* QR badge — inline centre, no absolute positioning */}
+                  {/* QR badge — inline centre, compact to fit footer row */}
                   {qrDataUrl && (
                     <div style={{
                       display: 'flex',
                       flexDirection: 'column',
                       alignItems: 'center',
-                      gap: 4,
-                      padding: '6px 8px 5px',
+                      gap: 2,
+                      padding: '4px 6px 3px',
                       border: '1px solid #d95637',
-                      borderRadius: 6,
+                      borderRadius: 5,
                       background: '#fdf3f0',
                       flexShrink: 0,
                     }}>
                       <img
                         src={qrDataUrl}
-                        width={52}
-                        height={52}
+                        width={38}
+                        height={38}
                         alt="Scan to verify this transcript"
                         style={{ display: 'block' }}
                       />
                       <span style={{
                         fontFamily: "'Poppins', sans-serif",
-                        fontSize: '5.5px',
+                        fontSize: '4.5px',
                         fontWeight: 600,
                         color: '#000',
                         letterSpacing: '0.1em',
