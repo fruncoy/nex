@@ -269,7 +269,7 @@ const VerifyCertificate: React.FC = () => {
             marginBottom: 16,
             fontFamily: "'Poppins', sans-serif",
           }}>
-            This certificate is the property of Nestara. If you found it lost, or if you have
+            This certificate is issued and authenticated by Nestara Limited. If you found it lost, or if you have
             a concern, need trained personnel, or are interested in our training programmes.
           </p>
 
