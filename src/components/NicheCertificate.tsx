@@ -438,7 +438,7 @@ const NicheCertificate: React.FC<NicheCertificateProps> = ({
                   {/* Signatures */}
                   <div style={{ display:"flex", justifyContent:"space-between", alignItems:"end", padding:"0 40px" }}>
                     <div style={{ width:"200px", textAlign:"center" }}>
-                      <div style={{ position:"relative", height:"40px", marginBottom:"8px" }}>
+                      <div style={{ position:"relative", height:"52px", marginBottom:"8px" }}>
                         <img
                           src="/Nestara-Limited-Signature.png"
                           alt="Nestara Limited Signature"
@@ -447,7 +447,7 @@ const NicheCertificate: React.FC<NicheCertificateProps> = ({
                             bottom:"2px",
                             left:"50%",
                             transform:"translateX(-50%)",
-                            height:"36px",
+                            height:"48px",
                             width:"auto",
                             objectFit:"contain",
                             filter:"invert(27%) sepia(100%) saturate(700%) hue-rotate(190deg) brightness(90%)",
@@ -497,7 +497,7 @@ const NicheCertificate: React.FC<NicheCertificateProps> = ({
                     )}
 
                     <div style={{ width:"200px", textAlign:"center" }}>
-                      <div style={{ position:"relative", height:"40px", marginBottom:"8px" }}>
+                      <div style={{ position:"relative", height:"52px", marginBottom:"8px" }}>
                         <img
                           src="/Lead-Trainer-Signature.png"
                           alt="Lead Trainer Signature"
@@ -506,7 +506,7 @@ const NicheCertificate: React.FC<NicheCertificateProps> = ({
                             bottom:"2px",
                             left:"50%",
                             transform:"translateX(-50%)",
-                            height:"36px",
+                            height:"48px",
                             width:"auto",
                             objectFit:"contain",
                             filter:"invert(27%) sepia(100%) saturate(700%) hue-rotate(190deg) brightness(90%)",
