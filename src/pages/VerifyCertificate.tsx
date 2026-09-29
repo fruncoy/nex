@@ -246,43 +246,42 @@ const VerifyCertificate: React.FC = () => {
         )}
 
         {/* ── Footer note + CTA ── */}
-        <div style={{ marginTop: 32, textAlign: 'center', maxWidth: 400 }}>
+        <div style={{ marginTop: 32, textAlign: 'justify', maxWidth: 400 }}>
           <p style={{
             fontSize: 11,
             color: '#999',
             lineHeight: 1.7,
             marginBottom: 16,
             fontFamily: "'Poppins', sans-serif",
+            textAlign: 'justify',
           }}>
             This certificate is the property of Nestara. If you found it lost, or if you have
-            a concern, need trained personnel, or are interested in our training programmes —
-            kindly click below.
+            a concern, need trained personnel, or are interested in our training programmes.
           </p>
 
-          <a
-            href={`https://wa.me/254714681776${waMessage ? `?text=${waMessage}` : ''}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 7,
-              padding: '9px 20px',
-              background: 'transparent',
-              color: '#555',
-              border: '1px solid #ccc',
-              borderRadius: 999,
-              fontSize: 12,
-              fontWeight: 500,
-              textDecoration: 'none',
-              fontFamily: "'Poppins', sans-serif",
-              boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
-            }}
-          >
-            Questions? Contact Us
-          </a>
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
+            <a
+              href={`https://wa.me/254714681776${waMessage ? `?text=${waMessage}` : ''}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                padding: '9px 20px',
+                background: 'transparent',
+                color: '#555',
+                border: '1px solid #ccc',
+                borderRadius: 999,
+                fontSize: 12,
+                fontWeight: 500,
+                textDecoration: 'none',
+                fontFamily: "'Poppins', sans-serif",
+                boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+              }}
+            >
+              Questions? Contact Us
+            </a>
 
-          <div style={{ marginTop: 10 }}>
             <a
               href="https://nestara.co.ke"
               target="_blank"
