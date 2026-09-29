@@ -125,7 +125,7 @@ const VerifyCertificate: React.FC = () => {
           backgroundSize: '120px 120px',
           backgroundRepeat: 'repeat',
           backgroundPosition: '0 0',
-          opacity: 0.05,
+          opacity: 0.035,
           pointerEvents: 'none',
           zIndex: 0,
         }} />
