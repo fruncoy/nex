@@ -25,6 +25,7 @@ interface NicheCertificateProps {
   dateCompleted?: string
   gradeId?: string
   certificateToken?: string | null
+  tokenTable?: 'trainee_grades' | 'niche_training'
 }
 
 const styles = `
@@ -118,7 +119,8 @@ const NicheCertificate: React.FC<NicheCertificateProps> = ({
   dateStarted,
   dateCompleted,
   gradeId,
-  certificateToken
+  certificateToken,
+  tokenTable = 'trainee_grades'
 }) => {
   const nannyPillars = [
     { name: 'Childcare & Development', weight: 1.8, maxWeighted: 45 },
@@ -146,7 +148,7 @@ const NicheCertificate: React.FC<NicheCertificateProps> = ({
   useEffect(() => {
     if (!gradeId) return
 
-    getOrCreateVerificationUrl(gradeId, certificateToken)
+    getOrCreateVerificationUrl(gradeId, certificateToken, tokenTable)
       .then((url) => {
         return QRCode.toDataURL(url, {
           width: 130,  // high-res source; displayed at 65px via CSS

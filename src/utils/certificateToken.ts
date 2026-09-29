@@ -1,34 +1,34 @@
 import { supabase } from '../lib/supabase'
 
+const BASE_URL = 'https://member.nestara.co.ke'
+
 /**
- * Returns the full public verification URL for a given grade record.
- * If the record does not yet have a certificate_token, generates one
- * and saves it to Supabase before returning the URL.
+ * Returns the full public verification URL for a certificate.
  *
- * The token is a UUID that is unguessable and does not expose any
- * internal database IDs in the public URL.
+ * @param recordId     - The UUID of the grade/training record
+ * @param existingToken - The current certificate_token value (if already set)
+ * @param table        - 'trainee_grades' for flagship, 'niche_training' for short courses
  */
 export async function getOrCreateVerificationUrl(
-  gradeId: string,
-  existingToken?: string | null
+  recordId: string,
+  existingToken?: string | null,
+  table: 'trainee_grades' | 'niche_training' = 'trainee_grades'
 ): Promise<string> {
-  const baseUrl = 'https://member.nestara.co.ke'
-
   if (existingToken) {
-    return `${baseUrl}/verify/${existingToken}`
+    return `${BASE_URL}/verify/${existingToken}`
   }
 
-  // Generate a new token and persist it to the database
+  // Generate a new UUID token and persist it
   const newToken = crypto.randomUUID()
 
   const { error } = await supabase
-    .from('trainee_grades')
+    .from(table)
     .update({ certificate_token: newToken })
-    .eq('id', gradeId)
+    .eq('id', recordId)
 
   if (error) {
     throw new Error(`Failed to save certificate token: ${error.message}`)
   }
 
-  return `${baseUrl}/verify/${newToken}`
+  return `${BASE_URL}/verify/${newToken}`
 }

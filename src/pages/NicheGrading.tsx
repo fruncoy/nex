@@ -1638,6 +1638,9 @@ export function NicheGrading() {
             graduationDate={selectedShortCourseTrainee.date_completed 
               ? formatDateWithOrdinal(selectedShortCourseTrainee.date_completed) 
               : formatDateWithOrdinal(new Date())}
+            gradeId={selectedShortCourseTrainee.id}
+            certificateToken={selectedShortCourseTrainee.certificate_token}
+            tokenTable="niche_training"
             onClose={() => {
               setShowCertificate(false)
               setSelectedShortCourseTrainee(null)

@@ -409,12 +409,13 @@ export type Database = {
 // ============================================================
 
 /**
- * Looks up a grade record by its certificate_token.
- * Used by the public /verify/:token page — no login required.
- * Returns only the fields needed for the verification display.
+ * Looks up a certificate by its token.
+ * Checks trainee_grades first (flagship), then niche_training (short courses).
+ * No login required — used by the public /verify/:token page.
  */
 export async function verifyCertificateToken(token: string) {
-  const { data, error } = await supabase
+  // 1. Try flagship certificates (trainee_grades)
+  const { data: gradeData, error: gradeError } = await supabase
     .from('trainee_grades')
     .select(`
       certificate_token,
@@ -438,5 +439,49 @@ export async function verifyCertificateToken(token: string) {
     .eq('certificate_token', token)
     .single()
 
-  return { data, error }
+  if (!gradeError && gradeData) {
+    return { data: gradeData, error: null }
+  }
+
+  // 2. Fall back to short course certificates (niche_training)
+  const { data: shortData, error: shortError } = await supabase
+    .from('niche_training')
+    .select(`
+      certificate_token,
+      name,
+      phone,
+      course,
+      role,
+      date_started,
+      date_completed,
+      training_category
+    `)
+    .eq('certificate_token', token)
+    .single()
+
+  if (!shortError && shortData) {
+    // Shape it to match the flagship structure so VerifyCertificate renders correctly
+    return {
+      data: {
+        certificate_token: shortData.certificate_token,
+        tier: null,
+        final_score: null,
+        training_type: null,
+        created_at: shortData.date_completed || shortData.date_started,
+        niche_training: {
+          name: shortData.name,
+          phone: shortData.phone,
+          course: shortData.course,
+          role: shortData.role,
+          date_started: shortData.date_started,
+          date_completed: shortData.date_completed,
+          training_category: shortData.training_category,
+        },
+        niche_cohorts: null,
+      },
+      error: null,
+    }
+  }
+
+  return { data: null, error: shortError || gradeError }
 }
