@@ -245,8 +245,20 @@ const VerifyCertificate: React.FC = () => {
           </div>
         )}
 
-        {/* ── WhatsApp CTA — subtle text link ── */}
-        <div style={{ marginTop: 32, textAlign: 'center' }}>
+        {/* ── Footer note + CTA ── */}
+        <div style={{ marginTop: 32, textAlign: 'center', maxWidth: 400 }}>
+          <p style={{
+            fontSize: 11,
+            color: '#999',
+            lineHeight: 1.7,
+            marginBottom: 16,
+            fontFamily: "'Poppins', sans-serif",
+          }}>
+            This certificate is the property of Nestara. If you found it lost, or if you have
+            a concern, need trained personnel, or are interested in our training programmes —
+            kindly click below.
+          </p>
+
           <a
             href={`https://wa.me/254714681776${waMessage ? `?text=${waMessage}` : ''}`}
             target="_blank"
@@ -269,6 +281,23 @@ const VerifyCertificate: React.FC = () => {
           >
             Questions? Contact Us
           </a>
+
+          <div style={{ marginTop: 20 }}>
+            <a
+              href="https://nestara.co.ke"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                fontSize: 11,
+                color: '#bbb',
+                textDecoration: 'none',
+                fontFamily: "'Poppins', sans-serif",
+                letterSpacing: '0.05em',
+              }}
+            >
+              nestara.co.ke
+            </a>
+          </div>
         </div>
 
       </div>
