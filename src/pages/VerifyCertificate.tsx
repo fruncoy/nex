@@ -282,20 +282,27 @@ const VerifyCertificate: React.FC = () => {
             Questions? Contact Us
           </a>
 
-          <div style={{ marginTop: 20 }}>
+          <div style={{ marginTop: 10 }}>
             <a
               href="https://nestara.co.ke"
               target="_blank"
               rel="noopener noreferrer"
               style={{
-                fontSize: 11,
-                color: '#bbb',
+                display: 'inline-flex',
+                alignItems: 'center',
+                padding: '9px 20px',
+                background: 'transparent',
+                color: '#555',
+                border: '1px solid #ccc',
+                borderRadius: 999,
+                fontSize: 12,
+                fontWeight: 500,
                 textDecoration: 'none',
                 fontFamily: "'Poppins', sans-serif",
-                letterSpacing: '0.05em',
+                boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
               }}
             >
-              nestara.co.ke
+              Visit nestara.co.ke
             </a>
           </div>
         </div>
