@@ -459,6 +459,39 @@ const NicheTranscript: React.FC<NicheTranscriptProps> = ({
                     </table>
                   </div>
 
+                  {/* QR badge — inline centre, no absolute positioning */}
+                  {qrDataUrl && (
+                    <div style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: 4,
+                      padding: '6px 8px 5px',
+                      border: '1px solid #d95637',
+                      borderRadius: 6,
+                      background: '#fdf3f0',
+                      flexShrink: 0,
+                    }}>
+                      <img
+                        src={qrDataUrl}
+                        width={52}
+                        height={52}
+                        alt="Scan to verify this transcript"
+                        style={{ display: 'block' }}
+                      />
+                      <span style={{
+                        fontFamily: "'Poppins', sans-serif",
+                        fontSize: '5.5px',
+                        fontWeight: 600,
+                        color: '#000',
+                        letterSpacing: '0.1em',
+                        textTransform: 'uppercase',
+                      }}>
+                        Scan to Verify
+                      </span>
+                    </div>
+                  )}
+
                   {/* Lead Trainer Signature */}
                   <div style={{ flex:1, display:"flex", justifyContent:"flex-end", alignItems:"flex-start", paddingTop:"2px" }}>
                     <div style={{ textAlign:"right" }}>
@@ -469,43 +502,6 @@ const NicheTranscript: React.FC<NicheTranscriptProps> = ({
                     </div>
                   </div>
                 </div>
-
-              {/* QR badge — centred at bottom, matches certificate badge style */}
-              {qrDataUrl && (
-                <div style={{
-                  position: 'absolute',
-                  bottom: 20,
-                  left: '50%',
-                  transform: 'translateX(-50%)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  gap: 4,
-                  padding: '6px 8px 5px',
-                  border: '1px solid #d95637',
-                  borderRadius: 6,
-                  background: '#fdf3f0',
-                  zIndex: 10,
-                }}>
-                  <img
-                    src={qrDataUrl}
-                    width={52}
-                    height={52}
-                    alt="Scan to verify this transcript"
-                    style={{ display: 'block' }}
-                  />
-                  <span style={{
-                    fontFamily: "'Poppins', sans-serif",
-                    fontSize: '5.5px',
-                    fontWeight: 600,
-                    color: '#000',
-                    letterSpacing: '0.1em',
-                    textTransform: 'uppercase',
-                  }}>
-                    Scan to Verify
-                  </span>
-                </div>
-              )}
 
               </div>
             </div>
