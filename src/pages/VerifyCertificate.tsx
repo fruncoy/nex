@@ -139,6 +139,7 @@ const VerifyCertificate: React.FC = () => {
             background: '#d95637',
             margin: '14px auto 0',
             borderRadius: 1,
+            display: 'none',
           }} />
         </div>
 
