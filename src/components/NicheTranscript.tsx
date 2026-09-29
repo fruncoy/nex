@@ -180,7 +180,7 @@ const NicheTranscript: React.FC<NicheTranscriptProps> = ({
         return QRCode.toDataURL(url, {
           width: 130,  // high-res source; displayed at 65px via CSS
           margin: 1,
-          color: { dark: '#1a1a1a', light: '#FAF9F6' }
+          color: { dark: '#d95637', light: '#fff9f7' }  // brand red-orange on warm white
         })
       })
       .then((dataUrl) => setQrDataUrl(dataUrl))
@@ -470,37 +470,39 @@ const NicheTranscript: React.FC<NicheTranscriptProps> = ({
                   </div>
                 </div>
 
-              {/* QR Verification — subtle, bottom-right corner, inside the border */}
+              {/* QR badge — centred at bottom, matches certificate badge style */}
               {qrDataUrl && (
                 <div style={{
                   position: 'absolute',
-                  bottom: 28,
-                  right: 36,
+                  bottom: 20,
+                  left: '50%',
+                  transform: 'translateX(-50%)',
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'center',
-                  gap: 3,
+                  gap: 4,
+                  padding: '6px 8px 5px',
+                  border: '1px solid #d95637',
+                  borderRadius: 6,
+                  background: '#fdf3f0',
                   zIndex: 10,
-                  padding: '4px',
-                  border: '1px solid #e0dcd5',
-                  borderRadius: 3,
-                  background: '#FAF9F6',
                 }}>
                   <img
                     src={qrDataUrl}
-                    width={65}
-                    height={65}
+                    width={52}
+                    height={52}
                     alt="Scan to verify this transcript"
                     style={{ display: 'block' }}
                   />
                   <span style={{
                     fontFamily: "'Poppins', sans-serif",
-                    fontSize: '6px',
-                    color: '#999',
-                    letterSpacing: '0.08em',
+                    fontSize: '5.5px',
+                    fontWeight: 600,
+                    color: '#000',
+                    letterSpacing: '0.1em',
                     textTransform: 'uppercase',
                   }}>
-                    Scan to verify
+                    Scan to Verify
                   </span>
                 </div>
               )}
