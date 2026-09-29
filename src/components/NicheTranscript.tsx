@@ -495,7 +495,22 @@ const NicheTranscript: React.FC<NicheTranscriptProps> = ({
                   {/* Lead Trainer Signature */}
                   <div style={{ flex:1, display:"flex", justifyContent:"flex-end", alignItems:"flex-start", paddingTop:"2px" }}>
                     <div style={{ textAlign:"right" }}>
-                      <div style={{ borderBottom:"2px solid #d95637", width:"180px", height:"25px", marginBottom:"1px" }}></div>
+                      <div style={{ position:"relative", width:"180px", height:"30px", marginBottom:"1px" }}>
+                        <img
+                          src="/Lead-Trainer-Signature.png"
+                          alt="Lead Trainer Signature"
+                          style={{
+                            position:"absolute",
+                            bottom:"2px",
+                            right:0,
+                            height:"28px",
+                            width:"auto",
+                            objectFit:"contain",
+                            filter:"invert(27%) sepia(100%) saturate(700%) hue-rotate(190deg) brightness(90%)",
+                          }}
+                        />
+                        <div style={{ position:"absolute", bottom:0, left:0, right:0, borderBottom:"2px solid #d95637" }} />
+                      </div>
                       <span className="font-poppins" style={{ fontSize:"clamp(8px,0.9vw,11px)", color:"#000", fontWeight:600 }}>
                         Lead Trainer, NICHE
                       </span>
