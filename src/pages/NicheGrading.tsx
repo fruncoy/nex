@@ -1,11 +1,14 @@
 import React, { useEffect, useState } from 'react'
+import JSZip from 'jszip'
 import { supabase } from '../lib/supabase'
-import { Users, GraduationCap, Award, CheckCircle, AlertCircle, Star, Eye, FileText } from 'lucide-react'
+import { Users, GraduationCap, Award, CheckCircle, AlertCircle, Star, Eye, FileText, Download } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
 import NicheCertificate from '../components/NicheCertificate'
 import NicheTranscript from '../components/NicheTranscript'
 import { formatDateWithOrdinal } from '../utils/dateFormat'
+import { getOrCreateVerificationUrl } from '../utils/certificateToken'
+import QRCode from 'qrcode'
 
 interface NicheCohort {
   id: string
@@ -119,6 +122,11 @@ export function NicheGrading() {
   const [shortCourseTrainees, setShortCourseTrainees] = useState<any[]>([])
   const [filteredShortCourseTrainees, setFilteredShortCourseTrainees] = useState<any[]>([])
   const [selectedShortCourseTrainee, setSelectedShortCourseTrainee] = useState<any>(null)
+
+  // Bulk certificate download
+  const [selectedRecordIds, setSelectedRecordIds] = useState<Set<string>>(new Set())
+  const [isBulkDownloading, setIsBulkDownloading] = useState(false)
+  const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0, currentName: '' })
   
   // Define pillar structures
   const nannyPillars = [
@@ -677,6 +685,254 @@ export function NicheGrading() {
       default: return 'text-gray-600 bg-gray-100'
     }
   }
+
+  // ── BULK CERTIFICATE DOWNLOAD ──────────────────────────────────────────────
+
+  /**
+   * Build a self-contained HTML string for a single certificate record.
+   * Mirrors what NicheCertificate does inside downloadCertificate(),
+   * but runs headlessly without a mounted DOM element.
+   */
+  const buildCertificateHTML = async (record: any): Promise<string> => {
+    const isNanny = record.training_type === 'nanny'
+
+    const nannyPillarDefs = [
+      { name: 'Childcare & Development', maxWeighted: 45 },
+      { name: 'Professional Conduct',    maxWeighted: 30 },
+      { name: 'Housekeeping & Systems',  maxWeighted: 15 },
+      { name: 'Cooking & Nutrition',     maxWeighted: 10 },
+    ]
+    const hmPillarDefs = [
+      { name: 'Professional Conduct',      maxWeighted: 30 },
+      { name: 'Housekeeping & Systems',    maxWeighted: 30 },
+      { name: 'Cooking & Kitchen',         maxWeighted: 25 },
+      { name: 'Childcare Literacy',        maxWeighted: 15 },
+    ]
+    const pillars = isNanny ? nannyPillarDefs : hmPillarDefs
+    const weightedScores = [
+      record.pillar1_weighted || 0,
+      record.pillar2_weighted || 0,
+      record.pillar3_weighted || 0,
+      record.pillar4_weighted || 0,
+    ]
+
+    const recipientName  = record.trainee_name || 'Unknown'
+    const course         = isNanny ? 'Nanny Training' : 'House Manager Training'
+    const tier           = record.tier || ''
+    const cohortNum      = getRomanNumeral(record.cohort?.cohort_number || 0)
+    const graduationDate = record.cohort?.end_date
+      ? formatDateWithOrdinal(new Date(record.cohort.end_date))
+      : formatDateWithOrdinal(new Date())
+
+    // Generate QR code as data-URL
+    let qrDataUrl = ''
+    try {
+      const verifyUrl = await getOrCreateVerificationUrl(
+        record.id,
+        record.certificate_token,
+        'trainee_grades'
+      )
+      qrDataUrl = await QRCode.toDataURL(verifyUrl, {
+        width: 130,
+        margin: 1,
+        color: { dark: '#d95637', light: '#fff9f7' },
+      })
+    } catch (err) {
+      console.warn('QR generation failed for', recipientName, err)
+    }
+
+    const scoreBarHTML = pillars.map((pillar, i) => {
+      const score = weightedScores[i]
+      return `
+        <div style="position:relative;display:flex;flex-direction:column;justify-content:flex-end;align-items:flex-start;width:100%;padding:10px 8px 10px;overflow:hidden;height:75px;box-sizing:border-box;">
+          <span style="position:absolute;bottom:0;left:0;right:0;font-size:46px;font-weight:800;color:rgba(217,86,55,0.25);line-height:1;pointer-events:none;user-select:none;letter-spacing:-1px;z-index:0;white-space:nowrap;overflow:hidden;text-align:center;font-family:'Playfair Display',serif;">
+            ${score.toFixed(0)}<span style="font-size:0.5em">/${pillar.maxWeighted}</span>
+          </span>
+          <span style="position:relative;z-index:1;font-size:10.5px;font-weight:600;color:#000;white-space:nowrap;line-height:1.2;text-align:center;width:100%;font-family:'Poppins',sans-serif;">
+            ${pillar.name}
+          </span>
+        </div>`
+    }).join('')
+
+    const qrHTML = qrDataUrl ? `
+      <div style="display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 8px 5px;border:1px solid #d95637;border-radius:6px;background:#fdf3f0;flex-shrink:0;margin-bottom:-18px;">
+        <img src="${qrDataUrl}" width="52" height="52" alt="Verify certificate" style="display:block;" />
+        <span style="font-family:'Poppins',sans-serif;font-size:5.5px;font-weight:600;color:#000;letter-spacing:0.1em;text-transform:uppercase;">Scan to Verify</span>
+      </div>` : ''
+
+    const descriptionText = `
+      In recognition of her exceptional dedication and outstanding achievement within the
+      <span style="font-family:'Cinzel',serif;color:#d95637;font-weight:700;letter-spacing:0.08em;">${course}</span>.
+      ${recipientName.split(' ')[0]} has met the most stringent requirements of the curriculum, exhibiting a level
+      of competency that transcends standard expectations and earns her the rank of
+      <span style="font-family:'Cinzel',serif;color:#d95637;font-weight:700;letter-spacing:0.08em;">${tier}</span>`
+
+    return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>NICHE Certificate - ${recipientName}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700;800&family=Poppins:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,600&display=swap" rel="stylesheet">
+  <style>
+    @page { size: A4 landscape; margin: 0; }
+    body { margin:0; padding:0; background:#FAF9F6; width:297mm; height:210mm; display:flex; justify-content:center; align-items:center; overflow:hidden; }
+    * { page-break-after:avoid!important; page-break-before:avoid!important; page-break-inside:avoid!important; }
+  </style>
+</head>
+<body>
+  <div style="position:relative;width:297mm;height:210mm;background:#FAF9F6;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3%;padding:6% 8%;box-sizing:border-box;overflow:hidden;">
+
+    <!-- Border SVG -->
+    <svg style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:1;" viewBox="0 0 1414 1000" preserveAspectRatio="none" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M 65,30 L 1349,30 Q 1349,65 1384,65 L 1384,935 Q 1349,935 1349,970 L 65,970 Q 65,935 30,935 L 30,65 Q 65,65 65,30 Z" stroke="#d95637" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      <path d="M 78,43 L 1336,43 Q 1336,78 1371,78 L 1371,922 Q 1336,922 1336,957 L 78,957 Q 78,922 43,922 L 43,78 Q 78,78 78,43 Z" stroke="#d95637" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    </svg>
+
+    <!-- Header -->
+    <div style="text-align:center;z-index:10;width:100%;margin-bottom:20px;">
+      <h1 style="font-family:'Cinzel',serif;font-size:48px;color:#000;font-weight:700;letter-spacing:0.1em;margin-bottom:12px;line-height:1.1;">CERTIFICATE OF MERIT</h1>
+      <div style="display:flex;align-items:center;justify-content:center;gap:16px;">
+        <div style="height:1px;width:100px;background:#d95637;"></div>
+        <p style="font-family:'Poppins',sans-serif;font-size:11px;letter-spacing:0.2em;color:#000;text-transform:uppercase;white-space:nowrap;">Nestara Institute of Care and Hospitality Excellence</p>
+        <div style="height:1px;width:100px;background:#d95637;"></div>
+      </div>
+    </div>
+
+    <!-- Recipient -->
+    <div style="text-align:center;z-index:10;width:100%;max-width:800px;margin-bottom:20px;">
+      <p style="font-family:'Playfair Display',serif;font-style:italic;font-size:17px;color:#000;margin-bottom:4px;">This honor is proudly bestowed upon</p>
+      <h2 style="font-family:'Playfair Display',serif;font-weight:700;font-size:48px;color:#000;margin-bottom:12px;letter-spacing:0.02em;line-height:1.1;">${recipientName}</h2>
+      <p style="font-family:'Poppins',sans-serif;font-size:13px;color:#000;line-height:1.6;max-width:650px;margin:0 auto;">${descriptionText}</p>
+    </div>
+
+    <!-- Scores + Signatures -->
+    <div style="width:100%;max-width:780px;z-index:10;">
+      <div style="margin-bottom:24px;">
+        <h3 style="font-family:'Cinzel',serif;text-align:center;font-size:13px;font-weight:700;color:#000;letter-spacing:0.15em;margin-bottom:0;">Professional Competency Pillars</h3>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:0 8px;align-items:stretch;">
+          ${scoreBarHTML}
+        </div>
+      </div>
+
+      <!-- Signatures -->
+      <div style="display:flex;justify-content:space-between;align-items:flex-end;padding:0 40px;">
+        <div style="width:200px;text-align:center;">
+          <div style="position:relative;height:52px;margin-bottom:8px;">
+            <img src="https://member.nestara.co.ke/Nestara-Limited-Signature.png" alt="Nestara Limited Signature" style="position:absolute;bottom:2px;left:50%;transform:translateX(-50%);height:48px;width:auto;object-fit:contain;filter:invert(27%) sepia(100%) saturate(700%) hue-rotate(190deg) brightness(90%);"/>
+            <div style="position:absolute;bottom:0;left:0;right:0;border-bottom:2px solid #000;"></div>
+          </div>
+          <span style="font-family:'Poppins',sans-serif;font-size:12px;color:#000;font-weight:500;display:block;white-space:nowrap;">Nestara Limited</span>
+        </div>
+        ${qrHTML}
+        <div style="width:200px;text-align:center;">
+          <div style="position:relative;height:52px;margin-bottom:8px;">
+            <img src="https://member.nestara.co.ke/Lead-Trainer-Signature.png" alt="Lead Trainer Signature" style="position:absolute;bottom:2px;left:50%;transform:translateX(-50%);height:48px;width:auto;object-fit:contain;filter:invert(27%) sepia(100%) saturate(700%) hue-rotate(190deg) brightness(90%);"/>
+            <div style="position:absolute;bottom:0;left:0;right:0;border-bottom:2px solid #000;"></div>
+          </div>
+          <span style="font-family:'Poppins',sans-serif;font-size:12px;color:#000;font-weight:500;display:block;white-space:nowrap;">Lead Trainer, NICHE</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>`
+  }
+
+  const downloadBulkCertificates = async () => {
+    const records = filteredRecords.filter(r => selectedRecordIds.has(r.id))
+    if (records.length === 0) return
+
+    setIsBulkDownloading(true)
+    setBulkProgress({ current: 0, total: records.length, currentName: '' })
+
+    const isLocal = window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1' ||
+      window.location.hostname.includes('192.168') ||
+      window.location.port !== ''
+    const apiEndpoint = isLocal ? 'http://localhost:3001/generate-pdf' : '/api/generate-pdf'
+
+    const zip = new JSZip()
+    const errors: string[] = []
+
+    for (let i = 0; i < records.length; i++) {
+      const record = records[i]
+      const name = record.trainee_name || `Trainee_${i + 1}`
+      setBulkProgress({ current: i + 1, total: records.length, currentName: name })
+
+      try {
+        // Load full cohort data if not already present
+        let fullRecord = record
+        if (!record.cohort?.cohort_number) {
+          const { data: cohort } = await supabase
+            .from('niche_cohorts')
+            .select('*')
+            .eq('id', record.cohort_id)
+            .single()
+          fullRecord = { ...record, cohort: cohort || {} }
+        }
+
+        const html = await buildCertificateHTML(fullRecord)
+
+        const response = await fetch(apiEndpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            html,
+            filename: `${name.replace(/\s+/g, '_')}_NICHE_Certificate.pdf`,
+            options: {
+              format: 'A4',
+              landscape: true,
+              printBackground: true,
+              margin: { top: '0mm', bottom: '0mm', left: '0mm', right: '0mm' },
+              preferCSSPageSize: true,
+              width: '297mm',
+              height: '210mm',
+              scale: 1.0,
+            },
+          }),
+        })
+
+        if (!response.ok) {
+          const err = await response.json().catch(() => ({ details: 'Unknown error' }))
+          throw new Error(err.details || 'PDF generation failed')
+        }
+
+        const blob = await response.blob()
+        const arrayBuffer = await blob.arrayBuffer()
+        zip.file(`${name.replace(/\s+/g, '_')}_NICHE_Certificate.pdf`, arrayBuffer)
+      } catch (err: any) {
+        console.error(`Failed for ${name}:`, err)
+        errors.push(name)
+      }
+    }
+
+    try {
+      const zipBlob = await zip.generateAsync({ type: 'blob' })
+      const url = URL.createObjectURL(zipBlob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `NICHE_Certificates_${new Date().toISOString().slice(0, 10)}.zip`
+      a.click()
+      URL.revokeObjectURL(url)
+
+      if (errors.length > 0) {
+        showToast(`Downloaded ${records.length - errors.length}/${records.length} certificates. Failed: ${errors.join(', ')}`, 'error')
+      } else {
+        showToast(`${records.length} certificate${records.length > 1 ? 's' : ''} downloaded successfully!`, 'success')
+      }
+    } catch (err) {
+      console.error('ZIP creation failed:', err)
+      showToast('Failed to create ZIP file', 'error')
+    }
+
+    setIsBulkDownloading(false)
+    setBulkProgress({ current: 0, total: 0, currentName: '' })
+    setSelectedRecordIds(new Set())
+  }
+
+  // ── END BULK CERTIFICATE DOWNLOAD ──────────────────────────────────────────
 
   const generatePreview = () => {
     // Filter records based on selected cohort
@@ -1315,7 +1571,30 @@ export function NicheGrading() {
               {/* Combined Professionals Table */}
               <div className="bg-white rounded-lg shadow">
                 <div className="px-6 py-4 border-b border-gray-200">
-                  <h2 className="text-lg font-semibold text-gray-900">NICHE Professionals</h2>
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-lg font-semibold text-gray-900">NICHE Professionals</h2>
+                    {selectedRecordIds.size > 0 && (
+                      <div className="flex items-center gap-3">
+                        <span className="text-sm text-gray-600">
+                          {selectedRecordIds.size} selected
+                        </span>
+                        <button
+                          onClick={() => setSelectedRecordIds(new Set())}
+                          className="text-sm text-gray-500 hover:text-gray-700 underline"
+                        >
+                          Clear
+                        </button>
+                        <button
+                          onClick={downloadBulkCertificates}
+                          disabled={isBulkDownloading}
+                          className="inline-flex items-center gap-2 px-4 py-2 bg-nestalk-primary text-white rounded-lg text-sm font-medium hover:bg-nestalk-primary/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                        >
+                          <Download className="w-4 h-4" />
+                          Download {selectedRecordIds.size} Certificate{selectedRecordIds.size > 1 ? 's' : ''}
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {filteredRecords.length > 0 ? (
@@ -1323,6 +1602,21 @@ export function NicheGrading() {
                     <table className="min-w-full divide-y divide-gray-200 text-sm">
                       <thead className="bg-gray-50">
                         <tr>
+                          <th className="px-4 py-3 w-8">
+                            <input
+                              type="checkbox"
+                              className="rounded border-gray-300 text-nestalk-primary focus:ring-nestalk-primary"
+                              checked={filteredRecords.length > 0 && filteredRecords.every(r => selectedRecordIds.has(r.id))}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedRecordIds(new Set(filteredRecords.map(r => r.id)))
+                                } else {
+                                  setSelectedRecordIds(new Set())
+                                }
+                              }}
+                              title="Select all"
+                            />
+                          </th>
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-10">#</th>
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
@@ -1341,8 +1635,22 @@ export function NicheGrading() {
                           const p2Max = isNanny ? 30 : 30
                           const p3Max = isNanny ? 15 : 25
                           const p4Max = isNanny ? 10 : 15
+                          const isChecked = selectedRecordIds.has(record.id)
                           return (
-                            <tr key={record.id} className="hover:bg-gray-50">
+                            <tr key={record.id} className={`hover:bg-gray-50 ${isChecked ? 'bg-orange-50' : ''}`}>
+                              <td className="px-4 py-3 whitespace-nowrap">
+                                <input
+                                  type="checkbox"
+                                  className="rounded border-gray-300 text-nestalk-primary focus:ring-nestalk-primary"
+                                  checked={isChecked}
+                                  onChange={(e) => {
+                                    const next = new Set(selectedRecordIds)
+                                    if (e.target.checked) next.add(record.id)
+                                    else next.delete(record.id)
+                                    setSelectedRecordIds(next)
+                                  }}
+                                />
+                              </td>
                               <td className="px-4 py-3 whitespace-nowrap text-gray-500 text-center">
                                 <div className="flex items-center gap-1">
                                   <span>{index + 1}</span>
@@ -1586,6 +1894,39 @@ export function NicheGrading() {
         </div>
       )}
 
+      {/* Bulk Download Progress Overlay */}
+      {isBulkDownloading && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl p-8 max-w-sm w-full mx-4">
+            <div className="text-center">
+              <div className="flex justify-center mb-4">
+                <svg className="animate-spin h-10 w-10 text-nestalk-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
+                </svg>
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-1">Generating Certificates</h3>
+              <p className="text-sm text-gray-500 mb-4">
+                {bulkProgress.current} of {bulkProgress.total}
+              </p>
+              {bulkProgress.currentName && (
+                <p className="text-sm font-medium text-gray-700 truncate mb-4">
+                  {bulkProgress.currentName}
+                </p>
+              )}
+              {/* Progress bar */}
+              <div className="w-full bg-gray-200 rounded-full h-2">
+                <div
+                  className="bg-nestalk-primary h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${bulkProgress.total > 0 ? (bulkProgress.current / bulkProgress.total) * 100 : 0}%` }}
+                />
+              </div>
+              <p className="text-xs text-gray-400 mt-3">Packaging into ZIP — please wait…</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* View Choice Modal */}
       {showViewChoice && selectedRecord && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
@@ -1666,7 +2007,11 @@ export function NicheGrading() {
             trainingType={nicheCardData.training_type || 'nanny'}
             gradeId={nicheCardData.id}
             certificateToken={nicheCardData.certificate_token}
-            onClose={() => setShowCertificate(false)}
+            onClose={() => {
+              setShowCertificate(false)
+              setNicheCardData(null)
+              setSelectedRecord(null)
+            }}
           />
         ) : null
       )}
@@ -1693,32 +2038,11 @@ export function NicheGrading() {
           subPillarScores={nicheCardData.subPillarScores || {}}
           gradeId={nicheCardData.id}
           certificateToken={nicheCardData.certificate_token}
-          onClose={() => setShowTranscript(false)}
-        />
-      )}
-
-      {/* NICHE Professional Card Modal - Legacy */}
-      {nicheCardData && !showCertificate && !showTranscript && !showViewChoice && (
-        <NicheCertificate
-          recipientName={nicheCardData.trainee?.name || 'Unknown'}
-          role={nicheCardData.trainee?.role || 'Unknown'}
-          course={nicheCardData.trainee?.course || 'Unknown'}
-          tier={nicheCardData.tier || 'NONE'}
-          finalScore={nicheCardData.final_score || 0}
-          cohortNumber={getRomanNumeral(nicheCardData.cohort?.cohort_number || 0)}
-          graduationDate={new Date(nicheCardData.cohort?.end_date || Date.now()).toLocaleDateString()}
-          pillar1Score={nicheCardData.pillar1_score || 0}
-          pillar2Score={nicheCardData.pillar2_score || 0}
-          pillar3Score={nicheCardData.pillar3_score || 0}
-          pillar4Score={nicheCardData.pillar4_score || 0}
-          pillar1Weighted={nicheCardData.pillar1_weighted || 0}
-          pillar2Weighted={nicheCardData.pillar2_weighted || 0}
-          pillar3Weighted={nicheCardData.pillar3_weighted || 0}
-          pillar4Weighted={nicheCardData.pillar4_weighted || 0}
-          trainingType={nicheCardData.training_type || 'nanny'}
-          gradeId={nicheCardData.id}
-          certificateToken={nicheCardData.certificate_token}
-          onClose={() => setNicheCardData(null)}
+          onClose={() => {
+            setShowTranscript(false)
+            setNicheCardData(null)
+            setSelectedRecord(null)
+          }}
         />
       )}
 

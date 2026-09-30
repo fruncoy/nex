@@ -439,6 +439,20 @@ const NicheCertificate: React.FC<NicheCertificateProps> = ({
                   <div style={{ display:"flex", justifyContent:"space-between", alignItems:"end", padding:"0 40px" }}>
                     <div style={{ width:"200px", textAlign:"center" }}>
                       <div style={{ position:"relative", height:"52px", marginBottom:"8px" }}>
+                        <img
+                          src="/Nestara-Limited-Signature.png"
+                          alt="Nestara Limited Signature"
+                          style={{
+                            position:"absolute",
+                            bottom:"2px",
+                            left:"50%",
+                            transform:"translateX(-50%)",
+                            height:"48px",
+                            width:"auto",
+                            objectFit:"contain",
+                            filter:"invert(27%) sepia(100%) saturate(700%) hue-rotate(190deg) brightness(90%)",
+                          }}
+                        />
                         <div style={{ position:"absolute", bottom:0, left:0, right:0, borderBottom:"2px solid #000" }} />
                       </div>
                       <span className="font-poppins" style={{ fontSize:"clamp(9px,0.9vw,12px)", color:"#000", fontWeight:500, display:"block", whiteSpace:"nowrap" }}>
@@ -485,7 +499,7 @@ const NicheCertificate: React.FC<NicheCertificateProps> = ({
                     <div style={{ width:"200px", textAlign:"center" }}>
                       <div style={{ position:"relative", height:"52px", marginBottom:"8px" }}>
                         <img
-                          src="/Nestara-Limited-Signature.png"
+                          src="/Lead-Trainer-Signature.png"
                           alt="Lead Trainer Signature"
                           style={{
                             position:"absolute",
