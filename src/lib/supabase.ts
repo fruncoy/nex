@@ -27,6 +27,11 @@ export const supabase = createClient(supabaseUrl, supabaseKey, {
   }
 })
 
+// Expose for debugging in console
+if (typeof window !== 'undefined') {
+  ;(window as any).supabase = supabase
+}
+
 export type Database = {
   public: {
     Tables: {
