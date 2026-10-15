@@ -734,6 +734,7 @@ export function NicheTraining() {
           cohort_id: selectedCohortForImport,
           training_type: isShortCourse ? 'weekend' : '2week',
           training_category: isShortCourse ? 'Short Course' : '2-Week Flagship',
+          enrolled_courses: isShortCourse ? selectedCoursesForImport : null,
           created_by: staff?.name || user?.email || 'Unknown',
           updated_by: staff?.name || user?.email || 'Unknown'
         }
