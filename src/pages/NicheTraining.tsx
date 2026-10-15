@@ -721,19 +721,19 @@ export function NicheTraining() {
         const isShortCourse = candidate.category === 'Short Course'
         
         return {
-          candidate_id: null, // Remove foreign key constraint issue
+          candidate_id: null,
           name: candidate.name,
           phone: candidate.phone,
           role: candidate.role,
           status: 'Active' as const,
           course: isShortCourse 
-            ? selectedCoursesForImport[0] // Use first selected course as primary
+            ? selectedCoursesForImport[0]
             : candidate.role === 'Nanny' 
               ? 'Professional Nanny Training Program'
               : 'Professional House Manager Training Program',
           cohort_id: selectedCohortForImport,
           training_type: isShortCourse ? 'weekend' : '2week',
-          enrolled_courses: isShortCourse ? selectedCoursesForImport : null,
+          training_category: isShortCourse ? 'Short Course' : '2-Week Flagship',
           created_by: staff?.name || user?.email || 'Unknown',
           updated_by: staff?.name || user?.email || 'Unknown'
         }
