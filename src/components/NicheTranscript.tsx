@@ -199,10 +199,23 @@ const NicheTranscript: React.FC<NicheTranscriptProps> = ({
         return
       }
 
-      // Get just the transcript card content, not the container
-      const transcriptCard = element.cloneNode(true)
-      
-      // Create a clean HTML structure for PDF that utilizes full page
+      // Clone the transcript card content
+      const transcriptCard = element.cloneNode(true) as HTMLElement
+
+      // Replace all vw-based clamp() font sizes with fixed pixel equivalents
+      // so Puppeteer renders the same as the browser preview
+      const fixFontSizes = (el: HTMLElement) => {
+        const style = el.getAttribute('style') || ''
+        if (style.includes('clamp')) {
+          // Extract the max value from clamp(min, preferred, max) and use it as fixed size
+          const fixed = style.replace(/clamp\([^)]+,\s*[^,]+,\s*([^)]+)\)/g, '$1')
+          el.setAttribute('style', fixed)
+        }
+        Array.from(el.children).forEach(child => fixFontSizes(child as HTMLElement))
+      }
+      fixFontSizes(transcriptCard)
+
+      // Create a clean HTML structure for PDF that matches the preview exactly
       const htmlContent = `
         <!DOCTYPE html>
         <html>
@@ -241,7 +254,7 @@ const NicheTranscript: React.FC<NicheTranscriptProps> = ({
           </style>
         </head>
         <body>
-          ${(transcriptCard as HTMLElement).outerHTML}
+          ${transcriptCard.outerHTML}
         </body>
         </html>
       `

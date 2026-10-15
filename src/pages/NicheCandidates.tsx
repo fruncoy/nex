@@ -1494,10 +1494,6 @@ export function NicheCandidates() {
                     value={formData.name}
                     onChange={(e) => {
                       setFormData({ ...formData, name: e.target.value })
-                      // Check for duplicates when name changes
-                      if (e.target.value.length >= 3 && formData.role) {
-                        checkDuplicates(formData.phone, e.target.value, formData.role)
-                      }
                     }}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
                   />
@@ -1548,22 +1544,24 @@ export function NicheCandidates() {
                     <div className="mt-2 border border-red-300 rounded-lg overflow-hidden">
                       <div className="bg-red-600 px-3 py-2 flex items-center justify-between">
                         <span className="text-white text-sm font-semibold">⚠️ Duplicate Number — Already Exists</span>
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            setDuplicateRecord(duplicateWarning.phoneRecord)
-                            const { data: notes } = await supabase
-                              .from('niche_candidate_notes')
-                              .select('*')
-                              .eq('niche_candidate_id', duplicateWarning.phoneRecord.id)
-                              .order('created_at', { ascending: false })
-                            setDuplicateRecordNotes(notes || [])
-                            setShowDuplicateModal(true)
-                          }}
-                          className="text-xs bg-white text-red-600 font-semibold px-2 py-1 rounded hover:bg-red-50"
-                        >
-                          View Existing Record
-                        </button>
+                        {duplicateWarning.phoneRecord && (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              setDuplicateRecord(duplicateWarning.phoneRecord)
+                              const { data: notes } = await supabase
+                                .from('niche_candidate_notes')
+                                .select('*')
+                                .eq('niche_candidate_id', duplicateWarning.phoneRecord.id)
+                                .order('created_at', { ascending: false })
+                              setDuplicateRecordNotes(notes || [])
+                              setShowDuplicateModal(true)
+                            }}
+                            className="text-xs bg-white text-red-600 font-semibold px-2 py-1 rounded hover:bg-red-50"
+                          >
+                            View Existing Record
+                          </button>
+                        )}
                       </div>
                       <div className="bg-red-50 px-3 py-2 text-sm text-red-800">
                         <span className="font-medium">{duplicateWarning.phoneRecord?.name}</span>
@@ -1597,10 +1595,6 @@ export function NicheCandidates() {
                     value={formData.role}
                     onChange={(e) => {
                       setFormData({ ...formData, role: e.target.value })
-                      // Check for duplicates when role changes
-                      if (formData.name.length >= 3 && e.target.value) {
-                        checkDuplicates(formData.phone, formData.name, e.target.value)
-                      }
                     }}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
                   >

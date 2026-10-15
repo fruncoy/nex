@@ -766,14 +766,16 @@ export function NicheTraining() {
       }
 
       // Log activity for each imported trainee
-      for (const candidate of candidatesToImport) {
-        await ActivityLogger.logCreate(
-          user?.id || '',
-          'niche_training',
-          '',
-          `Imported ${candidate.name} as ${candidate.category} trainee`,
-          staff?.name || user?.email || 'Unknown'
-        )
+      if (user?.id) {
+        for (const candidate of candidatesToImport) {
+          await ActivityLogger.logCreate(
+            user.id,
+            'niche_training',
+            candidate.id,
+            candidate.name,
+            staff?.name || user?.email || 'Unknown'
+          )
+        }
       }
 
       showToast(`Successfully imported ${selectedCandidates.length} trainee(s)`, 'success')
