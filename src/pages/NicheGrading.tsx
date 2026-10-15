@@ -905,10 +905,6 @@ export function NicheGrading() {
 </head>
 <body>
 <div style="position:relative;width:210mm;height:297mm;background:#FAF9F6;display:flex;flex-direction:column;align-items:center;padding:5% 6%;box-sizing:border-box;overflow:hidden;gap:12px;">
-  <svg style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:1;" viewBox="0 0 1000 1414" preserveAspectRatio="none" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M 65,30 L 935,30 Q 935,65 970,65 L 970,1349 Q 935,1349 935,1384 L 65,1384 Q 65,1349 30,1349 L 30,65 Q 65,65 65,30 Z" stroke="#d95637" stroke-width="7" fill="none"/>
-    <path d="M 78,43 L 922,43 Q 922,78 957,78 L 957,1336 Q 922,1336 922,1371 L 78,1371 Q 78,1336 43,1336 L 43,78 Q 78,78 78,43 Z" stroke="#d95637" stroke-width="2" fill="none"/>
-  </svg>
   <div style="text-align:center;z-index:10;width:100%;">
     <h1 style="font-family:'Cinzel',serif;font-size:28px;color:#000;font-weight:700;letter-spacing:0.1em;margin:0 0 6px;">OFFICIAL TRANSCRIPT</h1>
     <div style="height:1px;width:80%;background:linear-gradient(to right,transparent,#d95637,transparent);margin:0 auto 4px;"></div>
