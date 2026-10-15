@@ -199,23 +199,10 @@ const NicheTranscript: React.FC<NicheTranscriptProps> = ({
         return
       }
 
-      // Clone the transcript card content
-      const transcriptCard = element.cloneNode(true) as HTMLElement
+      // Get the exact HTML of the transcript element - same approach as certificate
+      const transcriptHTML = element.outerHTML
 
-      // Replace all vw-based clamp() font sizes with fixed pixel equivalents
-      // so Puppeteer renders the same as the browser preview
-      const fixFontSizes = (el: HTMLElement) => {
-        const style = el.getAttribute('style') || ''
-        if (style.includes('clamp')) {
-          // Extract the max value from clamp(min, preferred, max) and use it as fixed size
-          const fixed = style.replace(/clamp\([^)]+,\s*[^,]+,\s*([^)]+)\)/g, '$1')
-          el.setAttribute('style', fixed)
-        }
-        Array.from(el.children).forEach(child => fixFontSizes(child as HTMLElement))
-      }
-      fixFontSizes(transcriptCard)
-
-      // Create a clean HTML structure for PDF that matches the preview exactly
+      // Create minimal HTML wrapper - same pattern as NicheCertificate
       const htmlContent = `
         <!DOCTYPE html>
         <html>
@@ -231,30 +218,37 @@ const NicheTranscript: React.FC<NicheTranscriptProps> = ({
             body {
               margin: 0;
               padding: 0;
-              width: 210mm;
+              background: #FAF9F6 !important;
+              box-sizing: border-box;
               height: 297mm;
+              width: 210mm;
+              overflow: hidden;
               display: flex;
               justify-content: center;
-              align-items: stretch;
-              background: white;
+              align-items: center;
+            }
+            * {
+              page-break-after: avoid !important;
+              page-break-before: avoid !important;
+              page-break-inside: avoid !important;
+            }
+            .transcript-bg {
+              background: #FAF9F6 !important;
+              width: 100% !important;
+              height: 100% !important;
+              max-width: 210mm !important;
+              max-height: 297mm !important;
             }
             #transcript-content {
-              width: 100%;
-              height: 100%;
-              display: flex;
-              flex-direction: column;
-              align-items: center;
-              justify-content: space-evenly;
-              padding: 1.5% 4% 1.5%;
-              box-sizing: border-box;
-              background-color: #FAF9F6;
-              overflow: hidden;
-              gap: 8px;
+              width: 210mm !important;
+              height: 297mm !important;
+              max-width: 210mm !important;
+              max-height: 297mm !important;
             }
           </style>
         </head>
         <body>
-          ${transcriptCard.outerHTML}
+          ${transcriptHTML}
         </body>
         </html>
       `
