@@ -841,6 +841,51 @@ export function NicheGrading() {
 
   // ── SINGLE CERTIFICATE / TRANSCRIPT DOWNLOAD ───────────────────────────────
 
+  const downloadSingleCertificate = async (record: any) => {
+    setDownloadingCertId(record.id)
+    try {
+      let fullRecord = record
+      if (!record.cohort?.cohort_number) {
+        const { data: cohort } = await supabase
+          .from('niche_cohorts').select('*').eq('id', record.cohort_id).single()
+        fullRecord = { ...record, cohort: cohort || {} }
+      }
+      const html = await buildCertificateHTML(fullRecord)
+      const name = record.trainee_name || 'Unknown'
+      const isLocal = window.location.hostname === 'localhost' ||
+        window.location.hostname === '127.0.0.1' ||
+        window.location.hostname.includes('192.168') ||
+        window.location.port !== ''
+      const apiEndpoint = isLocal ? 'http://localhost:3001/generate-pdf' : '/api/generate-pdf'
+      const response = await fetch(apiEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          html,
+          filename: `${name.replace(/\s+/g, '_')}_NICHE_Certificate.pdf`,
+          options: {
+            format: 'A4', landscape: true, printBackground: true,
+            margin: { top: '0mm', bottom: '0mm', left: '0mm', right: '0mm' },
+            preferCSSPageSize: true, width: '297mm', height: '210mm', scale: 1.0,
+          },
+        }),
+      })
+      if (!response.ok) throw new Error('PDF generation failed')
+      const blob = await response.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${name.replace(/\s+/g, '_')}_NICHE_Certificate.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+      showToast(`Certificate downloaded for ${name}`, 'success')
+    } catch (err: any) {
+      showToast(`Certificate download failed: ${err.message}`, 'error')
+    } finally {
+      setDownloadingCertId(null)
+    }
+  }
+
   const downloadSingleTranscript = async (record: any) => {
     // Open the transcript preview modal so download uses the actual preview design
     await handleViewChoice(record)
@@ -1531,23 +1576,23 @@ export function NicheGrading() {
                                   <button
                                     onClick={() => downloadSingleCertificate(record)}
                                     disabled={downloadingCertId === record.id}
-                                    className="text-[#d95637] hover:text-[#b8442a] p-0.5 rounded hover:bg-orange-50 disabled:opacity-40"
+                                    className="w-6 h-6 rounded-full bg-[#d95637] hover:bg-[#b8442a] text-white flex items-center justify-center disabled:opacity-40 text-xs font-bold"
                                     title="Download Certificate"
                                   >
                                     {downloadingCertId === record.id
-                                      ? <svg className="animate-spin w-3.5 h-3.5" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-                                      : <Award className="w-3.5 h-3.5" />
+                                      ? <svg className="animate-spin w-3 h-3" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                                      : <span>C</span>
                                     }
                                   </button>
                                   <button
                                     onClick={() => downloadSingleTranscript(record)}
                                     disabled={downloadingTranscriptId === record.id}
-                                    className="text-green-600 hover:text-green-800 p-0.5 rounded hover:bg-green-50 disabled:opacity-40"
+                                    className="w-6 h-6 rounded-full bg-green-600 hover:bg-green-800 text-white flex items-center justify-center disabled:opacity-40 text-xs font-bold"
                                     title="Download Transcript"
                                   >
                                     {downloadingTranscriptId === record.id
-                                      ? <svg className="animate-spin w-3.5 h-3.5" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-                                      : <FileText className="w-3.5 h-3.5" />
+                                      ? <svg className="animate-spin w-3 h-3" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                                      : <span>T</span>
                                     }
                                   </button>
                                 </div>
