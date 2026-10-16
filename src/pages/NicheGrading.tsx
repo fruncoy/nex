@@ -117,6 +117,7 @@ export function NicheGrading() {
   const [selectedRecord, setSelectedRecord] = useState<any>(null)
   const [showCertificate, setShowCertificate] = useState(false)
   const [showTranscript, setShowTranscript] = useState(false)
+  const [autoTranscriptDownload, setAutoTranscriptDownload] = useState(false)
   const [activeTab, setActiveTab] = useState<'flagship' | 'shortcourses'>('flagship')
   const [shortCourseTrainees, setShortCourseTrainees] = useState<any[]>([])
   const [filteredShortCourseTrainees, setFilteredShortCourseTrainees] = useState<any[]>([])
@@ -844,6 +845,7 @@ export function NicheGrading() {
     // Open the transcript preview modal so download uses the actual preview design
     await handleViewChoice(record)
     setShowViewChoice(false)
+    setAutoTranscriptDownload(true)
     setShowTranscript(true)
   }
 
@@ -1892,8 +1894,10 @@ export function NicheGrading() {
           subPillarScores={nicheCardData.subPillarScores || {}}
           gradeId={nicheCardData.id}
           certificateToken={nicheCardData.certificate_token}
+          autoDownload={autoTranscriptDownload}
           onClose={() => {
             setShowTranscript(false)
+            setAutoTranscriptDownload(false)
             setNicheCardData(null)
             setSelectedRecord(null)
           }}
