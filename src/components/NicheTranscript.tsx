@@ -191,10 +191,9 @@ const NicheTranscript: React.FC<NicheTranscriptProps> = ({
       .catch((err) => console.warn('QR generation failed:', err))
   }, [gradeId, certificateToken])
 
-  // Auto-download: when triggered from row button, download immediately after QR loads then close
+  // When autoDownload is set (row button), fire download as soon as QR is ready then close
   useEffect(() => {
-    if (!autoDownload) return
-    if (!qrDataUrl) return  // wait for QR to render so it appears in the PDF
+    if (!autoDownload || !qrDataUrl) return
     downloadTranscript().then(() => onClose())
   }, [autoDownload, qrDataUrl])
 
