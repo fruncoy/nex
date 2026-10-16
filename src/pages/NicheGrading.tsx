@@ -1576,7 +1576,7 @@ export function NicheGrading() {
                                   <button
                                     onClick={() => downloadSingleCertificate(record)}
                                     disabled={downloadingCertId === record.id}
-                                    className="w-6 h-6 rounded-full bg-[#d95637] hover:bg-[#b8442a] text-white flex items-center justify-center disabled:opacity-40 text-xs font-bold"
+                                    className="w-4 h-4 rounded-full bg-[#d95637] hover:bg-[#b8442a] text-white flex items-center justify-center disabled:opacity-40 text-[8px] font-bold"
                                     title="Download Certificate"
                                   >
                                     {downloadingCertId === record.id
@@ -1587,7 +1587,7 @@ export function NicheGrading() {
                                   <button
                                     onClick={() => downloadSingleTranscript(record)}
                                     disabled={downloadingTranscriptId === record.id}
-                                    className="w-6 h-6 rounded-full bg-green-600 hover:bg-green-800 text-white flex items-center justify-center disabled:opacity-40 text-xs font-bold"
+                                    className="w-4 h-4 rounded-full bg-green-600 hover:bg-green-800 text-white flex items-center justify-center disabled:opacity-40 text-[8px] font-bold"
                                     title="Download Transcript"
                                   >
                                     {downloadingTranscriptId === record.id
