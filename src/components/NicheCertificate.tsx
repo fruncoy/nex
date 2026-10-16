@@ -29,6 +29,7 @@ interface NicheCertificateProps {
   gradeId?: string
   certificateToken?: string | null
   tokenTable?: 'trainee_grades' | 'niche_training'
+  autoDownload?: boolean
 }
 
 const styles = `
@@ -123,7 +124,8 @@ const NicheCertificate: React.FC<NicheCertificateProps> = ({
   dateCompleted,
   gradeId,
   certificateToken,
-  tokenTable = 'trainee_grades'
+  tokenTable = 'trainee_grades',
+  autoDownload
 }) => {
   const nannyPillars = [
     { name: 'Childcare & Development', weight: 1.8, maxWeighted: 45 },
@@ -162,6 +164,12 @@ const NicheCertificate: React.FC<NicheCertificateProps> = ({
       .then((dataUrl) => setQrDataUrl(dataUrl))
       .catch((err) => console.warn('QR generation failed:', err))
   }, [gradeId, certificateToken])
+
+  // Auto-download: fires immediately after QR loads then closes
+  useEffect(() => {
+    if (!autoDownload || !qrDataUrl) return
+    downloadCertificate().then(() => onClose())
+  }, [autoDownload, qrDataUrl])
 
   const downloadCertificate = async () => {
     setIsDownloading(true)

@@ -118,6 +118,7 @@ export function NicheGrading() {
   const [showCertificate, setShowCertificate] = useState(false)
   const [showTranscript, setShowTranscript] = useState(false)
   const [autoTranscriptDownload, setAutoTranscriptDownload] = useState(false)
+  const [autoShortCourseCertDownload, setAutoShortCourseCertDownload] = useState(false)
   const [activeTab, setActiveTab] = useState<'flagship' | 'shortcourses'>('flagship')
   const [shortCourseTrainees, setShortCourseTrainees] = useState<any[]>([])
   const [filteredShortCourseTrainees, setFilteredShortCourseTrainees] = useState<any[]>([])
@@ -1698,18 +1699,31 @@ export function NicheGrading() {
                             {trainee.date_completed ? new Date(trainee.date_completed).toLocaleDateString() : '-'}
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap text-center">
-                            <button
-                              onClick={() => {
-                                console.log('Opening short course certificate for:', trainee);
-                                setNicheCardData(null);
-                                setSelectedShortCourseTrainee(trainee)
-                                setShowCertificate(true)
-                              }}
-                              className="inline-flex items-center gap-1 px-3 py-1.5 bg-purple-600 text-white rounded-lg text-xs hover:bg-purple-700 transition-colors font-medium"
-                            >
-                              <Award className="w-3.5 h-3.5" />
-                              View Certificate
-                            </button>
+                            <div className="flex items-center justify-center gap-1">
+                              <button
+                                onClick={() => {
+                                  setNicheCardData(null)
+                                  setSelectedShortCourseTrainee(trainee)
+                                  setAutoShortCourseCertDownload(true)
+                                  setShowCertificate(true)
+                                }}
+                                className="w-4 h-4 rounded-full bg-[#d95637] hover:bg-[#b8442a] text-white flex items-center justify-center text-[8px] font-bold"
+                                title="Download Certificate"
+                              >
+                                C
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setNicheCardData(null);
+                                  setSelectedShortCourseTrainee(trainee)
+                                  setShowCertificate(true)
+                                }}
+                                className="inline-flex items-center gap-1 px-3 py-1.5 bg-purple-600 text-white rounded-lg text-xs hover:bg-purple-700 transition-colors font-medium"
+                              >
+                                <Award className="w-3.5 h-3.5" />
+                                View Certificate
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -1883,8 +1897,10 @@ export function NicheGrading() {
             gradeId={selectedShortCourseTrainee.id}
             certificateToken={selectedShortCourseTrainee.certificate_token}
             tokenTable="niche_training"
+            autoDownload={autoShortCourseCertDownload}
             onClose={() => {
               setShowCertificate(false)
+              setAutoShortCourseCertDownload(false)
               setSelectedShortCourseTrainee(null)
             }}
           />
