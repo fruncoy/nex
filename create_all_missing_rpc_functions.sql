@@ -23,6 +23,9 @@ $$;
 -- ============================================
 -- 2. create_next_cohorts
 -- ============================================
+-- Drop existing function first (different signature)
+DROP FUNCTION IF EXISTS create_next_cohorts(integer);
+
 CREATE OR REPLACE FUNCTION create_next_cohorts(num_cohorts INT DEFAULT 5)
 RETURNS TABLE(id UUID, cohort_number INT, start_date DATE, end_date DATE, status TEXT)
 SECURITY DEFINER
