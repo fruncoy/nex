@@ -20,7 +20,7 @@ BEGIN
       nt.name,
       nt.phone,
       nt.role,
-      nt.cohort,
+      nt.cohort_id,
       nt.source
     FROM niche_training nt
     WHERE nt.status = 'Graduated'
