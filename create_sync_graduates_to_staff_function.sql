@@ -21,7 +21,7 @@ BEGIN
       nt.phone,
       nt.role,
       nt.cohort_id,
-      nt.source
+      nt.course
     FROM niche_training nt
     WHERE nt.status = 'Graduated'
     ORDER BY nt.name
