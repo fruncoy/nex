@@ -83,6 +83,9 @@ $$;
 -- ============================================
 -- 3. force_sync_all_niche_data
 -- ============================================
+-- Drop existing function first (different signature)
+DROP FUNCTION IF EXISTS force_sync_all_niche_data();
+
 CREATE OR REPLACE FUNCTION force_sync_all_niche_data()
 RETURNS JSON
 SECURITY DEFINER
