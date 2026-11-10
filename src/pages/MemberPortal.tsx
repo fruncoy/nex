@@ -119,10 +119,7 @@ export function MemberPortal() {
 
     const { data, error: dbErr } = await supabase
       .from('newstaff_members')
-      .select(`
-        id, name, phone, employment_status, cohort_label, created_at,
-        niche_training:niche_training_id(date_started, niche_cohorts:cohort_id(cohort_number))
-      `)
+      .select('id, name, phone, employment_status, cohort_label, created_at')
       .or(variants.map(v => `phone.eq.${v}`).join(','))
       .neq('employment_status', 'Blacklisted')
       .single()
@@ -145,8 +142,8 @@ export function MemberPortal() {
   }
 
   const firstName = member?.name?.split(' ')[0] || ''
-  const joinDate = member?.niche_training?.date_started || member?.created_at
-  const cohortNum = member?.niche_training?.niche_cohorts?.cohort_number
+  const joinDate = member?.created_at
+  const cohortNum = null
 
   if (member) {
     return (
