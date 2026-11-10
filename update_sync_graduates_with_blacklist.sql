@@ -19,7 +19,20 @@ DECLARE
   grad_record RECORD;
   existing_id UUID;
 BEGIN
-  -- Find all graduated and expelled trainees
+  -- First: Mark blacklisted candidates in newstaff_members
+  UPDATE newstaff_members sm
+  SET
+    employment_status = 'Blacklisted',
+    updated_by = 'GRADUATE_SYNC',
+    updated_at = NOW()
+  FROM niche_candidates nc
+  WHERE normalize_phone_niche(sm.phone) = normalize_phone_niche(nc.phone)
+    AND nc.status = 'BLACKLISTED'
+    AND sm.employment_status != 'Blacklisted';
+  
+  GET DIAGNOSTICS blacklisted_count = ROW_COUNT;
+  
+  -- Then: Sync graduated and expelled trainees
   FOR grad_record IN 
     SELECT DISTINCT 
       nt.name,
