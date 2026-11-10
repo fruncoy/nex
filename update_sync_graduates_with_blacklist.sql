@@ -19,7 +19,38 @@ DECLARE
   grad_record RECORD;
   existing_id UUID;
 BEGIN
-  -- First: Mark blacklisted candidates in newstaff_members
+  -- First: Add blacklisted candidates who don't exist in newstaff_members
+  INSERT INTO newstaff_members (
+    name,
+    phone,
+    role,
+    employment_status,
+    signed_coc,
+    created_by,
+    updated_by,
+    created_at,
+    updated_at
+  )
+  SELECT 
+    nc.name,
+    nc.phone,
+    COALESCE(nc.role, 'House Manager'),
+    'Blacklisted',
+    false,
+    'GRADUATE_SYNC',
+    'GRADUATE_SYNC',
+    NOW(),
+    NOW()
+  FROM niche_candidates nc
+  WHERE nc.status = 'BLACKLISTED'
+    AND NOT EXISTS (
+      SELECT 1 FROM newstaff_members sm 
+      WHERE normalize_phone_niche(sm.phone) = normalize_phone_niche(nc.phone)
+    );
+  
+  GET DIAGNOSTICS blacklisted_count = ROW_COUNT;
+  
+  -- Second: Update any existing staff to Blacklisted status
   UPDATE newstaff_members sm
   SET
     employment_status = 'Blacklisted',
@@ -30,7 +61,7 @@ BEGIN
     AND nc.status = 'BLACKLISTED'
     AND sm.employment_status != 'Blacklisted';
   
-  GET DIAGNOSTICS blacklisted_count = ROW_COUNT;
+  GET DIAGNOSTICS blacklisted_count = blacklisted_count + ROW_COUNT;
   
   -- Then: Sync graduated and expelled trainees
   FOR grad_record IN 
