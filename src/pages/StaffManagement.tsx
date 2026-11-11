@@ -757,7 +757,6 @@ export function StaffManagement() {
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
                       <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                       <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-32">Signed CoC</th>
-                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-28">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
@@ -810,28 +809,6 @@ export function StaffManagement() {
                           }`}>
                             {member.signed_coc ? 'Yes' : 'No'}
                           </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-right w-28">
-                          <div className="flex items-center justify-end space-x-1">
-                            <button
-                              onClick={() => {
-                                setSelectedStaff(member)
-                                setFormData({ ...member })
-                                setShowEditModal(true)
-                              }}
-                              className="text-blue-600 hover:text-blue-900 p-1"
-                              title="Edit"
-                            >
-                              <Edit className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => handleDeleteStaff(member.id, member.name)}
-                              className="text-red-600 hover:text-red-900 p-1"
-                              title="Delete"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
                         </td>
                       </tr>
                     ))}
