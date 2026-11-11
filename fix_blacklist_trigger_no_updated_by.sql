@@ -9,37 +9,19 @@ AS $$
 BEGIN
   -- If employment_status changed to 'Blacklisted'
   IF NEW.employment_status = 'Blacklisted' AND OLD.employment_status != 'Blacklisted' THEN
-    -- Update niche_candidates to BLACKLISTED
+    -- Update niche_candidates to BLACKLISTED only
     UPDATE niche_candidates
     SET status = 'BLACKLISTED'
     WHERE normalize_phone_niche(phone) = normalize_phone_niche(NEW.phone);
-    
-    -- Also update niche_training to Expelled if they exist there
-    UPDATE niche_training
-    SET 
-      status = 'Expelled',
-      updated_by = 'STAFF_SYNC',
-      updated_at = NOW()
-    WHERE normalize_phone_niche(phone) = normalize_phone_niche(NEW.phone)
-      AND status != 'Expelled';
   END IF;
   
   -- If employment_status changed FROM 'Blacklisted' to something else
   IF OLD.employment_status = 'Blacklisted' AND NEW.employment_status != 'Blacklisted' THEN
-    -- Update niche_candidates back to qualified or other status
+    -- Update niche_candidates back to Qualified
     UPDATE niche_candidates
     SET status = 'Qualified'
     WHERE normalize_phone_niche(phone) = normalize_phone_niche(NEW.phone)
       AND status = 'BLACKLISTED';
-    
-    -- Update niche_training status if they exist
-    UPDATE niche_training
-    SET 
-      status = 'Active',
-      updated_by = 'STAFF_SYNC',
-      updated_at = NOW()
-    WHERE normalize_phone_niche(phone) = normalize_phone_niche(NEW.phone)
-      AND status = 'Expelled';
   END IF;
   
   RETURN NEW;
