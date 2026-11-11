@@ -77,7 +77,7 @@ const contributionTypes = ['Volunteer Work', 'Leadership', 'Referral']
 const employmentStatuses = ['Employed', 'Yet to be Employed', 'Blacklisted']
 
 export function StaffManagement() {
-  const [activeTab, setActiveTab] = useState<'directory' | 'meetings' | 'referrals' | 'sponsorship' | 'reports'>('directory')
+  const [activeTab, setActiveTab] = useState<'directory' | 'reports'>('directory')
   const [staffMembers, setStaffMembers] = useState<StaffMember[]>([])
   const [filteredStaffMembers, setFilteredStaffMembers] = useState<StaffMember[]>([])
   const [cohorts, setCohorts] = useState<Cohort[]>([])
@@ -630,8 +630,8 @@ export function StaffManagement() {
       {/* Tabs */}
       <div className="border-b border-gray-200 mb-6">
         <nav className="flex overflow-x-auto space-x-2 sm:space-x-8 pb-1">
-          {['Staff Directory', 'Meetings', 'Referrals', 'Sponsorship', 'Reports'].map((name, i) => {
-            const id = ['directory', 'meetings', 'referrals', 'sponsorship', 'reports'][i]
+          {['Staff Directory', 'Reports'].map((name, i) => {
+            const id = ['directory', 'reports'][i]
             return (
               <button
                 key={id}
