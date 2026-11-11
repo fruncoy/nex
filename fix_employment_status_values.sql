@@ -66,7 +66,7 @@ BEGIN
     AND nc.status = 'BLACKLISTED'
     AND sm.employment_status != 'Blacklisted';
   
-  GET DIAGNOSTICS blacklisted_count = blacklisted_count + ROW_COUNT;
+  blacklisted_count := blacklisted_count + ROW_COUNT;
   
   -- Then: Sync graduated and expelled trainees
   FOR grad_record IN 
