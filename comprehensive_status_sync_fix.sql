@@ -163,7 +163,7 @@ EXECUTE FUNCTION sync_candidates_blacklist_to_staff();
 
 -- Add missing candidates from niche_training to niche_candidates
 INSERT INTO niche_candidates (
-  name, phone, role, status, created_by, created_at
+  name, phone, role, status
 )
 SELECT DISTINCT
   nt.name,
@@ -175,9 +175,7 @@ SELECT DISTINCT
     WHEN nt.status = 'Expelled' THEN 'BLACKLISTED'
     WHEN nt.status = 'Completed' THEN 'Graduated'
     ELSE 'Qualified'
-  END,
-  'SYNC_FIX',
-  NOW()
+  END
 FROM niche_training nt
 WHERE nt.phone IS NOT NULL
   AND NOT EXISTS (
