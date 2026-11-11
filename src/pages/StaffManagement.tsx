@@ -756,9 +756,6 @@ export function StaffManagement() {
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-12">#</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
                       <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                      <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Referrals</th>
-                      <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Meetings Attended</th>
-
                       <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-32">Signed CoC</th>
                       <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-28">Actions</th>
                     </tr>
@@ -800,9 +797,6 @@ export function StaffManagement() {
                           }`}>
                             {member.employment_status || 'Yet to be Employed'}
                           </span>
-                        </td>
-                        <td className="px-3 py-4 whitespace-nowrap text-center text-sm text-gray-600">
-                          {member.referrals || 0}
                         </td>
                         <td className="px-3 py-4 whitespace-nowrap text-center text-sm text-gray-600">
                           {member.meetingsAttended || 0}
