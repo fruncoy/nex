@@ -795,9 +795,6 @@ export function StaffManagement() {
                             {member.employment_status || 'Yet to be Employed'}
                           </span>
                         </td>
-                        <td className="px-3 py-4 whitespace-nowrap text-center text-sm text-gray-600">
-                          {member.meetingsAttended || 0}
-                        </td>
 
                         <td className="px-3 py-4 whitespace-nowrap text-center w-32">
                           <span className={`text-sm font-medium ${
