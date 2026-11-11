@@ -49,9 +49,24 @@
 ### 4. SYNC GRADUATES TO STAFF (Manual Function)
 **What triggers it:** When you click "Import Graduates" button in Staff Management
 **What it does:**
-1. Syncs "Graduated" trainees from `niche_training` → creates new staff members
-2. Syncs "BLACKLISTED" candidates → creates new staff members with "Blacklisted" status
-3. Updates existing staff member info
+1. Syncs "Graduated" trainees from `niche_training` → creates new staff members with status "Yet to be Employed"
+2. Syncs "BLACKLISTED" candidates → creates new staff members with status "Blacklisted"
+3. Updates existing staff member info (name, role, preserves "Employed" status)
+
+**Important:** This is MANUAL, not automatic. You need to click the button to sync.
+
+---
+
+### 5. GRADUATE IN NICHE TRAINING → SYNCED TO STAFF
+**What triggers it:** MANUAL - Click "Import Graduates" button
+**What it affects:** Creates/updates `newstaff_members`
+
+| Training Status | Staff Status Created |
+|-----------------|---------------------|
+| Graduated | "Yet to be Employed" |
+| Expelled | Not added to staff (already blacklisted in candidates) |
+
+**Note:** Existing "Employed" status is preserved. Only "Yet to be Employed" staff get updated.
 
 ---
 

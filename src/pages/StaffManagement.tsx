@@ -559,13 +559,11 @@ export function StaffManagement() {
       const { data, error } = await supabase.rpc('sync_graduates_to_staff')
       if (error) throw error
       
-      if (data && (data.imported > 0 || data.updated > 0)) {
-        showToast(`Sync complete: ${data.imported} new, ${data.updated} updated`, 'success')
-      }
+      // Silent sync - just refresh data, no messages
       loadData()
     } catch (error: any) {
       console.error('Error auto-syncing graduates:', error)
-      // Don't show error on auto-sync to avoid spamming users
+      // Silent fail - don't interrupt user
     }
   }
 
