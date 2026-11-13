@@ -144,6 +144,7 @@ export function StatusBadge({ status, type = 'candidate' }: StatusBadgeProps) {
       'BLACKLISTED': 'bg-gray-800 text-white',
       'GRADUATED': 'bg-green-100 text-green-800',
       'ACTIVE IN TRAINING': 'bg-emerald-100 text-emerald-800',
+      'COMPLETED': 'bg-purple-100 text-purple-800',
     }
 
     const paymentStatusColors: Record<string, string> = {

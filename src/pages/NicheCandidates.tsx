@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import { SearchFilter } from '../components/ui/SearchFilter'
 import { StatusBadge } from '../components/ui/StatusBadge'
 import { PhoneInput } from '../components/ui/PhoneInput'
-import { Plus, Users, Phone, Calendar, Edit, CheckCircle, Clock, Upload, Eye, Download, Table, Trash2, Save } from 'lucide-react'
+import { Plus, Users, Phone, Calendar, Edit, CheckCircle, Clock, Upload, Eye, Download, Table, Trash2, Save, ChevronDown, ChevronUp } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
 import { ActivityLogger } from '../lib/activityLogger'
@@ -88,6 +88,7 @@ export function NicheCandidates() {
   const [duplicateRecord, setDuplicateRecord] = useState<any>(null)
   const [duplicateRecordNotes, setDuplicateRecordNotes] = useState<any[]>([])
   const [checkingDuplicates, setCheckingDuplicates] = useState(false)
+  const [showExcelDesign, setShowExcelDesign] = useState(false)
   const [showImportModal, setShowImportModal] = useState(false)
   const [importFile, setImportFile] = useState<File | null>(null)
   const [importData, setImportData] = useState<any[]>([])
@@ -305,7 +306,6 @@ export function NicheCandidates() {
         .from('niche_candidates')
         .select('*')
         .order('inquiry_date', { ascending: false })
-        .limit(500)
 
       if (error) throw error
       setCandidates(data || [])
@@ -937,8 +937,18 @@ export function NicheCandidates() {
         </div>
       </div>
 
-      {/* Excel-style Table Input */}
+      {/* Excel-style Table Input - Collapsible */}
       <div className="mb-8">
+        <button
+          onClick={() => setShowExcelDesign(!showExcelDesign)}
+          className="flex items-center justify-between w-full px-4 py-3 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors mb-2"
+        >
+          <span className="font-medium text-gray-700">Excel-Style Data Entry</span>
+          {showExcelDesign ? <ChevronUp className="w-5 h-5 text-gray-600" /> : <ChevronDown className="w-5 h-5 text-gray-600" />}
+        </button>
+        
+        {showExcelDesign && (
+        <>
         <div className="overflow-x-auto border border-gray-200">
           <table className="min-w-full border-collapse">
             <thead>
@@ -1074,6 +1084,8 @@ export function NicheCandidates() {
             {isSaving ? 'Saving...' : 'Save Candidates'}
           </button>
         </div>
+        </>
+        )}
       </div>
 
       <div className="flex flex-col gap-3">
@@ -2349,3 +2361,4 @@ export function NicheCandidates() {
     </div>
   )
 }
+

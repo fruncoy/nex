@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { SearchFilter } from '../components/ui/SearchFilter'
 import { StatusBadge } from '../components/ui/StatusBadge'
+import { SearchableDropdown } from '../components/ui/SearchableDropdown'
 import { Plus, Edit, Users, UserPlus, Trash2, Download, Calendar } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { useAuth } from '../contexts/AuthContext'
@@ -39,7 +40,7 @@ interface NicheTraining {
   date_completed?: string
   notes?: string
   cohort_id?: string
-  training_type?: 'weekend'  // Removed 'refresher'
+  training_type?: '2week' | 'shortcourse' | 'weekend' | 'bread'
   accommodation_type?: 'live_in' | 'live_out'
   enrolled_courses?: string[]
   created_at: string
@@ -99,7 +100,7 @@ export function NicheTraining() {
     status: 'Active' as 'Active' | 'Graduated' | 'Expelled' | 'Completed',
     course: '',
     cohort_id: '',
-    training_type: 'weekend' as 'weekend',  // Only 'weekend' option
+    training_type: '2week' as '2week' | 'shortcourse',
     accommodation_type: '' as '' | 'live_in' | 'live_out',
     enrolled_courses: [] as string[]
   })
@@ -395,13 +396,11 @@ export function NicheTraining() {
   }
 
   const flagshipRecords = filteredRecords.filter(record => 
-    record.course === 'Professional House Manager Training Program' || 
-    record.course === 'Professional Nanny Training Program'
+    (record as any).training_type === '2week' || (record as any).training_type === null
   )
   
   const specializedRecords = filteredRecords.filter(record => 
-    record.course !== 'Professional House Manager Training Program' && 
-    record.course !== 'Professional Nanny Training Program'
+    (record as any).training_type === 'shortcourse' || (record as any).training_type === 'weekend'
   )
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -493,7 +492,7 @@ export function NicheTraining() {
       status: 'Active' as 'Active' | 'Graduated' | 'Expelled' | 'Completed',
       course: '',
       cohort_id: '',
-      training_type: 'weekend',
+      training_type: '2week',
       accommodation_type: '',
       enrolled_courses: []
     })
@@ -584,8 +583,8 @@ export function NicheTraining() {
   })
 
   const getRomanNumeral = (num: number) => {
-    const romanNumerals = ['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X']
-    return romanNumerals[num] || num.toString()
+    // Return normal number instead of Roman numeral
+    return num.toString()
   }
 
   const getVisibleCohorts = () => {
@@ -871,7 +870,7 @@ export function NicheTraining() {
     // Build data for single sheet
     const data = sortedTrainees.map(trainee => {
       // Determine training type
-      const trainingType = (trainee as any).training_type === 'weekend' ? 'Short Course' : '2-Week Flagship'
+      const trainingType = (trainee as any).training_type === 'shortcourse' || (trainee as any).training_type === 'weekend' ? 'Short Course' : '2-Week Flagship'
       
       // Get cohort name
       let cohortName = 'No Cohort'
@@ -1000,12 +999,21 @@ export function NicheTraining() {
       <div className="grid grid-cols-4 gap-4 mt-4 mb-6">
         <div className="bg-white rounded-lg shadow p-4 border-l-4 border-green-500">
           <div className="text-2xl font-bold text-gray-900">
-            {filteredRecords.filter(r => r.status === 'Active' || r.status === 'Graduated').length}
+            {filteredRecords.filter(r => r.status === 'Active').length}
           </div>
-          <div className="text-sm text-gray-500 mt-1">Active / Graduated</div>
-          <div className="text-xs text-gray-400 mt-1">
-            {filteredRecords.filter(r => r.status === 'Active').length} active · {filteredRecords.filter(r => r.status === 'Graduated').length} graduated
+          <div className="text-sm text-gray-500 mt-1">Active (In Training)</div>
+        </div>
+        <div className="bg-white rounded-lg shadow p-4 border-l-4 border-teal-500">
+          <div className="text-2xl font-bold text-gray-900">
+            {filteredRecords.filter(r => r.status === 'Graduated').length}
           </div>
+          <div className="text-sm text-gray-500 mt-1">Graduated (2-Week)</div>
+        </div>
+        <div className="bg-white rounded-lg shadow p-4 border-l-4 border-purple-500">
+          <div className="text-2xl font-bold text-gray-900">
+            {filteredRecords.filter(r => r.status === 'Completed').length}
+          </div>
+          <div className="text-sm text-gray-500 mt-1">Completed (Short Course)</div>
         </div>
         <div className="bg-white rounded-lg shadow p-4 border-l-4 border-red-500">
           <div className="text-2xl font-bold text-gray-900">
@@ -1017,13 +1025,7 @@ export function NicheTraining() {
           <div className="text-2xl font-bold text-gray-900">
             {filteredRecords.filter(r => (r as any).training_type === '2week').length}
           </div>
-          <div className="text-sm text-gray-500 mt-1">2-Week Flagship</div>
-        </div>
-        <div className="bg-white rounded-lg shadow p-4 border-l-4 border-purple-500">
-          <div className="text-2xl font-bold text-gray-900">
-            {filteredRecords.filter(r => (r as any).training_type === 'weekend').length}
-          </div>
-          <div className="text-sm text-gray-500 mt-1">Short Course</div>
+          <div className="text-sm text-gray-500 mt-1">2-Week Total</div>
         </div>
       </div>
 
@@ -1554,34 +1556,26 @@ export function NicheTraining() {
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
                     >
                       <option value="Active">Active</option>
-                      <option value="Graduated">Graduated</option>
-                      <option value="Completed">Completed</option>
-                      <option value="Expelled">Expelled</option>
+                      {formData.training_type === 'shortcourse' ? (
+                        <option value="Completed">Completed</option>
+                      ) : (
+                        <>
+                          <option value="Graduated">Graduated</option>
+                          <option value="Expelled">Expelled</option>
+                        </>
+                      )}
                     </select>
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Course</label>
-                  <select
+                  <SearchableDropdown
+                    label="Course"
+                    options={courses}
                     value={formData.course}
-                    onChange={(e) => setFormData({ ...formData, course: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary focus:border-transparent"
-                  >
-                    <option value="">Select course</option>
-                    {formData.training_type === 'weekend' 
-                      ? courses.filter(course => !course.name.includes('Professional')).map(course => (
-                          <option key={course.id} value={course.name}>
-                            {course.name}
-                          </option>
-                        ))
-                      : courses.filter(course => course.name.includes('Professional')).map(course => (
-                          <option key={course.id} value={course.name}>
-                            {course.name}
-                          </option>
-                        ))
-                    }
-                  </select>
+                    onChange={(value) => setFormData({ ...formData, course: value })}
+                    placeholder="Select course"
+                  />
                 </div>
 
                 <div>
