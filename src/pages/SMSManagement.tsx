@@ -35,6 +35,7 @@ interface Campaign {
   created_by: string
   sent_at: string
   created_at: string
+  audience_type?: string
 }
 
 interface Cohort {
@@ -961,6 +962,9 @@ function BroadcastTab({ onRefresh }: { onRefresh: () => void }) {
   const [expandedCampaignId, setExpandedCampaignId] = useState<string | null>(null)
   const [campaignRecords, setCampaignRecords] = useState<Record<string, SmsRecord[]>>({})
   const [loadingRecords, setLoadingRecords] = useState<string | null>(null)
+  const [editingCampaign, setEditingCampaign] = useState<{ id: string; name: string } | null>(null)
+  const [editCampaignSaving, setEditCampaignSaving] = useState(false)
+  const [resendingCampaign, setResendingCampaign] = useState<string | null>(null)
 
   useEffect(() => {
     loadStaff()
@@ -982,9 +986,10 @@ function BroadcastTab({ onRefresh }: { onRefresh: () => void }) {
   }
 
   const loadClients = async () => {
-    const { data } = await supabase.from('sms_contacts').select('id, full_name, phone, contact_type').not('phone', 'is', null).neq('phone', '')
-    setAllClients(data || [])
-    setSelectedClientIds(new Set((data || []).map((c: any) => c.id)))
+    const { data } = await supabase.from('sms_contacts').select('id, full_name, phone, contact_type, exclude_from_sms').not('phone', 'is', null).neq('phone', '')
+    const eligible = (data || []).filter(c => !c.exclude_from_sms)
+    setAllClients(eligible)
+    setSelectedClientIds(new Set(eligible.map((c: any) => c.id)))
   }
 
   const loadBadDebt = async () => {
@@ -1016,6 +1021,64 @@ function BroadcastTab({ onRefresh }: { onRefresh: () => void }) {
     const { data } = await supabase.from('sms_records').select('*').eq('campaign_id', campaignId).order('recipient_name')
     setCampaignRecords(prev => ({ ...prev, [campaignId]: data || [] }))
     setLoadingRecords(null)
+  }
+
+  const handleRenameCampaign = async () => {
+    if (!editingCampaign || !editingCampaign.name.trim()) return
+    setEditCampaignSaving(true)
+    const { error } = await supabase.from('sms_campaigns').update({ name: editingCampaign.name.trim() }).eq('id', editingCampaign.id)
+    if (error) showToast('Failed to rename campaign', 'error')
+    else {
+      setCampaigns(prev => prev.map(c => c.id === editingCampaign.id ? { ...c, name: editingCampaign.name.trim() } : c))
+      showToast('Campaign renamed', 'success')
+      setEditingCampaign(null)
+    }
+    setEditCampaignSaving(false)
+  }
+
+  const handleResumeCampaign = async (campaign: Campaign) => {
+    // Get already sent phone numbers from this campaign
+    const { data: sentRecords } = await supabase.from('sms_records').select('recipient_phone').eq('campaign_id', campaign.id).eq('status', 'sent')
+    const sentPhones = new Set((sentRecords || []).map(r => normalizePhone(r.recipient_phone)))
+
+    // Determine audience type from campaign name or stored audience_type
+    const audienceType = campaign.audience_type || (campaign.name.includes('Staff') ? 'staff' : campaign.name.includes('Clients') ? 'clients' : campaign.name.includes('Bad Debt') ? 'bad-debt' : 'clients')
+
+    // Load appropriate recipients
+    let allRecipients: { id: string; name: string; phone: string; type: 'staff' | 'client' }[] = []
+
+    if (audienceType === 'staff') {
+      const { data } = await supabase.from('newstaff_members').select('id, name, phone').not('phone', 'is', null).neq('phone', '')
+      allRecipients = (data || []).filter(m => m.employment_status !== 'Blacklisted').map(m => ({ id: m.id, name: m.name, phone: formatPhone(m.phone), type: 'staff' as const }))
+    } else if (audienceType === 'clients') {
+      const { data } = await supabase.from('sms_contacts').select('id, full_name, phone, contact_type').not('phone', 'is', null).neq('phone', '').eq('exclude_from_sms', false)
+      allRecipients = (data || []).map(c => ({ id: c.id, name: c.full_name, phone: formatPhone(c.phone), type: 'client' as const }))
+    } else if (audienceType === 'bad-debt') {
+      const { data } = await supabase.from('bad_debt_contacts').select('id, full_name, phone').not('phone', 'is', null).neq('phone', '')
+      allRecipients = (data || []).map(r => ({ id: r.id, name: r.full_name, phone: formatPhone(r.phone), type: 'client' as const }))
+    }
+
+    // Filter out already sent
+    const remaining = allRecipients.filter(r => !sentPhones.has(normalizePhone(r.phone)))
+
+    if (remaining.length === 0) {
+      showToast('All recipients already received this campaign', 'success')
+      return
+    }
+
+    // Send to remaining
+    setResendingCampaign(campaign.id)
+    await sendCampaign({
+      name: `${campaign.name} (Resume)`,
+      type: 'broadcast',
+      message: campaign.message,
+      recipients: remaining,
+      staffId: staff?.id || '',
+      staffName: staff?.name || 'System',
+      showToast,
+      onDone: () => { loadCampaigns(); onRefresh() },
+    })
+    setResendingCampaign(null)
   }
 
   // Group staff by cohort
@@ -1354,28 +1417,48 @@ function BroadcastTab({ onRefresh }: { onRefresh: () => void }) {
                 <tr>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600">Campaign</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600">Message</th>
-                  
                   <th className="text-center px-4 py-3 text-xs font-semibold text-gray-600">Sent</th>
                   <th className="text-center px-4 py-3 text-xs font-semibold text-gray-600">Failed</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600">By</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600">Date</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-gray-600">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {campaigns.map(c => (
+                {campaigns.map(c => {
+                  const remaining = c.recipients_count - c.sent_count - c.failed_count
+                  return (
                   <React.Fragment key={c.id}>
-                    <tr className="hover:bg-gray-50 cursor-pointer" onClick={() => toggleCampaignRecords(c.id)}>
+                    <tr className="hover:bg-gray-50">
                       <td className="px-4 py-3 font-medium text-gray-900 max-w-[160px] truncate">{c.name}</td>
                       <td className="px-4 py-3 text-xs text-gray-500 max-w-[200px] truncate" title={c.message}>{c.message}</td>
-                      
                       <td className="text-center px-4 py-3 text-emerald-700 font-semibold">{c.sent_count}/{c.recipients_count}</td>
                       <td className="text-center px-4 py-3 text-red-600">{c.failed_count}/{c.recipients_count}</td>
                       <td className="px-4 py-3 text-xs text-gray-500">{c.created_by}</td>
                       <td className="px-4 py-3 text-xs text-gray-500">{new Date(c.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1">
+                          {remaining > 0 && (
+                            <button onClick={() => handleResumeCampaign(c)} disabled={resendingCampaign === c.id}
+                              className="flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-800 disabled:opacity-50 px-2 py-1 rounded hover:bg-emerald-50">
+                              {resendingCampaign === c.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                              Resume ({remaining})
+                            </button>
+                          )}
+                          <button onClick={() => setEditingCampaign({ id: c.id, name: c.name })}
+                            className="flex items-center gap-1 text-xs text-gray-400 hover:text-blue-600 px-2 py-1 rounded hover:bg-blue-50">
+                            <Pencil className="w-3 h-3" />
+                          </button>
+                          <button onClick={() => toggleCampaignRecords(c.id)}
+                            className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 px-2 py-1 rounded hover:bg-gray-50">
+                            <Users className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                     {expandedCampaignId === c.id && (
                       <tr>
-                        <td colSpan={6} className="bg-gray-50 px-6 py-4">
+                        <td colSpan={7} className="bg-gray-50 px-6 py-4">
                           {loadingRecords === c.id ? (
                             <div className="flex items-center gap-2 text-sm text-gray-400"><Loader2 className="w-4 h-4 animate-spin" /> Loading recipients...</div>
                           ) : (
@@ -1406,9 +1489,32 @@ function BroadcastTab({ onRefresh }: { onRefresh: () => void }) {
                       </tr>
                     )}
                   </React.Fragment>
-                ))}
+                )})}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Campaign Name Modal */}
+      {editingCampaign && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-sm mx-4 space-y-4">
+            <p className="text-sm font-semibold text-gray-900">Rename Campaign</p>
+            <div>
+              <label className="text-xs font-medium text-gray-600 mb-1 block">Campaign Name</label>
+              <input value={editingCampaign.name}
+                onChange={e => setEditingCampaign(prev => prev ? { ...prev, name: e.target.value } : null)}
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary" />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setEditingCampaign(null)}
+                className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
+              <button onClick={handleRenameCampaign} disabled={editCampaignSaving || !editingCampaign.name.trim()}
+                className="px-4 py-2 text-sm bg-nestalk-primary text-white rounded-lg hover:bg-nestalk-primary/90 disabled:opacity-50">
+                {editCampaignSaving ? 'Saving...' : 'Save'}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1425,6 +1531,7 @@ interface Contact {
   contact_type: string
   notes: string | null
   created_at: string
+  exclude_from_sms: boolean
 }
 
 
@@ -1477,17 +1584,18 @@ function ContactsTab() {
   const [saving, setSaving] = useState(false)
   const [removingDupes, setRemovingDupes] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string } | null>(null)
-  const [editingContact, setEditingContact] = useState<{ id: string; full_name: string; phone: string; contact_type: string } | null>(null)
+  const [editingContact, setEditingContact] = useState<{ id: string; full_name: string; phone: string; contact_type: string; exclude_from_sms: boolean } | null>(null)
   const [editSaving, setEditSaving] = useState(false)
   const [typeFilter, setTypeFilter] = useState<'all' | 'placement' | 'non-placement'>('all')
   const [newContactType, setNewContactType] = useState<'placement' | 'non-placement'>('placement')
+  const [showExcluded, setShowExcluded] = useState(true)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
 
   useEffect(() => { loadContacts() }, [])
 
   const loadContacts = async () => {
     setLoading(true)
-    const { data } = await supabase.from('sms_contacts').select('*').order('full_name')
+    const { data } = await supabase.from('sms_contacts').select('id, full_name, phone, contact_type, notes, created_at, exclude_from_sms').order('full_name')
     setContacts(data || [])
     setLoading(false)
   }
@@ -1557,6 +1665,7 @@ function ContactsTab() {
       full_name: editingContact.full_name.trim(),
       phone: editingContact.phone.trim() ? toLocalFormat(editingContact.phone.trim()) : null,
       contact_type: editingContact.contact_type,
+      exclude_from_sms: editingContact.exclude_from_sms,
     }
     const { error } = await supabase.from('sms_contacts').update(updates).eq('id', editingContact.id)
     if (error) showToast('Failed to update contact', 'error')
@@ -1566,6 +1675,15 @@ function ContactsTab() {
       setEditingContact(null)
     }
     setEditSaving(false)
+  }
+
+  const handleToggleExclude = async (id: string, currentValue: boolean) => {
+    const { error } = await supabase.from('sms_contacts').update({ exclude_from_sms: !currentValue }).eq('id', id)
+    if (error) showToast('Failed to update exclusion status', 'error')
+    else {
+      setContacts(prev => prev.map(c => c.id === id ? { ...c, exclude_from_sms: !currentValue } : c))
+      showToast(currentValue ? 'Contact included in SMS campaigns' : 'Contact excluded from SMS campaigns', 'success')
+    }
   }
 
   const handleRemoveDuplicates = async () => {
@@ -1612,9 +1730,12 @@ function ContactsTab() {
   })()
 
   const filtered = contacts.filter(c => {
+    if (!showExcluded && c.exclude_from_sms) return false
     if (typeFilter !== 'all' && c.contact_type !== typeFilter) return false
     return c.full_name.toLowerCase().includes(search.toLowerCase()) || (c.phone || '').includes(search)
   })
+
+  const excludedCount = contacts.filter(c => c.exclude_from_sms).length
 
   return (
     <div className="space-y-4">
@@ -1637,6 +1758,10 @@ function ContactsTab() {
             )
           })}
         </div>
+        <button onClick={() => setShowExcluded(!showExcluded)}
+          className={`flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg transition-colors ${showExcluded ? 'bg-gray-100 text-gray-600' : 'bg-orange-100 text-orange-700'}`}>
+          {showExcluded ? 'Hide Excluded' : 'Show Excluded'} {excludedCount > 0 && <span className="text-xs">({excludedCount})</span>}
+        </button>
         {dupCount > 0 && (
           <button onClick={handleRemoveDuplicates} disabled={removingDupes}
             className="flex items-center gap-1.5 px-3 py-2 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 disabled:opacity-50">
@@ -1713,6 +1838,7 @@ function ContactsTab() {
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600">Name</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600">Phone</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600">Type</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600">SMS</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600">Notes</th>
                 <th className="px-4 py-3"></th>
               </tr>
@@ -1723,7 +1849,7 @@ function ContactsTab() {
               ) : filtered.length === 0 ? (
                 <tr><td colSpan={6} className="text-center py-10 text-gray-400 text-sm">No contacts found</td></tr>
               ) : filtered.map((c, i) => (
-                <tr key={c.id} className="hover:bg-gray-50">
+                <tr key={c.id} className={`hover:bg-gray-50 ${c.exclude_from_sms ? 'bg-orange-50' : ''}`}>
                   <td className="px-4 py-3 text-xs text-gray-400">{i + 1}</td>
                   <td className="px-4 py-3 font-medium text-gray-900">{c.full_name}</td>
                   <td className="px-4 py-3 font-mono text-xs text-gray-600">
@@ -1736,10 +1862,20 @@ function ContactsTab() {
                       c.contact_type === 'candidate' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'
                     }`}>{c.contact_type === 'client' ? 'placement' : c.contact_type}</span>
                   </td>
+                  <td className="px-4 py-3">
+                    <button onClick={() => handleToggleExclude(c.id, c.exclude_from_sms)}
+                      className={`text-xs px-2 py-0.5 rounded-full transition-colors ${
+                        c.exclude_from_sms 
+                          ? 'bg-red-100 text-red-700 hover:bg-red-200' 
+                          : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
+                      }`}>
+                      {c.exclude_from_sms ? 'Excluded' : 'Active'}
+                    </button>
+                  </td>
                   <td className="px-4 py-3 text-xs text-gray-500 max-w-[200px] truncate">{c.notes || ''}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1">
-                      <button onClick={() => setEditingContact({ id: c.id, full_name: c.full_name, phone: c.phone || '', contact_type: c.contact_type })}
+                      <button onClick={() => setEditingContact({ id: c.id, full_name: c.full_name, phone: c.phone || '', contact_type: c.contact_type, exclude_from_sms: c.exclude_from_sms })}
                         className="flex items-center gap-1 text-xs text-gray-400 hover:text-blue-600 transition-colors px-2 py-1 rounded hover:bg-blue-50">
                         <Pencil className="w-3.5 h-3.5" /> Edit
                       </button>
@@ -1797,6 +1933,19 @@ function ContactsTab() {
                       {t === 'placement' ? 'Placement' : 'Non-Placement'}
                     </button>
                   ))}
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-600 mb-1 block">SMS Status</label>
+                <div className="flex gap-2">
+                  <button onClick={() => setEditingContact(prev => prev ? { ...prev, exclude_from_sms: false } : null)}
+                    className={`flex-1 py-1.5 text-xs rounded-lg border transition-colors ${!editingContact.exclude_from_sms ? 'bg-emerald-600 text-white border-emerald-600' : 'border-gray-300 text-gray-500 hover:border-gray-400'}`}>
+                    Active (Receive SMS)
+                  </button>
+                  <button onClick={() => setEditingContact(prev => prev ? { ...prev, exclude_from_sms: true } : null)}
+                    className={`flex-1 py-1.5 text-xs rounded-lg border transition-colors ${editingContact.exclude_from_sms ? 'bg-red-600 text-white border-red-600' : 'border-gray-300 text-gray-500 hover:border-gray-400'}`}>
+                    Excluded (No SMS)
+                  </button>
                 </div>
               </div>
             </div>
