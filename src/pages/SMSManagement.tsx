@@ -965,6 +965,11 @@ function BroadcastTab({ onRefresh }: { onRefresh: () => void }) {
   const [editingCampaign, setEditingCampaign] = useState<{ id: string; name: string } | null>(null)
   const [editCampaignSaving, setEditCampaignSaving] = useState(false)
   const [resendingCampaign, setResendingCampaign] = useState<string | null>(null)
+  const [addingRecipientsToCampaign, setAddingRecipientsToCampaign] = useState<Campaign | null>(null)
+  const [addRecipientsAudience, setAddRecipientsAudience] = useState<'staff' | 'clients' | 'bad-debt' | 'custom'>('clients')
+  const [addRecipientsSearch, setAddRecipientsSearch] = useState('')
+  const [addRecipientsSelected, setAddRecipientsSelected] = useState<Set<string>>(new Set())
+  const [addRecipientsSending, setAddRecipientsSending] = useState(false)
 
   useEffect(() => {
     loadStaff()
@@ -999,7 +1004,7 @@ function BroadcastTab({ onRefresh }: { onRefresh: () => void }) {
   }
 
   const loadCampaigns = async () => {
-    const { data } = await supabase.from('sms_campaigns').select('*').eq('campaign_type', 'broadcast').order('created_at', { ascending: false }).limit(10)
+    const { data } = await supabase.from('sms_campaigns').select('*').order('created_at', { ascending: false }).limit(20)
     if (!data) { setCampaigns([]); return }
     const enriched = await Promise.all(data.map(async c => {
       if (c.sent_count > 0 || c.failed_count > 0) return c
@@ -1079,6 +1084,91 @@ function BroadcastTab({ onRefresh }: { onRefresh: () => void }) {
       onDone: () => { loadCampaigns(); onRefresh() },
     })
     setResendingCampaign(null)
+  }
+
+  const handleAddRecipientsToCampaign = async () => {
+    if (!addingRecipientsToCampaign || addRecipientsSelected.size === 0) return
+
+    // Get already sent phone numbers from this campaign
+    const { data: sentRecords } = await supabase.from('sms_records').select('recipient_phone').eq('campaign_id', addingRecipientsToCampaign.id)
+    const sentPhones = new Set((sentRecords || []).map(r => normalizePhone(r.recipient_phone)))
+
+    // Build recipients list based on audience type
+    let newRecipients: { id: string; name: string; phone: string; type: 'staff' | 'client' }[] = []
+
+    if (addRecipientsAudience === 'staff') {
+      newRecipients = allStaff.filter(m => addRecipientsSelected.has(m.id)).map(m => ({ id: m.id, name: m.name, phone: formatPhone(m.phone), type: 'staff' as const }))
+    } else if (addRecipientsAudience === 'clients') {
+      newRecipients = allClients.filter(c => addRecipientsSelected.has(c.id)).map(c => ({ id: c.id, name: c.full_name, phone: formatPhone(c.phone), type: 'client' as const }))
+    } else if (addRecipientsAudience === 'bad-debt') {
+      newRecipients = allBadDebt.filter(r => addRecipientsSelected.has(r.id)).map(r => ({ id: r.id, name: r.full_name, phone: formatPhone(r.phone), type: 'client' as const }))
+    }
+
+    // Filter out already added
+    const toAdd = newRecipients.filter(r => !sentPhones.has(normalizePhone(r.phone)))
+
+    if (toAdd.length === 0) {
+      showToast('All selected recipients already in campaign', 'error')
+      return
+    }
+
+    setAddRecipientsSending(true)
+
+    // Send SMS to new recipients
+    let success = 0, failed = 0
+    for (const r of toAdd) {
+      const result = await smsService.sendSMS({
+        recipientType: r.type,
+        recipientId: r.id,
+        recipientName: r.name,
+        phoneNumber: r.phone,
+        messageType: 'broadcast',
+        messageContent: addingRecipientsToCampaign.message,
+        sentBy: staff?.id || '',
+      })
+
+      // Log to sms_records
+      await supabase.from('sms_records').insert({
+        campaign_id: addingRecipientsToCampaign.id,
+        recipient_name: r.name,
+        recipient_phone: r.phone,
+        message: addingRecipientsToCampaign.message,
+        status: result.success ? 'sent' : 'failed',
+        error_message: result.error || null,
+      })
+
+      if (result.success) success++
+      else failed++
+    }
+
+    // Update campaign counts
+    const newSentCount = (addingRecipientsToCampaign.sent_count || 0) + success
+    const newFailedCount = (addingRecipientsToCampaign.failed_count || 0) + failed
+    const newRecipientsCount = (addingRecipientsToCampaign.recipients_count || 0) + toAdd.length
+
+    await supabase.from('sms_campaigns').update({
+      sent_count: newSentCount,
+      failed_count: newFailedCount,
+      recipients_count: newRecipientsCount,
+    }).eq('id', addingRecipientsToCampaign.id)
+
+    showToast(`Added ${success} recipients (${failed} failed)`, success > 0 ? 'success' : 'error')
+    setAddRecipientsSending(false)
+    setAddingRecipientsToCampaign(null)
+    setAddRecipientsSelected(new Set())
+    loadCampaigns()
+    onRefresh()
+  }
+
+  const getAddRecipientsList = () => {
+    if (addRecipientsAudience === 'staff') {
+      return allStaff.filter(m => !addRecipientsSearch || m.name.toLowerCase().includes(addRecipientsSearch.toLowerCase()) || (m.phone || '').includes(addRecipientsSearch))
+    } else if (addRecipientsAudience === 'clients') {
+      return allClients.filter(c => !addRecipientsSearch || c.full_name.toLowerCase().includes(addRecipientsSearch.toLowerCase()) || (c.phone || '').includes(addRecipientsSearch))
+    } else if (addRecipientsAudience === 'bad-debt') {
+      return allBadDebt.filter(r => !addRecipientsSearch || r.full_name.toLowerCase().includes(addRecipientsSearch.toLowerCase()) || (r.phone || '').includes(addRecipientsSearch))
+    }
+    return []
   }
 
   // Group staff by cohort
@@ -1438,6 +1528,15 @@ function BroadcastTab({ onRefresh }: { onRefresh: () => void }) {
                       <td className="px-4 py-3 text-xs text-gray-500">{new Date(c.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1">
+                          <button onClick={() => {
+                            setAddingRecipientsToCampaign(c)
+                            setAddRecipientsAudience('clients')
+                            setAddRecipientsSelected(new Set())
+                            setAddRecipientsSearch('')
+                          }}
+                            className="flex items-center gap-1 text-xs text-nestalk-primary hover:text-nestalk-primary/80 px-2 py-1 rounded hover:bg-nestalk-primary/10">
+                            <Plus className="w-3 h-3" /> Add
+                          </button>
                           {remaining > 0 && (
                             <button onClick={() => handleResumeCampaign(c)} disabled={resendingCampaign === c.id}
                               className="flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-800 disabled:opacity-50 px-2 py-1 rounded hover:bg-emerald-50">
@@ -1513,6 +1612,107 @@ function BroadcastTab({ onRefresh }: { onRefresh: () => void }) {
               <button onClick={handleRenameCampaign} disabled={editCampaignSaving || !editingCampaign.name.trim()}
                 className="px-4 py-2 text-sm bg-nestalk-primary text-white rounded-lg hover:bg-nestalk-primary/90 disabled:opacity-50">
                 {editCampaignSaving ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Recipients to Campaign Modal */}
+      {addingRecipientsToCampaign && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-lg mx-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-semibold text-gray-900">Add Recipients to Campaign</p>
+                <p className="text-xs text-gray-500">{addingRecipientsToCampaign.name}</p>
+              </div>
+              <button onClick={() => setAddingRecipientsToCampaign(null)} className="text-gray-400 hover:text-gray-600">
+                ✕
+              </button>
+            </div>
+
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+              <p className="text-xs font-medium text-gray-600 mb-1">Message Preview:</p>
+              <p className="text-xs text-gray-700 line-clamp-2">{addingRecipientsToCampaign.message}</p>
+            </div>
+
+            {/* Audience selector */}
+            <div>
+              <label className="text-xs font-medium text-gray-600 mb-2 block">Select Audience</label>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { value: 'staff', label: 'Staff Members' },
+                  { value: 'clients', label: 'Clients' },
+                  { value: 'bad-debt', label: 'Bad Debt' },
+                ].map(opt => (
+                  <button key={opt.value} onClick={() => { setAddRecipientsAudience(opt.value as any); setAddRecipientsSelected(new Set()) }}
+                    className={`px-3 py-2 text-xs rounded-lg border transition-colors ${
+                      addRecipientsAudience === opt.value ? 'border-nestalk-primary bg-nestalk-primary/5 text-nestalk-primary font-medium' : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                    }`}>
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Search */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+              <input value={addRecipientsSearch} onChange={e => setAddRecipientsSearch(e.target.value)}
+                placeholder="Search..."
+                className="w-full pl-8 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-nestalk-primary" />
+            </div>
+
+            {/* Recipients list */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-xs font-medium text-gray-600">Select Recipients ({addRecipientsSelected.size} selected)</label>
+                <button onClick={() => {
+                  const list = getAddRecipientsList()
+                  setAddRecipientsSelected(prev => {
+                    const next = new Set(prev)
+                    if (list.every((item: any) => next.has(item.id))) {
+                      list.forEach((item: any) => next.delete(item.id))
+                    } else {
+                      list.forEach((item: any) => next.add(item.id))
+                    }
+                    return next
+                  })
+                }} className="text-xs text-nestalk-primary underline">
+                  {getAddRecipientsList().every((item: any) => addRecipientsSelected.has(item.id)) ? 'Deselect all' : 'Select all'}
+                </button>
+              </div>
+              <div className="border border-gray-200 rounded-lg max-h-48 overflow-y-auto">
+                {getAddRecipientsList().map((item: any) => (
+                  <div key={item.id} onClick={() => {
+                    const next = new Set(addRecipientsSelected)
+                    next.has(item.id) ? next.delete(item.id) : next.add(item.id)
+                    setAddRecipientsSelected(next)
+                  }} className={`flex items-center justify-between px-3 py-2 border-b border-gray-100 last:border-0 cursor-pointer hover:bg-gray-50 ${
+                    addRecipientsSelected.has(item.id) ? 'bg-nestalk-primary/5' : ''
+                  }`}>
+                    <div className="flex items-center gap-2">
+                      <div className={`w-3.5 h-3.5 rounded border-2 flex-shrink-0 ${
+                        addRecipientsSelected.has(item.id) ? 'border-nestalk-primary bg-nestalk-primary' : 'border-gray-300'
+                      }`} />
+                      <span className="text-sm text-gray-900">{item.name || item.full_name}</span>
+                    </div>
+                    <span className="text-xs font-mono text-gray-400">{item.phone}</span>
+                  </div>
+                ))}
+                {getAddRecipientsList().length === 0 && (
+                  <div className="text-sm text-gray-400 text-center py-6">No contacts found</div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setAddingRecipientsToCampaign(null)}
+                className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
+              <button onClick={handleAddRecipientsToCampaign} disabled={addRecipientsSending || addRecipientsSelected.size === 0}
+                className="px-4 py-2 text-sm bg-nestalk-primary text-white rounded-lg hover:bg-nestalk-primary/90 disabled:opacity-50 flex items-center gap-2">
+                {addRecipientsSending ? <><Loader2 className="w-4 h-4 animate-spin" /> Sending...</> : <><Send className="w-4 h-4" /> Send to {addRecipientsSelected.size}</>}
               </button>
             </div>
           </div>
