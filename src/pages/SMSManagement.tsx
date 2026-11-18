@@ -972,6 +972,7 @@ function BroadcastTab({ onRefresh }: { onRefresh: () => void }) {
   const [addRecipientsSending, setAddRecipientsSending] = useState(false)
   const [addRecipientsMessage, setAddRecipientsMessage] = useState('')
   const [addRecipientsShowSelected, setAddRecipientsShowSelected] = useState(false)
+  const [addRecipientsAlreadyInCampaign, setAddRecipientsAlreadyInCampaign] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     loadStaff()
@@ -1165,13 +1166,13 @@ function BroadcastTab({ onRefresh }: { onRefresh: () => void }) {
 
   const getAddRecipientsList = () => {
     if (addRecipientsAudience === 'staff') {
-      return allStaff.filter(m => !addRecipientsSearch || m.name.toLowerCase().includes(addRecipientsSearch.toLowerCase()) || (m.phone || '').includes(addRecipientsSearch)).map(m => ({ id: m.id, name: m.name, phone: m.phone, excluded: false }))
+      return allStaff.filter(m => !addRecipientsSearch || m.name.toLowerCase().includes(addRecipientsSearch.toLowerCase()) || (m.phone || '').includes(addRecipientsSearch)).map(m => ({ id: m.id, name: m.name, phone: m.phone, excluded: false, alreadyInCampaign: addRecipientsAlreadyInCampaign.has(normalizePhone(m.phone)) }))
     } else if (addRecipientsAudience === 'clients-placement') {
-      return allClients.filter(c => c.contact_type === 'placement' && (!addRecipientsSearch || c.full_name.toLowerCase().includes(addRecipientsSearch.toLowerCase()) || (c.phone || '').includes(addRecipientsSearch))).map(c => ({ id: c.id, name: c.full_name, phone: c.phone, excluded: c.exclude_from_sms }))
+      return allClients.filter(c => c.contact_type === 'placement' && (!addRecipientsSearch || c.full_name.toLowerCase().includes(addRecipientsSearch.toLowerCase()) || (c.phone || '').includes(addRecipientsSearch))).map(c => ({ id: c.id, name: c.full_name, phone: c.phone, excluded: c.exclude_from_sms, alreadyInCampaign: c.phone ? addRecipientsAlreadyInCampaign.has(normalizePhone(c.phone)) : false }))
     } else if (addRecipientsAudience === 'clients-non-placement') {
-      return allClients.filter(c => c.contact_type === 'non-placement' && (!addRecipientsSearch || c.full_name.toLowerCase().includes(addRecipientsSearch.toLowerCase()) || (c.phone || '').includes(addRecipientsSearch))).map(c => ({ id: c.id, name: c.full_name, phone: c.phone, excluded: c.exclude_from_sms }))
+      return allClients.filter(c => c.contact_type === 'non-placement' && (!addRecipientsSearch || c.full_name.toLowerCase().includes(addRecipientsSearch.toLowerCase()) || (c.phone || '').includes(addRecipientsSearch))).map(c => ({ id: c.id, name: c.full_name, phone: c.phone, excluded: c.exclude_from_sms, alreadyInCampaign: c.phone ? addRecipientsAlreadyInCampaign.has(normalizePhone(c.phone)) : false }))
     } else if (addRecipientsAudience === 'bad-debt') {
-      return allBadDebt.filter(r => !addRecipientsSearch || r.full_name.toLowerCase().includes(addRecipientsSearch.toLowerCase()) || (r.phone || '').includes(addRecipientsSearch)).map(r => ({ id: r.id, name: r.full_name, phone: r.phone, excluded: false }))
+      return allBadDebt.filter(r => !addRecipientsSearch || r.full_name.toLowerCase().includes(addRecipientsSearch.toLowerCase()) || (r.phone || '').includes(addRecipientsSearch)).map(r => ({ id: r.id, name: r.full_name, phone: r.phone, excluded: false, alreadyInCampaign: r.phone ? addRecipientsAlreadyInCampaign.has(normalizePhone(r.phone)) : false }))
     }
     return []
   }
@@ -1179,6 +1180,10 @@ function BroadcastTab({ onRefresh }: { onRefresh: () => void }) {
   const getSelectedRecipientsList = () => {
     const list = getAddRecipientsList()
     return list.filter((item: any) => addRecipientsSelected.has(item.id))
+  }
+
+  const getAvailableCount = () => {
+    return getAddRecipientsList().filter((item: any) => !item.excluded && !item.alreadyInCampaign).length
   }
 
   // Group staff by cohort
@@ -1538,13 +1543,17 @@ function BroadcastTab({ onRefresh }: { onRefresh: () => void }) {
                       <td className="px-4 py-3 text-xs text-gray-500">{new Date(c.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1">
-                          <button onClick={() => {
+                          <button onClick={async () => {
                             setAddingRecipientsToCampaign(c)
                             setAddRecipientsAudience('clients-placement')
                             setAddRecipientsSelected(new Set())
                             setAddRecipientsSearch('')
                             setAddRecipientsMessage(c.message)
                             setAddRecipientsShowSelected(false)
+                            // Fetch already-in-campaign recipients
+                            const { data: existingRecords } = await supabase.from('sms_records').select('recipient_phone').eq('campaign_id', c.id)
+                            const existingPhones = new Set((existingRecords || []).map(r => normalizePhone(r.recipient_phone)))
+                            setAddRecipientsAlreadyInCampaign(existingPhones)
                           }}
                             className="flex items-center gap-1 text-xs text-nestalk-primary hover:text-nestalk-primary/80 px-2 py-1 rounded hover:bg-nestalk-primary/10">
                             <Plus className="w-3 h-3" /> Add
@@ -1684,7 +1693,7 @@ function BroadcastTab({ onRefresh }: { onRefresh: () => void }) {
                 className={`flex-1 py-2 text-xs font-medium rounded-lg border transition-colors ${
                   !addRecipientsShowSelected ? 'border-nestalk-primary bg-nestalk-primary/5 text-nestalk-primary' : 'border-gray-200 text-gray-600'
                 }`}>
-                Select Recipients ({getAddRecipientsList().filter((item: any) => !item.excluded).length} available)
+                Select Recipients ({getAvailableCount()} available)
               </button>
               <button onClick={() => setAddRecipientsShowSelected(true)}
                 className={`flex-1 py-2 text-xs font-medium rounded-lg border transition-colors ${
@@ -1711,7 +1720,7 @@ function BroadcastTab({ onRefresh }: { onRefresh: () => void }) {
                   <div className="flex items-center justify-between mb-2">
                     <label className="text-xs font-medium text-gray-600">Select Recipients</label>
                     <button onClick={() => {
-                      const list = getAddRecipientsList().filter((item: any) => !item.excluded)
+                      const list = getAddRecipientsList().filter((item: any) => !item.excluded && !item.alreadyInCampaign)
                       setAddRecipientsSelected(prev => {
                         const next = new Set(prev)
                         if (list.every((item: any) => next.has(item.id))) {
@@ -1722,24 +1731,25 @@ function BroadcastTab({ onRefresh }: { onRefresh: () => void }) {
                         return next
                       })
                     }} className="text-xs text-nestalk-primary underline">
-                      {getAddRecipientsList().filter((item: any) => !item.excluded).every((item: any) => addRecipientsSelected.has(item.id)) ? 'Deselect all' : 'Select all (active only)'}
+                      {getAddRecipientsList().filter((item: any) => !item.excluded && !item.alreadyInCampaign).every((item: any) => addRecipientsSelected.has(item.id)) ? 'Deselect all' : 'Select all available'}
                     </button>
                   </div>
                   <div className="border border-gray-200 rounded-lg max-h-48 overflow-y-auto">
                     {getAddRecipientsList().map((item: any) => (
                       <div key={item.id} onClick={() => {
-                        if (item.excluded) return
+                        if (item.excluded || item.alreadyInCampaign) return
                         const next = new Set(addRecipientsSelected)
                         next.has(item.id) ? next.delete(item.id) : next.add(item.id)
                         setAddRecipientsSelected(next)
                       }} className={`flex items-center justify-between px-3 py-2 border-b border-gray-100 last:border-0 ${
-                        item.excluded ? 'bg-orange-50 cursor-not-allowed opacity-60' : 'cursor-pointer hover:bg-gray-50'
+                        item.alreadyInCampaign ? 'bg-gray-100 cursor-not-allowed opacity-50' : item.excluded ? 'bg-orange-50 cursor-not-allowed opacity-60' : 'cursor-pointer hover:bg-gray-50'
                       } ${addRecipientsSelected.has(item.id) ? 'bg-emerald-50' : ''}`}>
                         <div className="flex items-center gap-2">
                           <div className={`w-3.5 h-3.5 rounded border-2 flex-shrink-0 ${
-                            addRecipientsSelected.has(item.id) ? 'border-emerald-500 bg-emerald-500' : item.excluded ? 'border-orange-300' : 'border-gray-300'
+                            addRecipientsSelected.has(item.id) ? 'border-emerald-500 bg-emerald-500' : item.alreadyInCampaign ? 'border-gray-300' : item.excluded ? 'border-orange-300' : 'border-gray-300'
                           }`} />
                           <span className="text-sm text-gray-900">{item.name}</span>
+                          {item.alreadyInCampaign && <span className="text-xs text-gray-500">(Already in campaign)</span>}
                           {item.excluded && <span className="text-xs text-orange-600">(Excluded from SMS)</span>}
                         </div>
                         <span className="text-xs font-mono text-gray-400">{item.phone}</span>
